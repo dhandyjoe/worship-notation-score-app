@@ -3,30 +3,35 @@
    <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Chord Sheet</title>
+      <title>WorshipNadaSheet — Chord &amp; Number Sheet Builder</title>
+      <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+      <meta name="theme-color" content="#1f704a" />
       <link rel="stylesheet" href="styles.css" />
       <link rel="stylesheet" href="preview.css" />
+      <link rel="stylesheet" href="ui.css" />
    </head>
    <body>
       <header class="topbar">
          <a class="brand" href="#"
-            ><span class="brand-icon">♫</span><span>Chord Sheet<small>Worship flow builder</small></span></a
+            ><span class="brand-icon" aria-hidden="true"><img src="favicon.svg" alt="" /></span><span>WorshipNadaSheet<small>Chord &amp; Number Sheet Builder</small></span></a
          >
          <div class="topbar-actions">
-            <label class="button button-ghost upload-project" for="projectFileInput">Upload</label
+            <span class="autosave-status"><i aria-hidden="true"></i> Tersimpan otomatis</span>
+            <label class="button button-ghost upload-project" for="projectFileInput"
+               ><span aria-hidden="true">↑</span> Upload .file</label
             ><input id="projectFileInput" type="file" accept=".chordsheet.json,application/json" /><button
                class="button button-ghost"
                id="saveBtn"
             >
-               Export .file</button
-            ><button class="button button-primary" id="exportBtn">Export .pdf</button>
+               <span aria-hidden="true">↓</span> Export .file</button
+            ><button class="button button-primary" id="exportBtn"><span aria-hidden="true">↗</span> Export .pdf</button>
          </div>
       </header>
 
       <main>
          <section class="intro">
             <span class="eyebrow">SONG ARRANGER</span>
-            <h1>Susun progresi chord atau not angka dengan lebih nyaman.</h1>
+            <h1>Susun chord dan not angka, siap dimainkan.</h1>
             <p>Pilih chord atau not angka, lalu tarik ke titik ketukan pada section preview.</p>
          </section>
          <div class="workspace ribbon-workspace">
@@ -36,88 +41,305 @@
                   <input id="artist" value="Artis / Komposer" />
                   <select id="keySelect"></select>
                   <select id="timeSignature">
-                        <option value="2/4">2/4</option>
-                        <option value="3/4">3/4</option>
-                        <option value="4/4" selected>4/4</option>
-                        <option value="6/8">6/8</option>
+                     <option value="2/4">2/4</option>
+                     <option value="3/4">3/4</option>
+                     <option value="4/4" selected>4/4</option>
+                     <option value="6/8">6/8</option>
                   </select>
                </div>
-               <div class="ribbon-tabs" role="tablist">
-                  <button class="ribbon-tab active" data-ribbon-tab="chord" role="tab">Chord</button>
-                  <button class="ribbon-tab" data-ribbon-tab="slash" role="tab">Slash Chord</button>
-                  <button class="ribbon-tab" data-ribbon-tab="nashville" role="tab">Nashville</button>
-                  <button class="ribbon-tab" data-ribbon-tab="rhythm" role="tab">Ketukan</button>
-               </div>
-               <div class="ribbon-panels">
-               <div class="ribbon-panel active" data-ribbon-panel="chord">
-               <div class="palette-group">
-                  <span class="palette-label">Pilih root chord</span>
-                  <div class="key-picker chord-root-picker" id="chordRootPicker" aria-label="Pilih root chord"></div>
-               </div>
-               <div class="palette-divider"><span></span></div>
-               <div class="palette-group">
-                  <span class="palette-label">Chord family</span>
-                  <div class="chord-bank chord-family" id="chordBank"></div>
-                  <div class="custom-chord-entry">
-                     <input class="text-input" id="customChordInput" placeholder="Chord custom, contoh: C6/9" aria-label="Chord custom" />
-                     <div class="custom-chord-preview" id="customChordPreview"></div>
+               <div class="ribbon-heading">
+                  <div>
+                     <span class="ribbon-kicker">ARRANGEMENT TOOLS</span>
+                     <strong id="activeToolLabel">Chord palette</strong>
                   </div>
-               </div>
-               </div>
-               <div class="ribbon-panel" data-ribbon-panel="slash">
-               <div class="palette-group slash-builder">
-                  <span class="palette-label">Slash chord</span>
-                  <div class="slash-fields">
-                     <select class="select-input" id="slashRoot" aria-label="Root slash chord"></select
-                     ><select class="select-input" id="slashQuality" aria-label="Jenis slash chord"></select
-                     ><span class="slash-symbol">/</span
-                     ><select class="select-input" id="slashBass" aria-label="Bass note"></select>
-                  </div>
-                  <button class="button button-ghost button-small add-slash" id="addSlashBtn">
-                     + Tambah slash chord
+                  <button
+                     class="icon-button ribbon-toggle"
+                     id="ribbonToggle"
+                     type="button"
+                     aria-expanded="true"
+                     aria-controls="ribbonPanels"
+                     title="Ciutkan toolbar"
+                  >
+                     <span aria-hidden="true">⌃</span><span class="sr-only">Ciutkan toolbar</span>
                   </button>
-                  <div class="chord-bank slash-chord-bank" id="slashChordBank"></div>
                </div>
+               <div class="ribbon-tabs" role="tablist">
+                  <button
+                     class="ribbon-tab active"
+                     id="tabChord"
+                     data-ribbon-tab="chord"
+                     role="tab"
+                     aria-selected="true"
+                     aria-controls="panelChord"
+                     title="Chord palette (Alt+1)"
+                  >
+                     Chord
+                  </button>
+                  <button
+                     class="ribbon-tab"
+                     id="tabSlash"
+                     data-ribbon-tab="slash"
+                     role="tab"
+                     aria-selected="false"
+                     aria-controls="panelSlash"
+                     title="Slash Chord (Alt+2)"
+                  >
+                     Slash Chord
+                  </button>
+                  <button
+                     class="ribbon-tab"
+                     id="tabNashville"
+                     data-ribbon-tab="nashville"
+                     role="tab"
+                     aria-selected="false"
+                     aria-controls="panelNashville"
+                     title="Nashville (Alt+3)"
+                  >
+                     Nashville
+                  </button>
+                  <button
+                     class="ribbon-tab"
+                     id="tabRhythm"
+                     data-ribbon-tab="rhythm"
+                     role="tab"
+                     aria-selected="false"
+                     aria-controls="panelRhythm"
+                     title="Ketukan (Alt+4)"
+                  >
+                     Ketukan
+                  </button>
+                  <button
+                     class="ribbon-tab"
+                     id="tabLyrics"
+                     hidden
+                     data-ribbon-tab="lyrics"
+                     role="tab"
+                     aria-selected="false"
+                     aria-controls="panelLyrics"
+                     title="Lirik (Alt+5)"
+                  >
+                     Lirik
+                  </button>
                </div>
-               <div class="ribbon-panel" data-ribbon-panel="nashville">
-               <div class="palette-group nashville-builder">
-                  <span class="palette-label">Nashville number system</span>
-                  <div class="nashville-roots" id="nashvilleRootPicker"></div>
-                  <div class="nashville-accidentals" id="nashvilleAccidentalPicker"></div>
-                  <div class="chord-bank nashville-family" id="nashvilleChordBank"></div>
-               </div>
-               </div>
-               <div class="ribbon-panel" data-ribbon-panel="rhythm">
-               <div class="beat-bank" id="beatBank"></div>
-               </div>
+               <div class="ribbon-panels" id="ribbonPanels">
+                  <div
+                     class="ribbon-panel active"
+                     id="panelChord"
+                     data-ribbon-panel="chord"
+                     role="tabpanel"
+                     aria-labelledby="tabChord"
+                  >
+                     <div class="palette-group">
+                        <span class="palette-label">Pilih root chord</span>
+                        <div
+                           class="key-picker chord-root-picker"
+                           id="chordRootPicker"
+                           aria-label="Pilih root chord"
+                        ></div>
+                     </div>
+                     <div class="palette-divider"><span></span></div>
+                     <div class="palette-group">
+                        <span class="palette-label">Chord family</span>
+                        <div class="chord-bank chord-family" id="chordBank"></div>
+                        <div class="custom-chord-entry">
+                           <input
+                              class="text-input"
+                              id="customChordInput"
+                              placeholder="Chord custom, contoh: C6/9"
+                              aria-label="Chord custom"
+                           />
+                           <div class="custom-chord-preview" id="customChordPreview"></div>
+                        </div>
+                     </div>
+                  </div>
+                  <div
+                     class="ribbon-panel"
+                     id="panelSlash"
+                     data-ribbon-panel="slash"
+                     role="tabpanel"
+                     aria-labelledby="tabSlash"
+                  >
+                     <div class="palette-group slash-builder">
+                        <span class="palette-label">Slash chord</span>
+                        <div class="slash-fields">
+                           <select class="select-input" id="slashRoot" aria-label="Root slash chord"></select
+                           ><select class="select-input" id="slashQuality" aria-label="Jenis slash chord"></select
+                           ><span class="slash-symbol">/</span
+                           ><select class="select-input" id="slashBass" aria-label="Bass note"></select>
+                        </div>
+                        <button class="button button-ghost button-small add-slash" id="addSlashBtn">
+                           + Tambah slash chord
+                        </button>
+                        <div class="chord-bank slash-chord-bank" id="slashChordBank"></div>
+                     </div>
+                  </div>
+                  <div
+                     class="ribbon-panel"
+                     id="panelNashville"
+                     data-ribbon-panel="nashville"
+                     role="tabpanel"
+                     aria-labelledby="tabNashville"
+                  >
+                     <div class="palette-group nashville-builder">
+                        <div class="nashville-degree-panel">
+                           <span class="palette-label">Pilih notasi</span>
+                           <div class="nashville-roots" id="nashvilleRootPicker"></div>
+                        </div>
+                        <div class="nashville-panel-divider" aria-hidden="true"></div>
+                        <div class="nashville-variation-panel">
+                           <span class="palette-label">Accidental &amp; chord family</span>
+                           <div class="nashville-accidentals" id="nashvilleAccidentalPicker"></div>
+                           <div class="chord-bank nashville-family" id="nashvilleChordBank"></div>
+                        </div>
+                        <div class="nashville-selected-card">
+                           <span>Notasi terpilih</span>
+                           <strong id="nashvilleSelectedPreview">1</strong>
+                           <small>Pilih variasi, lalu klik atau tarik ke preview.</small>
+                        </div>
+                     </div>
+                  </div>
+                  <div
+                     class="ribbon-panel"
+                     id="panelRhythm"
+                     data-ribbon-panel="rhythm"
+                     role="tabpanel"
+                     aria-labelledby="tabRhythm"
+                  >
+                     <div class="beat-bank" id="beatBank"></div>
+                  </div>
+                  <div
+                     class="ribbon-panel"
+                     id="panelLyrics"
+                     hidden
+                     data-ribbon-panel="lyrics"
+                     role="tabpanel"
+                     aria-labelledby="tabLyrics"
+                  >
+                     <div class="palette-group lyrics-settings">
+                        <div>
+                           <span class="palette-label">Lirik lagu</span>
+                           <p class="lyrics-setting-copy">
+                              Tambahkan kata atau suku kata tepat di bawah setiap ketukan.
+                           </p>
+                        </div>
+                        <label class="switch-control" for="lyricsEnabled">
+                           <input id="lyricsEnabled" type="checkbox" />
+                           <span class="switch-track" aria-hidden="true"><span></span></span>
+                           <b id="lyricsEnabledLabel">Tanpa lirik</b>
+                        </label>
+                     </div>
+                     <div class="lyrics-shortcuts" aria-label="Panduan input lirik">
+                        <span><kbd>Enter</kbd> ketukan berikutnya</span>
+                        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> kembali</span>
+                        <span>Paste kalimat untuk membagi kata otomatis</span>
+                     </div>
+                  </div>
                </div>
             </aside>
 
-            <section class="preview-card" id="previewCard">
-               <div class="preview-header">
-                  <div>
-                     <span class="eyebrow">LIVE PREVIEW</span>
-                     <h2 id="previewTitle" class="preview-editable" title="Klik untuk mengganti judul">Judul Lagu</h2>
-                     <p id="previewArtist" class="preview-editable" title="Klik untuk mengganti artis atau komposer">Artis / Komposer</p>
+            <div class="preview-stage">
+               <div class="canvas-toolbar" aria-label="Kontrol tampilan preview">
+                  <div class="canvas-title">
+                     <span class="canvas-status" aria-hidden="true"></span><strong>Document canvas</strong
+                     ><small>Perubahan tersimpan otomatis</small>
                   </div>
-                  <div class="song-meta">
-                     <span>KEY <b id="previewKey" class="preview-editable" title="Klik untuk mengganti nada dasar">C</b></span
-                     ><span>METER <b id="previewMeter" class="preview-editable" title="Klik untuk mengganti time signature">4/4</b></span>
+                  <div class="zoom-controls">
+                     <button
+                        class="icon-button"
+                        id="zoomOut"
+                        type="button"
+                        aria-label="Perkecil preview"
+                        title="Perkecil preview"
+                     >
+                        −
+                     </button>
+                     <output id="zoomValue" aria-live="polite">100%</output>
+                     <button
+                        class="icon-button"
+                        id="zoomIn"
+                        type="button"
+                        aria-label="Perbesar preview"
+                        title="Perbesar preview"
+                     >
+                        +
+                     </button>
+                     <button class="fit-button" id="fitPreview" type="button">Fit width</button>
                   </div>
                </div>
-               <div class="preview-rule"></div>
-               <div id="sectionsPreview" aria-label="Area drag and drop chord"></div>
-               <div class="preview-footer">
-                  <span>Tarik chord dari toolbar atas ke titik ketukan.</span>
-                  <div class="preview-actions">
-                     <button class="button button-reset button-small" id="resetSheetBtn">Reset Sheet</button
-                     ><button class="button button-ghost button-small" id="addSectionBtn">+ Add section</button>
-                  </div>
+               <div
+                  class="preview-viewport"
+                  id="previewViewport"
+                  tabindex="0"
+                  aria-label="Canvas chord sheet, dapat digulir secara horizontal"
+               >
+                  <section class="preview-card" id="previewCard">
+                     <div class="preview-header">
+                        <div>
+                           <span class="eyebrow">LIVE PREVIEW</span>
+                           <h2 id="previewTitle" class="preview-editable" title="Klik untuk mengganti judul">
+                              Judul Lagu
+                           </h2>
+                           <p
+                              id="previewArtist"
+                              class="preview-editable"
+                              title="Klik untuk mengganti artis atau komposer"
+                           >
+                              <span class="artist-label">Created by:</span>
+                              <em class="artist-value">Artis / Komposer</em>
+                           </p>
+                        </div>
+                        <div class="song-meta">
+                           <span
+                              >KEY
+                              <b id="previewKey" class="preview-editable" title="Klik untuk mengganti nada dasar"
+                                 >C</b
+                              ></span
+                           ><span
+                              >TIME SIGNATURE
+                              <b id="previewMeter" class="preview-editable" title="Klik untuk mengganti time signature"
+                                 >4/4</b
+                              ></span
+                           ><span class="transpose-control"
+                              >TRANSPOSE
+                              <span class="transpose-buttons"
+                                 ><button
+                                    id="transposeDown"
+                                    type="button"
+                                    title="Turunkan semua chord setengah nada"
+                                    aria-label="Transpose turun setengah nada"
+                                 >
+                                    −</button
+                                 ><button
+                                    id="transposeUp"
+                                    type="button"
+                                    title="Naikkan semua chord setengah nada"
+                                    aria-label="Transpose naik setengah nada"
+                                 >
+                                    +
+                                 </button></span
+                              ></span
+                           >
+                        </div>
+                     </div>
+                     <div class="preview-rule"></div>
+                     <div id="sectionsPreview" aria-label="Area drag and drop chord"></div>
+                     <div class="preview-footer">
+                        <span id="previewHint">Tarik chord dari toolbar atas ke titik ketukan.</span>
+                        <div class="preview-actions">
+                           <button class="button button-reset button-small" id="resetSheetBtn">Reset Sheet</button
+                           ><button class="button button-ghost button-small" id="addSectionBtn">+ Add section</button>
+                        </div>
+                     </div>
+                     <div class="pdf-signature" aria-hidden="true">Generated with WorshipNadaSheet</div>
+                  </section>
                </div>
-            </section>
+               <div class="scroll-affordance" id="scrollAffordance" aria-hidden="true">
+                  <span>Geser untuk melihat bagian lainnya</span><b>→</b>
+               </div>
+            </div>
          </div>
       </main>
-      <div class="toast" id="toast"></div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
       <script src="app.js"></script>
    </body>
 </html>
