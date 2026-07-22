@@ -49,7 +49,7 @@
 .chord-flat { margin-right: -.14em; margin-left: -.13em; }
 .chord-sharp { margin-right: -.05em; margin-left: -.04em; }
 
-.beat-bank { display: flex; flex-wrap: wrap; gap: 8px; }.duration-option { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px dashed #94bda1; border-radius: 7px; color: var(--dark-green); background: #f8fcf9; font-size: 12px; font-weight: 700; cursor: grab; user-select: none; }.duration-option b { font-size: 16px; }
+.beat-bank { display: flex; flex-wrap: wrap; gap: 8px; }.duration-option { display: inline-flex; align-items: center; gap: 7px; min-height: 48px; padding: 7px 10px; border: 1px dashed #94bda1; border-radius: 7px; color: var(--dark-green); background: #f8fcf9; font-size: 12px; font-weight: 700; cursor: grab; user-select: none; }.duration-option b { min-width: 20px; font-size: 17px; text-align: center; }.duration-option > span { display: grid; gap: 1px; }.duration-option small { color: var(--muted); font-size: 9px; font-weight: 650; white-space: nowrap; }
 .preview-actions { display: flex; gap: 8px; }
 .button-reset { color: #9c4742; background: #fff2f1; }
 .text-button { border: 0; background: transparent; color: var(--green); font: 800 12px inherit; cursor: pointer; padding: 5px 0; }
@@ -64,6 +64,7 @@
 .section-title:hover { text-decoration: underline; text-underline-offset: 4px; }.section-title-input { width: 170px; border: 1px solid #71af8a; border-radius: 6px; padding: 5px 7px; color: var(--green); background: #fff; font: 800 14px inherit; letter-spacing: .06em; outline: 0; }
 
 .beat-group { width: auto; min-width: 34px; }
+.duration-triplet .sub-beats { grid-template-columns: repeat(3,minmax(30px,max-content)); gap: 5px; }
 .beat.has-chord { width: auto; min-width: 30px; }.beat.has-chord .placed-chord { position: relative; inset: auto; min-width: 42px; padding: 0 10px; white-space: nowrap; }.duration-half .sub-beats { grid-template-columns: repeat(2, max-content); }.duration-quarter .sub-beats { grid-template-columns: repeat(4, max-content); }.sub-beat.has-chord .placed-chord { position: relative; inset: auto; min-width: 32px; padding: 0 7px; white-space: nowrap; }
 .duration-half .sub-beats { grid-template-columns: repeat(2, minmax(30px, max-content)); gap: 6px; }.duration-quarter .sub-beats { grid-template-columns: repeat(4, minmax(30px, max-content)); gap: 6px; }.sub-beat.has-chord { min-width: max-content; }.duration-line { top: -16px; z-index: 1; height: 18px; background: transparent; cursor: pointer; }.duration-line::before { content: ""; position: absolute; top: 8px; right: 0; left: 0; height: 2px; border-radius: 2px; background: var(--dark-green); }.duration-quarter .duration-line { box-shadow: none; }.duration-quarter .duration-line::after { content: ""; position: absolute; top: 12px; right: 0; left: 0; height: 2px; border-radius: 2px; background: var(--dark-green); }
 
@@ -122,6 +123,7 @@ body { overflow-x: hidden; }
 .lyric-input:focus { position: relative; z-index: 2; border-color: #64a77b; background: #fff; box-shadow: 0 0 0 3px rgba(100,167,123,.14); }
 .sub-lyrics { min-width: 0; display: grid; gap: 6px; }
 .duration-half .sub-lyrics { grid-template-columns: repeat(2,minmax(36px,1fr)); }
+.duration-triplet .sub-lyrics { grid-template-columns: repeat(3,minmax(34px,1fr)); }
 .duration-quarter .sub-lyrics { grid-template-columns: repeat(4,minmax(34px,1fr)); }
 .sub-lyrics .lyric-editor { width: 34px; }
 
@@ -134,10 +136,13 @@ body { overflow-x: hidden; }
 .bar.has-lyrics .sub-beats,
 .bar.has-lyrics .sub-lyrics { width: max-content; }
 .bar.has-lyrics .duration-half .sub-beats,
+.bar.has-lyrics .duration-triplet .sub-beats,
 .bar.has-lyrics .duration-quarter .sub-beats { grid-template-columns: repeat(var(--subdivisions), 52px); gap: 6px; }
 .bar.has-lyrics .beat-group.has-nested-duration > .sub-beats { grid-template-columns: repeat(2,max-content); }
 .bar.has-lyrics .duration-half .sub-beats,
 .bar.has-lyrics .duration-half .sub-lyrics { --subdivisions: 2; }
+.bar.has-lyrics .duration-triplet .sub-beats,
+.bar.has-lyrics .duration-triplet .sub-lyrics { --subdivisions: 3; }
 .bar.has-lyrics .duration-quarter .sub-beats,
 .bar.has-lyrics .duration-quarter .sub-lyrics { --subdivisions: 4; }
 .bar.has-lyrics .sub-lyrics { grid-template-columns: repeat(var(--lyric-leaves),52px); gap: 6px; }
@@ -262,6 +267,7 @@ body { overflow-x: hidden; }
   .bar.has-lyrics .sub-beats,
   .bar.has-lyrics .sub-lyrics { width: max-content; }
   .bar.has-lyrics .duration-half .sub-beats,
+  .bar.has-lyrics .duration-triplet .sub-beats,
   .bar.has-lyrics .duration-quarter .sub-beats { grid-template-columns: repeat(var(--subdivisions),max-content); gap: 2px; }
   .bar.has-lyrics .sub-lyrics { width: 100%; grid-template-columns: repeat(var(--lyric-leaves),minmax(0,1fr)); gap: 2px; }
   .bar.has-lyrics .sub-lyrics .lyric-editor { width: 100%; }
@@ -285,6 +291,7 @@ body { overflow-x: hidden; }
   .sub-beat.has-chord .placed-chord { min-width: 32px; padding-right: 4px; padding-left: 4px; }
   .chord-flat { margin-right: -.22em; margin-left: -.21em; }
   .duration-half .sub-beats { grid-template-columns: repeat(2,max-content); gap: 2px; }
+  .duration-triplet .sub-beats { grid-template-columns: repeat(3,max-content); gap: 2px; }
   .duration-quarter .sub-beats { grid-template-columns: repeat(4,max-content); gap: 2px; }
   .nested-beat-group { width: max-content; height: 32px; }
   .nested-sub-beats { width: max-content; height: 32px; grid-template-columns: repeat(2,max-content); gap: 2px; }

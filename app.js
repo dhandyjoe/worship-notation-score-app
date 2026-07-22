@@ -19,6 +19,7 @@ const nashvilleLowerNumbers=['1̣','2̣','3̣','4̣','5̣','6̣','7̣'];
 const nashvilleUpperNumbers=['1̇','2̇','3̇','4̇','5̇','6̇','7̇'];
 const nashvilleChoices=[...nashvilleNumbers,...nashvilleLowerNumbers,...nashvilleUpperNumbers,...nashvilleZeroNumbers];
 const lyricsFeatureAvailable=true;
+const durationMeta={half:{count:2,symbol:'½',label:'Half beat'},triplet:{count:3,symbol:'⅓',label:'Beat triplet'},quarter:{count:4,symbol:'¼',label:'Quarter beat'}};
 const $=selector=>document.querySelector(selector);
 const escapeHTML=value=>String(value??'').replace(/[&<>"]/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[character]));
 const newSection=(name='Intro')=>({id:crypto.randomUUID(),name,lyricsEnabled:true,lyricBeats:{},bars:4,beats:{}});
@@ -87,7 +88,12 @@ function selectPaletteItem(element,item){
   document.querySelectorAll('.palette-selected').forEach(target=>target.classList.remove('palette-selected'));
   element.classList.add('palette-selected');
   if(item.type==='chord'&&isNashvilleChord(item.value)&&$('#nashvilleSelectedPreview'))$('#nashvilleSelectedPreview').innerHTML=chordLabel(item.value);
-  toast(`${item.type==='chord'?item.value:item.value==='half'?'½ beat':'¼ beat'} selected · ${prefersTap()?'tap':'click or drag it onto'} a beat`);
+  const itemLabel=item.type==='chord'?item.value:`${durationMeta[item.value]?.label||item.value} (${durationMeta[item.value]?.symbol||''} each)`;
+  toast(`${itemLabel} selected · ${prefersTap()?'tap':'click or drag it onto'} a beat`);
+  if(prefersTap()){
+    toggleRibbon(false);
+    requestAnimationFrame(()=>document.querySelector('.preview-stage')?.scrollIntoView({behavior:'smooth',block:'start'}));
+  }
 }
 function clearPaletteSelection(){selectedPaletteItem=null;document.querySelectorAll('.palette-selected').forEach(target=>target.classList.remove('palette-selected'))}
 function bindPaletteItem(element,item){
@@ -131,7 +137,7 @@ function renderControls(){
   $('#nashvilleAccidentalPicker').innerHTML=[['','♮'],['♭','♭'],['#','#']].map(([value,label])=>`<button class="nashville-accidental ${value===state.nashvilleAccidental?'active':''}" data-accidental="${value}">${label}</button>`).join('');
   $('#nashvilleChordBank').innerHTML=chordQualities.map(({value})=>`<span class="chord nashville-chord" draggable="true" data-chord="${nashvilleName(value)}">${chordLabel(nashvilleName(value))}</span>`).join('');
   $('#nashvilleSelectedPreview').innerHTML=chordLabel(nashvilleName(''));
-  $('#beatBank').innerHTML='<span class="duration-option" draggable="true" data-duration="half"><b>½</b> Half beat</span><span class="duration-option" draggable="true" data-duration="quarter"><b>¼</b> Quarter beat</span>';
+  $('#beatBank').innerHTML=Object.entries(durationMeta).map(([value,{symbol,label,count}])=>`<span class="duration-option duration-option-${value}" draggable="true" data-duration="${value}" title="Divide one beat into ${count} equal parts"><b>${symbol}</b><span>${label}<small>${count} notes per beat</small></span></span>`).join('');
   $('#lyricsEnabled').checked=state.lyricsEnabled;
   $('#lyricsEnabledLabel').textContent=state.lyricsEnabled?'Lyrics on':'Lyrics off';
   bindDraggableChords();renderCustomChord();
@@ -139,7 +145,7 @@ function renderControls(){
 }
 function syncEditor(){}
 function beatValue(section,slot){const value=section.beats[slot];return typeof value==='string'?{chord:value,duration:null}:value||{chord:null,duration:null}}
-function chordOrDot(section,slot){const value=beatValue(section,slot);return value.chord?`<span class="placed-chord" title="Click to remove">${chordLabel(value.chord)}</span>`:'<span class="beat-dot">·</span>'}
+function chordOrDot(section,slot){const value=beatValue(section,slot);return value.chord?`<span class="placed-chord" role="button" tabindex="0" title="Tap to remove" aria-label="Remove ${escapeHTML(value.chord)} chord">${chordLabel(value.chord)}</span>`:'<span class="beat-dot">·</span>'}
 function lyricValue(section,slot){return typeof section.lyricBeats?.[slot]==='string'?section.lyricBeats[slot]:''}
 function lyricInputHTML(section,slot){
   const text=lyricValue(section,slot),label=`Lyrics for beat ${slot.replace(':',' part ')}`;
@@ -164,7 +170,7 @@ function beatHTML(section,bar,beat){
     return `<span class="beat-column ${showLyrics?'with-lyrics':''}"><span class="notation-cell">${notation}</span>${showLyrics?lyricInputHTML(section,slot):''}</span>`;
   }
   if(value.chord&&!section.beats[`${slot}:0`]){section.beats[`${slot}:0`]={chord:value.chord,duration:null};value.chord=null;section.beats[slot]=value}
-  const count=value.duration==='half'?2:4;
+  const count=durationMeta[value.duration]?.count||1;
   const subBeats=Array.from({length:count},(_,index)=>subdivisionTargetHTML(section,slot,index,value.duration)).join('');
   const nestedSplitSlots=value.duration==='half'?Array.from({length:count},(_,index)=>`${slot}:${index}`).filter(subSlot=>beatValue(section,subSlot).duration==='half'):[];
   const quarterPrintLine=value.duration==='quarter'?'<span class="quarter-print-line" aria-hidden="true"></span>':'';
@@ -181,7 +187,7 @@ function sectionHTML(section){
   const lyricsToggle=lyricsFeatureAvailable&&state.lyricsEnabled?`<button class="section-lyrics-toggle ${section.lyricsEnabled!==false?'active':''}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled!==false}"><span aria-hidden="true">${section.lyricsEnabled!==false?'✓':'–'}</span> Lyrics ${section.lyricsEnabled!==false?'On':'Off'}</button>`:'';
   const deleteDisabled=state.sections.length===1;
   const sectionMenu=`<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled?'disabled':''}>Delete section</button></div></details>`;
-  return `<section class="preview-section ${section.id===state.activeId?'is-active':''} ${hasLyricContent?'has-lyric-content':''}" data-section="${section.id}"><div class="section-preview-heading"><div>${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars===1?'bar':'bars'} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 4 bars</button>${sectionMenu}</div></div><div class="bar-grid">${batches}</div></section>`;
+  return `<section class="preview-section ${section.id===state.activeId?'is-active':''} ${hasLyricContent?'has-lyric-content':''}" data-section="${section.id}"><div class="section-preview-heading"><div>${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars===1?'bar':'bars'} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div><div class="bar-grid">${batches}</div></section>`;
 }
 function slotBarIndex(slot){const match=String(slot).match(/^(\d+)-/);return match?Number(match[1]):-1}
 function barHasContent(section,bar){
@@ -236,17 +242,21 @@ function bindPreview(){
     beat.addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect='copy';beat.classList.add('dragover')});
     beat.addEventListener('dragleave',()=>beat.classList.remove('dragover'));
     beat.addEventListener('drop',event=>{event.preventDefault();event.stopPropagation();let item;try{item=JSON.parse(event.dataTransfer.getData('application/chord-sheet'))}catch{}const section=state.sections.find(item=>item.id===beat.dataset.section),slot=beat.dataset.slot;beat.classList.remove('dragover');document.body.classList.remove('is-dragging');if(!placePaletteItem(section,beat,item))return;syncEditor();renderPreview();save();flashDropTarget(section.id,slot)});
-    beat.addEventListener('click',event=>{if(!selectedPaletteItem||event.target.closest('.placed-chord,.duration-line,.nested-duration-line,.lyric-input'))return;event.stopPropagation();const section=state.sections.find(item=>item.id===beat.dataset.section),slot=beat.dataset.slot;if(!placePaletteItem(section,beat,selectedPaletteItem))return;syncEditor();renderPreview();save();flashDropTarget(section.id,slot)});
+    beat.addEventListener('click',event=>{if(!selectedPaletteItem||event.target.closest('.placed-chord,.duration-line,.nested-duration-line,.lyric-input'))return;event.stopPropagation();const section=state.sections.find(item=>item.id===beat.dataset.section),slot=beat.dataset.slot;if(!placePaletteItem(section,beat,selectedPaletteItem))return;if(prefersTap())clearPaletteSelection();syncEditor();renderPreview();save();flashDropTarget(section.id,slot)});
   });
-  document.querySelectorAll('.placed-chord').forEach(chord=>chord.addEventListener('click',event=>{
-    event.stopPropagation();
-    const beat=chord.closest('.drop-target'),section=state.sections.find(item=>item.id===beat.dataset.section);
-    if(selectedPaletteItem){
-      if(!placePaletteItem(section,beat,selectedPaletteItem))return;
-      syncEditor();renderPreview();save();flashDropTarget(section.id,beat.dataset.slot);return;
-    }
-    delete section.beats[beat.dataset.slot];renderPreview();save();
-  }));
+  document.querySelectorAll('.placed-chord').forEach(chord=>{
+    const removeOrReplace=event=>{
+      event.stopPropagation();
+      const beat=chord.closest('.drop-target'),section=state.sections.find(item=>item.id===beat.dataset.section);
+      if(selectedPaletteItem){
+        if(!placePaletteItem(section,beat,selectedPaletteItem))return;
+        if(prefersTap())clearPaletteSelection();syncEditor();renderPreview();save();flashDropTarget(section.id,beat.dataset.slot);return;
+      }
+      delete section.beats[beat.dataset.slot];renderPreview();save();toast('Chord removed');
+    };
+    chord.addEventListener('click',removeOrReplace);
+    chord.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();removeOrReplace(event)}});
+  });
   document.querySelectorAll('.nested-duration-line').forEach(line=>line.addEventListener('click',event=>{
     event.stopPropagation();
     const section=state.sections.find(item=>item.id===line.dataset.section),splitSlots=(line.dataset.splitSlots||'').split('|').filter(Boolean);
@@ -299,7 +309,7 @@ function bindPreview(){
     });
   });
   document.querySelectorAll('.section-lyrics-toggle').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();const section=state.sections.find(item=>item.id===button.dataset.section);if(!section)return;section.lyricsEnabled=section.lyricsEnabled===false;state.activeId=section.id;renderPreview();save();toast(`Lyrics ${section.lyricsEnabled?'enabled':'hidden'} for ${section.name}`)}));
-  document.querySelectorAll('.add-bar').forEach(button=>button.addEventListener('click',()=>{const section=state.sections.find(item=>item.id===button.dataset.section);section.bars+=4;state.activeId=section.id;syncEditor();renderPreview();save()}));
+  document.querySelectorAll('.add-bar').forEach(button=>button.addEventListener('click',()=>{const section=state.sections.find(item=>item.id===button.dataset.section);if(!section)return;section.bars+=1;state.activeId=section.id;syncEditor();renderPreview();save();toast(`1 bar added to ${section.name}`)}));
   document.querySelectorAll('.delete-bar').forEach(button=>button.addEventListener('click',event=>{
     event.stopPropagation();const section=state.sections.find(item=>item.id===button.dataset.section),bar=Number(button.dataset.bar);if(!section)return;
     if(section.bars<=1){toast('At least one bar must remain');return}

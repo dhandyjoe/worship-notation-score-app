@@ -28,7 +28,7 @@ async function evaluate(expression){
   return result.result.value;
 }
 async function waitFor(expression,timeout=5000){const started=Date.now();while(Date.now()-started<timeout){if(await evaluate(expression))return true;await new Promise(resolve=>setTimeout(resolve,50))}throw new Error(`Timed out waiting for ${expression}`)}
-async function viewport(width,height,mobile=false){await cdp.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile,screenWidth:width,screenHeight:height});await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:mobile,maxTouchPoints:mobile?5:1})}
+async function viewport(width,height,mobile=false,deviceScaleFactor=1){await cdp.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor,mobile,screenWidth:width,screenHeight:height});await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:mobile,maxTouchPoints:mobile?5:1})}
 async function navigate(){await cdp.send('Page.navigate',{url:`${appUrl}?test=${Date.now()}`});await waitFor("document.readyState==='complete' && !!document.querySelector('#sectionsPreview .bar')");await evaluate('window.confirm=()=>true; true')}
 async function screenshot(name){const {data}=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false,fromSurface:true});await fs.writeFile(`${outputDir}/${name}.png`,Buffer.from(data,'base64'))}
 async function printPdf(name){const {data}=await cdp.send('Page.printToPDF',{printBackground:true,preferCSSPageSize:true,displayHeaderFooter:false});await fs.writeFile(`${outputDir}/${name}.pdf`,Buffer.from(data,'base64'))}
@@ -67,6 +67,8 @@ record('Nested half-beat creates a two-child branch',(await evaluate("document.q
 await click('.nested-duration-line');
 record('Nested rhythm marker deletion works',(await evaluate("document.querySelectorAll('.nested-duration-line').length"))===0);
 await click('.duration-option',1);await click('.drop-target',6);
+record('Beat triplet creates three subdivisions',(await evaluate("document.querySelectorAll('.duration-triplet .sub-beats')[0]?.children.length"))===3);
+await click('.duration-option',2);await click('.drop-target',9);
 record('Quarter-beat creates four subdivisions',(await evaluate("document.querySelectorAll('.duration-quarter .sub-beats')[0]?.children.length"))===4);
 await click('.duration-quarter .duration-line');
 record('Rhythm marker deletion restores a beat',(await evaluate("document.querySelectorAll('.duration-quarter').length"))===0);
@@ -78,9 +80,9 @@ await evaluate("(()=>{const input=document.querySelector('.lyric-input');input.v
 record('Lyrics input updates its printable text',await text('.lyric-print',0)==='Grace');
 
 const barsBefore=await evaluate("document.querySelectorAll('.bar').length");await click('.add-bar');
-record('Add four bars',await evaluate(`document.querySelectorAll('.bar').length===${barsBefore+4}`));
+record('Add one bar',await evaluate(`document.querySelectorAll('.bar').length===${barsBefore+1}`));
 await click('.delete-bar',4);
-record('Delete individual bar',await evaluate(`document.querySelectorAll('.bar').length===${barsBefore+3}`));
+record('Delete individual bar',await evaluate(`document.querySelectorAll('.bar').length===${barsBefore}`));
 await click('#addSectionBtn');
 record('Add section',(await evaluate("document.querySelectorAll('.preview-section').length"))===2);
 await click('.delete-section',1);
@@ -109,6 +111,8 @@ await evaluate(`(async()=>{const project=${JSON.stringify({format:'chord-sheet',
 record('Upload .file restores title and section',await text('#previewTitle')==='Imported Song'&&await text('.section-title')==='VERSE');
 const importedNotation=await evaluate("[...document.querySelectorAll('.placed-chord')].map(el=>el.textContent.trim().replaceAll('•',''))");
 record('Upload .file restores chord and Nashville content',['F','2m','1','3','4','C/F','Gmaj7','7'].every(value=>importedNotation.includes(value)),JSON.stringify(importedNotation));
+await click('#tabRhythm');await click('.duration-option',1);await evaluate("document.querySelectorAll('.drop-target')[document.querySelectorAll('.drop-target').length-1].click();true");
+record('Triplet remains readable alongside imported chords and lyrics',(await evaluate("document.querySelectorAll('.duration-triplet .sub-beats')[0]?.children.length"))===3);
 
 // Exact print-state checks and a mixed PDF fixture.
 await evaluate("document.documentElement.style.scrollBehavior='auto';window.scrollTo(0,0);document.querySelector('#previewViewport').scrollTo(0,0);true");
@@ -116,8 +120,9 @@ await cdp.send('Emulation.setEmulatedMedia',{media:'print'});
 const printStyles=await evaluate("(()=>{const bar=document.querySelector('.bar'),before=getComputedStyle(bar,'::before'),after=getComputedStyle(bar,'::after');return {before:before.content,beforeHeight:before.height,beforeColor:before.backgroundColor,after:after.content,afterHeight:after.height,signature:getComputedStyle(document.querySelector('.pdf-signature')).display}})()");
 record('PDF bar boundaries are rendered at the adjusted height',printStyles.before!=='none'&&printStyles.after!=='none'&&printStyles.beforeHeight==='42px'&&printStyles.afterHeight==='42px',JSON.stringify(printStyles));
 record('PDF signature is visible',printStyles.signature!=='none');
-const rhythmLineSizing=await evaluate("(()=>{const groups=[...document.querySelectorAll('.beat-group:not(.has-nested-duration)')],rows=groups.map(group=>{const notes=group.querySelector(':scope > .sub-beats').getBoundingClientRect().width,primary=group.querySelector(':scope > .duration-line').getBoundingClientRect().width,secondary=group.querySelector(':scope > .quarter-print-line')?.getBoundingClientRect().width??null;return {duration:group.classList.contains('duration-quarter')?'quarter':'half',notes,primary,secondary}});return rows})()");
+const rhythmLineSizing=await evaluate("(()=>{const groups=[...document.querySelectorAll('.beat-group:not(.has-nested-duration)')],rows=groups.map(group=>{const notes=group.querySelector(':scope > .sub-beats').getBoundingClientRect().width,primary=group.querySelector(':scope > .duration-line').getBoundingClientRect().width,secondary=group.querySelector(':scope > .quarter-print-line')?.getBoundingClientRect().width??null;return {duration:['half','triplet','quarter'].find(value=>group.classList.contains('duration-'+value)),notes,primary,secondary}});return rows})()");
 record('PDF rhythm markers follow their subdivision content width',rhythmLineSizing.every(row=>Math.abs(row.primary-row.notes)<.6&&(row.secondary===null||Math.abs(row.secondary-row.notes)<.6)),JSON.stringify(rhythmLineSizing));
+record('PDF triplet marker is present and spans three notes',rhythmLineSizing.some(row=>row.duration==='triplet'),JSON.stringify(rhythmLineSizing));
 const regularHalfWidths=rhythmLineSizing.filter(row=>row.duration==='half').map(row=>Math.round(row.primary));
 record('PDF half-beat marker width responds to its content',regularHalfWidths.length>1&&new Set(regularHalfWidths).size>1,JSON.stringify(regularHalfWidths));
 const nestedLineSizing=await evaluate("(()=>{const parents=[...document.querySelectorAll('.beat-group.has-nested-duration')].map(group=>({notes:group.querySelector(':scope > .sub-beats').getBoundingClientRect().width,line:group.querySelector(':scope > .duration-line').getBoundingClientRect().width})),children=[...document.querySelectorAll('.nested-beat-group')].map(group=>({notes:group.querySelector(':scope > .nested-sub-beats').getBoundingClientRect().width,line:group.querySelector(':scope > .nested-duration-line').getBoundingClientRect().width}));return {parents,children}})()");
@@ -130,8 +135,8 @@ record('Refresh resets title',await text('#previewTitle')==='Song Title');
 record('Refresh resets score to one section and four bars',await evaluate("document.querySelectorAll('.preview-section').length===1&&document.querySelectorAll('.bar').length===4&&!document.querySelector('.placed-chord')"));
 
 // Mobile interaction and layout suite.
-for(const [width,height] of [[390,844],[320,800]]){
-  await viewport(width,height,true);await navigate();
+for(const [width,height,deviceScaleFactor=1] of [[390,844],[320,800],[393,870,2.75]]){
+  await viewport(width,height,true,deviceScaleFactor);await navigate();
   const layout=await evaluate("(()=>{const inside=el=>{const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.width>0&&r.height>0};return {pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,actions:[...document.querySelectorAll('.topbar-actions .button,.topbar-actions .upload-project')].every(inside),tabs:[...document.querySelectorAll('.ribbon-tab')].every(inside),editorOverflow:document.querySelector('.editor-card').scrollWidth>document.querySelector('.editor-card').clientWidth+1,toolbar:[...document.querySelectorAll('.zoom-controls button')].every(inside)}})()");
   record(`${width}px no page-level horizontal overflow`,!layout.pageOverflow,JSON.stringify(layout));
   record(`${width}px header actions remain visible`,layout.actions,JSON.stringify(layout));
@@ -141,14 +146,22 @@ for(const [width,height] of [[390,844],[320,800]]){
   const mobileSticky=await evaluate("(async()=>{const editor=document.querySelector('.editor-card'),smooth=document.documentElement.style.scrollBehavior;document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:editor.offsetTop+120,behavior:'instant'});await new Promise(resolve=>setTimeout(resolve,80));const header=document.querySelector('.topbar').getBoundingClientRect(),ribbon=editor.getBoundingClientRect();const result={headerBottom:header.bottom,ribbonTop:ribbon.top};window.scrollTo(0,0);document.documentElement.style.scrollBehavior=smooth;return result})()");
   record(`${width}px header scrolls away`,mobileSticky.headerBottom<=0,JSON.stringify(mobileSticky));
   record(`${width}px Arrangement Tools remains pinned to the top`,Math.abs(mobileSticky.ribbonTop)<=1,JSON.stringify(mobileSticky));
+  const scoreLayout=await evaluate("(()=>{const viewport=document.querySelector('.preview-viewport').getBoundingClientRect(),card=document.querySelector('.preview-card').getBoundingClientRect(),bars=[...document.querySelectorAll('.bar')].map(bar=>bar.getBoundingClientRect());return {viewportWidth:viewport.width,cardWidth:card.width,barsFit:bars.every(bar=>bar.left>=card.left-1&&bar.right<=card.right+1),barsStack:bars.every((bar,index)=>index===0||bar.top>=bars[index-1].bottom-1)}})()");
+  record(`${width}px live preview uses the available width`,scoreLayout.cardWidth>=scoreLayout.viewportWidth-2,JSON.stringify(scoreLayout));
+  record(`${width}px bars fit and stack vertically`,scoreLayout.barsFit&&scoreLayout.barsStack,JSON.stringify(scoreLayout));
   await click('.chord-family .chord',0);await click('.drop-target',0);
   record(`${width}px tap-to-place chord works`,await text('.placed-chord',0)==='C');
+  await click('.placed-chord',0);
+  record(`${width}px tapping a placed chord removes it`,(await evaluate("document.querySelectorAll('.placed-chord').length"))===0);
   await click('#tabNashville');await click('.nashville-row-block:nth-child(2) .nashville-key',6);await click('#nashvilleChordBank .chord',1);await click('.drop-target',1);
-  record(`${width}px Nashville mobile selection works`,(await text('.placed-chord',1)).replaceAll('•','').includes('7m'));
+  record(`${width}px Nashville mobile selection works`,(await text('.placed-chord',0)).replaceAll('•','').includes('7m'));
   await click('#tabLyrics');await click('#lyricsEnabled');
   record(`${width}px lyric inputs fit inside scrollable score`,await evaluate("document.querySelectorAll('.lyric-input').length>=16"));
   record(`${width}px delete-bar touch target is usable`,await evaluate("(()=>{const r=document.querySelector('.delete-bar').getBoundingClientRect();return r.width>=40&&r.height>=40})()"));
-  await screenshot(`mobile-${width}`);
+  record(`${width}px delete-bar does not cover the fourth beat`,await evaluate("(()=>{const bar=document.querySelector('.bar'),button=bar.querySelector('.delete-bar').getBoundingClientRect(),lastBeat=[...bar.querySelectorAll(':scope > .beat-column')].at(-1).getBoundingClientRect();return button.left>=lastBeat.right})()"));
+  const mobileBarsBefore=await evaluate("document.querySelectorAll('.bar').length");await click('.delete-bar',0);
+  record(`${width}px delete-bar removes one bar`,await evaluate(`document.querySelectorAll('.bar').length===${mobileBarsBefore-1}`));
+  await screenshot(`mobile-${width}${deviceScaleFactor===1?'':'-dpr-'+deviceScaleFactor}`);
 }
 
 await viewport(1440,1000,false);
