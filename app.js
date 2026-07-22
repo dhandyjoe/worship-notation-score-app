@@ -18,7 +18,7 @@ const nashvilleZeroNumbers=['0'];
 const nashvilleLowerNumbers=['1̣','2̣','3̣','4̣','5̣','6̣','7̣'];
 const nashvilleUpperNumbers=['1̇','2̇','3̇','4̇','5̇','6̇','7̇'];
 const nashvilleChoices=[...nashvilleNumbers,...nashvilleLowerNumbers,...nashvilleUpperNumbers,...nashvilleZeroNumbers];
-const lyricsFeatureAvailable=false; // Temporary: preserve lyric data while hiding the unfinished UI.
+const lyricsFeatureAvailable=true;
 const $=selector=>document.querySelector(selector);
 const escapeHTML=value=>String(value??'').replace(/[&<>"]/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[character]));
 const newSection=(name='Intro')=>({id:crypto.randomUUID(),name,lyricsEnabled:true,lyricBeats:{},bars:4,beats:{}});
@@ -27,6 +27,7 @@ state.activeId=state.sections[0].id;
 let selectedPaletteItem=null;
 let previewZoom=Math.min(1.35,Math.max(.65,Number(localStorage.getItem('chordSheetZoom'))||1));
 const toast=message=>{const el=$('#toast');el.textContent=message;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2000)};
+const prefersTap=()=>window.matchMedia('(max-width: 680px), (pointer: coarse)').matches;
 const activeSection=()=>state.sections.find(section=>section.id===state.activeId)||state.sections[0];
 function chordName(quality){return `${state.chordRoot}${quality}`}
 function nashvilleName(quality){return `${state.nashvilleAccidental}${state.nashvilleNumber}${quality}`}
@@ -79,14 +80,14 @@ function transposeSheet(semitones){
   state.key=transposeNote(state.key,semitones);
   $('#keySelect').value=state.key;
   clearPaletteSelection();renderControls();renderPreview();save();
-  toast(changed?`${changed} chord ditranspose ${semitones>0?'naik':'turun'} ½ nada`:'Tidak ada chord absolut untuk ditranspose');
+  toast(changed?`${changed} chord${changed===1?'':'s'} transposed ${semitones>0?'up':'down'} one semitone`:'No absolute chords to transpose');
 }
 function selectPaletteItem(element,item){
   selectedPaletteItem=item;
   document.querySelectorAll('.palette-selected').forEach(target=>target.classList.remove('palette-selected'));
   element.classList.add('palette-selected');
   if(item.type==='chord'&&isNashvilleChord(item.value)&&$('#nashvilleSelectedPreview'))$('#nashvilleSelectedPreview').innerHTML=chordLabel(item.value);
-  toast(`${item.type==='chord'?item.value:item.value==='half'?'½ ketuk':'¼ ketuk'} dipilih · klik atau tarik ke titik ketukan`);
+  toast(`${item.type==='chord'?item.value:item.value==='half'?'½ beat':'¼ beat'} selected · ${prefersTap()?'tap':'click or drag it onto'} a beat`);
 }
 function clearPaletteSelection(){selectedPaletteItem=null;document.querySelectorAll('.palette-selected').forEach(target=>target.classList.remove('palette-selected'))}
 function bindPaletteItem(element,item){
@@ -100,7 +101,7 @@ function bindPaletteItem(element,item){
   element.addEventListener('dragend',()=>{element.classList.remove('is-dragging');document.body.classList.remove('is-dragging');document.querySelectorAll('.drop-target.dragover').forEach(target=>target.classList.remove('dragover'))});
 }
 function bindDraggableChords(){document.querySelectorAll('.chord').forEach(chord=>bindPaletteItem(chord,{type:'chord',value:chord.dataset.chord}));}
-function renderCustomChord(){const value=state.customChord.trim();$('#customChordPreview').innerHTML=value?`<span class="chord custom-chord" draggable="true" data-chord="${value}">${value}</span>`:'<span class="custom-chord-hint">Preview chord custom</span>';bindDraggableChords();}
+function renderCustomChord(){const value=state.customChord.trim();$('#customChordPreview').innerHTML=value?`<span class="chord custom-chord" draggable="true" data-chord="${value}">${value}</span>`:'<span class="custom-chord-hint">Custom chord preview</span>';bindDraggableChords();}
 function meterInfo(){const [top]=state.meter.split('/').map(Number);return {beats:top};}
 function normalizeSection(section,meter='4/4'){
   const bars=Math.max(1,Number(section.bars)||4),beats=section.beats&&typeof section.beats==='object'?section.beats:{},lyricBeats={};
@@ -122,50 +123,65 @@ function renderControls(){
   $('#customChordInput').value=state.customChord;
   const nashvilleRow=(numbers,label,description,rowClass='')=>`<div class="nashville-row-block"><span class="nashville-row-label">${label}</span><div class="nashville-number-row ${rowClass}" aria-label="${description}">${numbers.map(number=>`<button class="nashville-key ${number===state.nashvilleNumber?'active':''}" data-number="${number}" title="${description}">${nashvilleNumberLabel(number)}</button>`).join('')}</div></div>`;
   $('#nashvilleRootPicker').innerHTML=[
-    nashvilleRow(nashvilleNumbers,'Normal','Notasi normal'),
-    nashvilleRow(nashvilleLowerNumbers,'Oktaf bawah','Satu oktaf di bawah'),
-    nashvilleRow(nashvilleUpperNumbers,'Oktaf atas','Satu oktaf di atas'),
-    nashvilleRow(nashvilleZeroNumbers,'Angka 0','Nashville Number 0','nashville-zero-row'),
+    nashvilleRow(nashvilleNumbers,'Normal','Normal notation'),
+    nashvilleRow(nashvilleLowerNumbers,'Lower octave','One octave lower'),
+    nashvilleRow(nashvilleUpperNumbers,'Upper octave','One octave higher'),
+    nashvilleRow(nashvilleZeroNumbers,'Number 0','Nashville Number 0','nashville-zero-row'),
   ].join('');
   $('#nashvilleAccidentalPicker').innerHTML=[['','♮'],['♭','♭'],['#','#']].map(([value,label])=>`<button class="nashville-accidental ${value===state.nashvilleAccidental?'active':''}" data-accidental="${value}">${label}</button>`).join('');
   $('#nashvilleChordBank').innerHTML=chordQualities.map(({value})=>`<span class="chord nashville-chord" draggable="true" data-chord="${nashvilleName(value)}">${chordLabel(nashvilleName(value))}</span>`).join('');
   $('#nashvilleSelectedPreview').innerHTML=chordLabel(nashvilleName(''));
-  $('#beatBank').innerHTML='<span class="duration-option" draggable="true" data-duration="half"><b>½</b> Setengah ketuk</span><span class="duration-option" draggable="true" data-duration="quarter"><b>¼</b> Seperempat ketuk</span>';
+  $('#beatBank').innerHTML='<span class="duration-option" draggable="true" data-duration="half"><b>½</b> Half beat</span><span class="duration-option" draggable="true" data-duration="quarter"><b>¼</b> Quarter beat</span>';
   $('#lyricsEnabled').checked=state.lyricsEnabled;
-  $('#lyricsEnabledLabel').textContent=state.lyricsEnabled?'Lirik aktif':'Tanpa lirik';
+  $('#lyricsEnabledLabel').textContent=state.lyricsEnabled?'Lyrics on':'Lyrics off';
   bindDraggableChords();renderCustomChord();
   document.querySelectorAll('.duration-option').forEach(option=>bindPaletteItem(option,{type:'duration',value:option.dataset.duration}));
 }
 function syncEditor(){}
 function beatValue(section,slot){const value=section.beats[slot];return typeof value==='string'?{chord:value,duration:null}:value||{chord:null,duration:null}}
-function chordOrDot(section,slot){const value=beatValue(section,slot);return value.chord?`<span class="placed-chord" title="Klik untuk hapus">${chordLabel(value.chord)}</span>`:'<span class="beat-dot">·</span>'}
+function chordOrDot(section,slot){const value=beatValue(section,slot);return value.chord?`<span class="placed-chord" title="Click to remove">${chordLabel(value.chord)}</span>`:'<span class="beat-dot">·</span>'}
 function lyricValue(section,slot){return typeof section.lyricBeats?.[slot]==='string'?section.lyricBeats[slot]:''}
 function lyricInputHTML(section,slot){
-  const text=lyricValue(section,slot),label=`Lirik pada ketukan ${slot.replace(':',' bagian ')}`;
-  return `<span class="lyric-editor"><input class="lyric-input" type="text" value="${escapeHTML(text)}" placeholder="Lirik" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="lyric-print">${escapeHTML(text)}</span></span>`;
+  const text=lyricValue(section,slot),label=`Lyrics for beat ${slot.replace(':',' part ')}`;
+  return `<span class="lyric-editor"><input class="lyric-input" type="text" value="${escapeHTML(text)}" placeholder="" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="lyric-print">${escapeHTML(text)}</span></span>`;
+}
+function subdivisionTargetHTML(section,baseSlot,index,parentDuration){
+  const subSlot=`${baseSlot}:${index}`,subValue=beatValue(section,subSlot);
+  if(parentDuration==='half'&&subValue.duration==='half'){
+    if(subValue.chord&&!section.beats[`${subSlot}.0`]){section.beats[`${subSlot}.0`]={chord:subValue.chord,duration:null};subValue.chord=null;section.beats[subSlot]=subValue}
+    const children=Array.from({length:2},(_,childIndex)=>{
+      const childSlot=`${subSlot}.${childIndex}`,childValue=beatValue(section,childSlot);
+      return `<span class="sub-beat nested-sub-beat drop-target ${childValue.chord?'has-chord':''}" data-section="${section.id}" data-slot="${childSlot}" data-base-slot="${baseSlot}" data-parent-slot="${subSlot}" data-parent-duration="half" data-level="2">${chordOrDot(section,childSlot)}</span>`;
+    }).join('');
+    return `<span class="nested-beat-group" data-section="${section.id}" data-base-slot="${baseSlot}" data-split-slot="${subSlot}"><span class="nested-duration-line" data-section="${section.id}" data-split-slots="${subSlot}" title="Click to remove nested half-beat" aria-label="Remove nested half-beat"></span><span class="nested-sub-beats">${children}</span></span>`;
+  }
+  return `<span class="sub-beat drop-target ${subValue.chord?'has-chord':''}" data-section="${section.id}" data-slot="${subSlot}" data-base-slot="${baseSlot}" data-parent-duration="${parentDuration}" data-level="1">${chordOrDot(section,subSlot)}</span>`;
 }
 function beatHTML(section,bar,beat){
   const slot=`${bar}-${beat}`,value=beatValue(section,slot),showLyrics=lyricsFeatureAvailable&&state.lyricsEnabled&&section.lyricsEnabled!==false;
   if(!value.duration){
-    const notation=`<span class="beat drop-target ${value.chord?'has-chord':''}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}">${chordOrDot(section,slot)}</span>`;
+    const notation=`<span class="beat drop-target ${value.chord?'has-chord':''}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}" data-level="0">${chordOrDot(section,slot)}</span>`;
     return `<span class="beat-column ${showLyrics?'with-lyrics':''}"><span class="notation-cell">${notation}</span>${showLyrics?lyricInputHTML(section,slot):''}</span>`;
   }
   if(value.chord&&!section.beats[`${slot}:0`]){section.beats[`${slot}:0`]={chord:value.chord,duration:null};value.chord=null;section.beats[slot]=value}
   const count=value.duration==='half'?2:4;
-  const subBeats=Array.from({length:count},(_,index)=>{const subSlot=`${slot}:${index}`,subValue=beatValue(section,subSlot);return `<span class="sub-beat drop-target ${subValue.chord?'has-chord':''}" data-section="${section.id}" data-slot="${subSlot}" data-base-slot="${slot}">${chordOrDot(section,subSlot)}</span>`}).join('');
-  const subLyrics=showLyrics?`<span class="sub-lyrics">${Array.from({length:count},(_,index)=>lyricInputHTML(section,`${slot}:${index}`)).join('')}</span>`:'';
-  return `<span class="beat-column duration-column duration-${value.duration} ${showLyrics?'with-lyrics':''}"><span class="notation-cell"><span class="beat-group duration-${value.duration}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Klik untuk hapus penanda ketukan"></span><span class="sub-beats">${subBeats}</span></span></span>${subLyrics}</span>`;
+  const subBeats=Array.from({length:count},(_,index)=>subdivisionTargetHTML(section,slot,index,value.duration)).join('');
+  const nestedSplitSlots=value.duration==='half'?Array.from({length:count},(_,index)=>`${slot}:${index}`).filter(subSlot=>beatValue(section,subSlot).duration==='half'):[];
+  const quarterPrintLine=value.duration==='quarter'?'<span class="quarter-print-line" aria-hidden="true"></span>':'';
+  const lyricSlots=Array.from({length:count},(_,index)=>`${slot}:${index}`).flatMap(subSlot=>value.duration==='half'&&beatValue(section,subSlot).duration==='half'?[`${subSlot}.0`,`${subSlot}.1`]:[subSlot]);
+  const subLyrics=showLyrics?`<span class="sub-lyrics" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map(lyricSlot=>lyricInputHTML(section,lyricSlot)).join('')}</span>`:'';
+  return `<span class="beat-column duration-column duration-${value.duration} ${showLyrics?'with-lyrics':''}"><span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length?'has-nested-duration':''}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span></span></span>${subLyrics}</span>`;
 }
 function sectionHTML(section){
   const {beats}=meterInfo();
   const showLyrics=lyricsFeatureAvailable&&state.lyricsEnabled&&section.lyricsEnabled!==false,hasLyricContent=Object.values(section.lyricBeats||{}).some(text=>String(text).trim());
-  const bars=Array.from({length:section.bars},(_,bar)=>`<div class="bar ${showLyrics?'has-lyrics':''}" style="--beats:${beats}" data-bar="${bar}"><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Hapus bar ${bar+1}" aria-label="Hapus bar ${bar+1}">×</button>${Array.from({length:beats},(_,beat)=>beatHTML(section,bar,beat)).join('')}</div>`);
+  const bars=Array.from({length:section.bars},(_,bar)=>`<div class="bar ${showLyrics?'has-lyrics':''}" style="--beats:${beats}" data-bar="${bar}"><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${bar+1}" aria-label="Delete bar ${bar+1}">×</button>${Array.from({length:beats},(_,beat)=>beatHTML(section,bar,beat)).join('')}</div>`);
   const batches=Array.from({length:Math.ceil(bars.length/4)},(_,index)=>`<div class="bar-batch ${showLyrics?'has-lyrics':''}">${bars.slice(index*4,index*4+4).join('')}</div>`).join('');
-  const title=section.id===state.editingId?`<input class="section-title-input" data-section="${section.id}" value="${section.name}" aria-label="Nama section">`:`<button class="section-title" data-section="${section.id}" title="Klik untuk mengganti nama section">${section.name.toUpperCase()}</button>`;
-  const lyricsToggle=lyricsFeatureAvailable&&state.lyricsEnabled?`<button class="section-lyrics-toggle ${section.lyricsEnabled!==false?'active':''}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled!==false}"><span aria-hidden="true">${section.lyricsEnabled!==false?'✓':'–'}</span> Lirik ${section.lyricsEnabled!==false?'On':'Off'}</button>`:'';
+  const title=section.id===state.editingId?`<input class="section-title-input" data-section="${section.id}" value="${section.name}" aria-label="Section name">`:`<button class="section-title" data-section="${section.id}" title="Click to edit section name">${section.name.toUpperCase()}</button>`;
+  const lyricsToggle=lyricsFeatureAvailable&&state.lyricsEnabled?`<button class="section-lyrics-toggle ${section.lyricsEnabled!==false?'active':''}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled!==false}"><span aria-hidden="true">${section.lyricsEnabled!==false?'✓':'–'}</span> Lyrics ${section.lyricsEnabled!==false?'On':'Off'}</button>`:'';
   const deleteDisabled=state.sections.length===1;
-  const sectionMenu=`<details class="section-menu"><summary title="Opsi section" aria-label="Opsi untuk ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled?'disabled':''}>Hapus section</button></div></details>`;
-  return `<section class="preview-section ${section.id===state.activeId?'is-active':''} ${hasLyricContent?'has-lyric-content':''}" data-section="${section.id}"><div class="section-preview-heading"><div>${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} bar · ${beats} ketuk per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 4 bar</button>${sectionMenu}</div></div><div class="bar-grid">${batches}</div></section>`;
+  const sectionMenu=`<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled?'disabled':''}>Delete section</button></div></details>`;
+  return `<section class="preview-section ${section.id===state.activeId?'is-active':''} ${hasLyricContent?'has-lyric-content':''}" data-section="${section.id}"><div class="section-preview-heading"><div>${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars===1?'bar':'bars'} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 4 bars</button>${sectionMenu}</div></div><div class="bar-grid">${batches}</div></section>`;
 }
 function slotBarIndex(slot){const match=String(slot).match(/^(\d+)-/);return match?Number(match[1]):-1}
 function barHasContent(section,bar){
@@ -199,6 +215,15 @@ function placePaletteItem(section,beat,item){
   if(item.type==='chord'){
     const value=beatValue(section,beat.dataset.slot);value.chord=item.value;section.beats[beat.dataset.slot]=value;
   }else if(item.type==='duration'){
+    const level=Number(beat.dataset.level||0);
+    if(level>=2){toast('Rhythm subdivisions are limited to two levels');return false}
+    if(level===1&&item.value==='half'&&beat.dataset.parentDuration==='half'){
+      const splitSlot=beat.dataset.slot,value=beatValue(section,splitSlot),lyric=lyricValue(section,splitSlot);
+      if(value.chord){section.beats[`${splitSlot}.0`]={chord:value.chord,duration:null};value.chord=null}
+      value.duration='half';section.beats[splitSlot]=value;
+      if(lyric){setLyric(section,`${splitSlot}.0`,lyric);delete section.lyricBeats[splitSlot]}
+      state.activeId=section.id;return true;
+    }
     const baseSlot=beat.dataset.baseSlot;prepareLyricsForDuration(section,baseSlot,item.value);const value=beatValue(section,baseSlot);
     if(value.chord){section.beats[`${baseSlot}:0`]={chord:value.chord,duration:null};value.chord=null}
     value.duration=item.value;section.beats[baseSlot]=value;
@@ -211,22 +236,46 @@ function bindPreview(){
     beat.addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect='copy';beat.classList.add('dragover')});
     beat.addEventListener('dragleave',()=>beat.classList.remove('dragover'));
     beat.addEventListener('drop',event=>{event.preventDefault();event.stopPropagation();let item;try{item=JSON.parse(event.dataTransfer.getData('application/chord-sheet'))}catch{}const section=state.sections.find(item=>item.id===beat.dataset.section),slot=beat.dataset.slot;beat.classList.remove('dragover');document.body.classList.remove('is-dragging');if(!placePaletteItem(section,beat,item))return;syncEditor();renderPreview();save();flashDropTarget(section.id,slot)});
-    beat.addEventListener('click',event=>{if(!selectedPaletteItem||event.target.closest('.placed-chord,.duration-line,.lyric-input'))return;event.stopPropagation();const section=state.sections.find(item=>item.id===beat.dataset.section),slot=beat.dataset.slot;if(!placePaletteItem(section,beat,selectedPaletteItem))return;syncEditor();renderPreview();save();flashDropTarget(section.id,slot)});
+    beat.addEventListener('click',event=>{if(!selectedPaletteItem||event.target.closest('.placed-chord,.duration-line,.nested-duration-line,.lyric-input'))return;event.stopPropagation();const section=state.sections.find(item=>item.id===beat.dataset.section),slot=beat.dataset.slot;if(!placePaletteItem(section,beat,selectedPaletteItem))return;syncEditor();renderPreview();save();flashDropTarget(section.id,slot)});
   });
-  document.querySelectorAll('.placed-chord').forEach(chord=>chord.addEventListener('click',()=>{const beat=chord.closest('.drop-target'),section=state.sections.find(item=>item.id===beat.dataset.section);delete section.beats[beat.dataset.slot];renderPreview();save()}));
+  document.querySelectorAll('.placed-chord').forEach(chord=>chord.addEventListener('click',event=>{
+    event.stopPropagation();
+    const beat=chord.closest('.drop-target'),section=state.sections.find(item=>item.id===beat.dataset.section);
+    if(selectedPaletteItem){
+      if(!placePaletteItem(section,beat,selectedPaletteItem))return;
+      syncEditor();renderPreview();save();flashDropTarget(section.id,beat.dataset.slot);return;
+    }
+    delete section.beats[beat.dataset.slot];renderPreview();save();
+  }));
+  document.querySelectorAll('.nested-duration-line').forEach(line=>line.addEventListener('click',event=>{
+    event.stopPropagation();
+    const section=state.sections.find(item=>item.id===line.dataset.section),splitSlots=(line.dataset.splitSlots||'').split('|').filter(Boolean);
+    if(!section)return;
+    splitSlots.forEach(splitSlot=>{
+      const childSlots=Object.keys(section.beats).filter(slot=>slot.startsWith(`${splitSlot}.`)).sort();
+      const firstChord=childSlots.map(slot=>beatValue(section,slot).chord).find(Boolean)||null;
+      const lyricSlots=Object.keys(section.lyricBeats||{}).filter(slot=>slot.startsWith(`${splitSlot}.`)).sort();
+      const mergedLyrics=lyricSlots.map(slot=>lyricValue(section,slot)).filter(Boolean).join(' ');
+      childSlots.forEach(slot=>delete section.beats[slot]);lyricSlots.forEach(slot=>delete section.lyricBeats[slot]);
+      if(firstChord)section.beats[splitSlot]={chord:firstChord,duration:null};else delete section.beats[splitSlot];
+      setLyric(section,splitSlot,mergedLyrics);
+    });
+    state.activeId=section.id;renderPreview();save();toast('Nested half-beat subdivision removed');
+  }));
   document.querySelectorAll('.duration-line').forEach(line=>line.addEventListener('click',event=>{
     event.stopPropagation();
     const group=line.closest('.beat-group'),section=state.sections.find(item=>item.id===group.dataset.section),baseSlot=group.dataset.baseSlot;
     if(!section)return;
-    const duration=beatValue(section,baseSlot).duration;
-    const firstChord=duration?beatValue(section,`${baseSlot}:0`).chord:null;
-    const mergedLyrics=duration?Array.from({length:duration==='half'?2:4},(_,index)=>lyricValue(section,`${baseSlot}:${index}`)).filter(Boolean).join(' '):'';
-    Object.keys(section.beats).filter(slot=>slot.startsWith(`${baseSlot}:`)).forEach(slot=>delete section.beats[slot]);
-    Object.keys(section.lyricBeats||{}).filter(slot=>slot.startsWith(`${baseSlot}:`)).forEach(slot=>delete section.lyricBeats[slot]);
+    const descendantSlots=Object.keys(section.beats).filter(slot=>slot.startsWith(`${baseSlot}:`)).sort();
+    const firstChord=descendantSlots.map(slot=>beatValue(section,slot).chord).find(Boolean)||null;
+    const lyricSlots=Object.keys(section.lyricBeats||{}).filter(slot=>slot.startsWith(`${baseSlot}:`)).sort();
+    const mergedLyrics=lyricSlots.map(slot=>lyricValue(section,slot)).filter(Boolean).join(' ');
+    descendantSlots.forEach(slot=>delete section.beats[slot]);
+    lyricSlots.forEach(slot=>delete section.lyricBeats[slot]);
     if(firstChord)section.beats[baseSlot]={chord:firstChord,duration:null};
     else delete section.beats[baseSlot];
     setLyric(section,baseSlot,mergedLyrics);
-    state.activeId=section.id;renderPreview();save();toast('Penanda ketukan dihapus');
+    state.activeId=section.id;renderPreview();save();toast('Rhythm marker removed');
   }));
   document.querySelectorAll('.lyric-input').forEach(input=>{
     input.addEventListener('click',event=>event.stopPropagation());
@@ -246,23 +295,23 @@ function bindPreview(){
       const inputs=[...document.querySelectorAll('.lyric-input')],start=inputs.indexOf(input),available=inputs.slice(start);
       available.forEach((field,index)=>{if(index>=words.length)return;const section=state.sections.find(item=>item.id===field.dataset.section);const value=index===available.length-1&&words.length>available.length?words.slice(index).join(' '):words[index];field.value=value;if(section)setLyric(section,field.dataset.slot,value)});
       save();
-      const next=available[Math.min(words.length,available.length)-1];next?.focus();next?.select();toast(`${words.length} kata dibagikan ke ketukan`);
+      const next=available[Math.min(words.length,available.length)-1];next?.focus();next?.select();toast(`${words.length} words distributed across beats`);
     });
   });
-  document.querySelectorAll('.section-lyrics-toggle').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();const section=state.sections.find(item=>item.id===button.dataset.section);if(!section)return;section.lyricsEnabled=section.lyricsEnabled===false;state.activeId=section.id;renderPreview();save();toast(`Lirik ${section.lyricsEnabled?'diaktifkan':'disembunyikan'} untuk ${section.name}`)}));
+  document.querySelectorAll('.section-lyrics-toggle').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();const section=state.sections.find(item=>item.id===button.dataset.section);if(!section)return;section.lyricsEnabled=section.lyricsEnabled===false;state.activeId=section.id;renderPreview();save();toast(`Lyrics ${section.lyricsEnabled?'enabled':'hidden'} for ${section.name}`)}));
   document.querySelectorAll('.add-bar').forEach(button=>button.addEventListener('click',()=>{const section=state.sections.find(item=>item.id===button.dataset.section);section.bars+=4;state.activeId=section.id;syncEditor();renderPreview();save()}));
   document.querySelectorAll('.delete-bar').forEach(button=>button.addEventListener('click',event=>{
     event.stopPropagation();const section=state.sections.find(item=>item.id===button.dataset.section),bar=Number(button.dataset.bar);if(!section)return;
-    if(section.bars<=1){toast('Minimal satu bar harus tetap tersedia');return}
-    if(barHasContent(section,bar)&&!window.confirm(`Bar ${bar+1} berisi chord atau lirik. Hapus bar ini?`))return;
-    removeBar(section,bar);state.activeId=section.id;renderPreview();save();toast(`Bar ${bar+1} dihapus`);
+    if(section.bars<=1){toast('At least one bar must remain');return}
+    if(barHasContent(section,bar)&&!window.confirm(`Bar ${bar+1} contains chords or lyrics. Delete this bar?`))return;
+    removeBar(section,bar);state.activeId=section.id;renderPreview();save();toast(`Bar ${bar+1} deleted`);
   }));
   document.querySelectorAll('.delete-section').forEach(button=>button.addEventListener('click',event=>{
-    event.stopPropagation();if(state.sections.length<=1){toast('Minimal satu section harus tetap tersedia');return}
+    event.stopPropagation();if(state.sections.length<=1){toast('At least one section must remain');return}
     const index=state.sections.findIndex(item=>item.id===button.dataset.section),section=state.sections[index];if(!section)return;
     const hasContent=Object.keys(section.beats||{}).length||Object.values(section.lyricBeats||{}).some(text=>String(text).trim());
-    if(hasContent&&!window.confirm(`Section “${section.name}” berisi chord atau lirik. Hapus section ini?`))return;
-    state.sections.splice(index,1);state.activeId=state.sections[Math.min(index,state.sections.length-1)].id;state.editingId=null;syncEditor();renderPreview();save();toast(`Section ${section.name} dihapus`);
+    if(hasContent&&!window.confirm(`Section “${section.name}” contains chords or lyrics. Delete this section?`))return;
+    state.sections.splice(index,1);state.activeId=state.sections[Math.min(index,state.sections.length-1)].id;state.editingId=null;syncEditor();renderPreview();save();toast(`Section “${section.name}” deleted`);
   }));
   document.querySelectorAll('.section-menu').forEach(menu=>menu.addEventListener('click',event=>event.stopPropagation()));
   document.querySelectorAll('.section-title').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();state.activeId=button.dataset.section;state.editingId=button.dataset.section;syncEditor();renderPreview();requestAnimationFrame(()=>$('.section-title-input')?.focus())}));
@@ -278,8 +327,10 @@ function updateViewportOverflow(){
   stage.classList.toggle('is-overflowing',overflowing);stage.classList.toggle('at-scroll-end',atEnd);
 }
 function setPreviewZoom(value,{persist=true}={}){
-  previewZoom=Math.min(1.35,Math.max(.65,Math.round(value*20)/20));
+  const minimum=prefersTap()?1:.65;
+  previewZoom=Math.min(1.35,Math.max(minimum,Math.round(value*20)/20));
   $('#previewCard').style.zoom=previewZoom;$('#zoomValue').textContent=`${Math.round(previewZoom*100)}%`;
+  $('#zoomOut').disabled=previewZoom<=minimum;$('#zoomIn').disabled=previewZoom>=1.35;
   if(persist)localStorage.setItem('chordSheetZoom',String(previewZoom));
   requestAnimationFrame(updateViewportOverflow);
 }
@@ -288,26 +339,28 @@ function fitPreview(){
   card.style.zoom=1;const available=Math.max(320,viewport.clientWidth-48),ratio=Math.min(1,available/card.offsetWidth);setPreviewZoom(ratio);viewport.scrollLeft=0;
 }
 function renderPreview(){
-  const artist=$('#artist').value||'Artis / Komposer';
-  $('#previewTitle').textContent=$('#songTitle').value||'Judul Lagu';$('#previewArtist').innerHTML=`<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;$('#previewKey').textContent=state.key;$('#previewMeter').textContent=state.meter;
-  $('#previewHint').textContent=lyricsFeatureAvailable&&state.lyricsEnabled?'Tarik chord ke titik ketukan, lalu isi lirik pada baris di bawahnya.':'Tarik chord dari toolbar atas ke titik ketukan.';
+  const artist=$('#artist').value||'Artist / Composer';
+  $('#previewTitle').textContent=$('#songTitle').value||'Song Title';$('#previewArtist').innerHTML=`<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;$('#previewKey').textContent=state.key;$('#previewMeter').textContent=state.meter;
+  $('#previewHint').textContent=lyricsFeatureAvailable&&state.lyricsEnabled
+    ?`${prefersTap()?'Select and tap':'Drag'} chords onto beats, then enter lyrics in the row below.`
+    :`${prefersTap()?'Select an item above, then tap':'Drag a chord from the toolbar onto'} a beat.`;
   $('#sectionsPreview').innerHTML=state.sections.map(sectionHTML).join('');bindPreview();requestAnimationFrame(updateViewportOverflow);
 }
 function projectData(){return {format:'chord-sheet',version:2,title:$('#songTitle').value,artist:$('#artist').value,key:state.key,chordRoot:state.chordRoot,customChord:state.customChord,meter:state.meter,lyricsEnabled:state.lyricsEnabled,sections:state.sections,slashChords:state.slashChords,nashvilleNumber:state.nashvilleNumber,nashvilleAccidental:state.nashvilleAccidental}}
-function save(){localStorage.setItem('chordSheetPreview',JSON.stringify({...projectData(),activeId:state.activeId}))}
-function safeFileName(value){return (value||'chord-sheet').trim().replace(/[^a-z0-9-_]+/gi,'-').replace(/^-|-$/g,'')||'chord-sheet'}
-function downloadProject(){const defaultName=safeFileName($('#songTitle').value),requestedName=window.prompt('Nama file yang ingin dibuat:',defaultName);if(requestedName===null)return;const content=JSON.stringify(projectData(),null,2),file=new Blob([content],{type:'application/json'}),url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download=`${safeFileName(requestedName||defaultName)}.chordsheet.json`;document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast('File chord sheet berhasil diekspor')}
+// Project content intentionally lives in memory only. Use Export .file for persistence.
+function save(){}
+function safeFileName(value){return (value||'worship-notation-score').trim().replace(/[^a-z0-9-_]+/gi,'-').replace(/^-|-$/g,'')||'worship-notation-score'}
+function downloadProject(){const defaultName=safeFileName($('#songTitle').value),requestedName=window.prompt('File name:',defaultName);if(requestedName===null)return;const content=JSON.stringify(projectData(),null,2),file=new Blob([content],{type:'application/json'}),url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download=`${safeFileName(requestedName||defaultName)}.chordsheet.json`;document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast('WorshipNotationScore file exported')}
 function applyProject(project){
-  if(!project||project.format!=='chord-sheet'||!Array.isArray(project.sections))throw new Error('Format file tidak dikenali');
+  if(!project||project.format!=='chord-sheet'||!Array.isArray(project.sections))throw new Error('Unrecognized file format');
   const meter=['2/4','3/4','4/4','6/8'].includes(project.meter)?project.meter:'4/4';
   const sections=project.sections.filter(section=>section&&typeof section==='object').map(section=>normalizeSection(section,meter));
-  if(!sections.length)throw new Error('File tidak memiliki section');
+  if(!sections.length)throw new Error('The file does not contain any sections');
   const lyricsEnabled=typeof project.lyricsEnabled==='boolean'?project.lyricsEnabled:sections.some(section=>Object.keys(section.lyricBeats).length>0);
   state={key:keys.includes(project.key)?project.key:'C',chordRoot:keys.includes(project.chordRoot)?project.chordRoot:'C',customChord:typeof project.customChord==='string'?project.customChord:'',meter,lyricsEnabled,sections,slashChords:Array.isArray(project.slashChords)?project.slashChords.filter(chord=>typeof chord==='string'):[],nashvilleNumber:nashvilleChoices.includes(project.nashvilleNumber)?project.nashvilleNumber:'1',nashvilleAccidental:['','♭','#'].includes(project.nashvilleAccidental)?project.nashvilleAccidental:'',activeId:sections[0].id,editingId:null};
   clearPaletteSelection();
-  $('#songTitle').value=String(project.title||'Judul Lagu');$('#artist').value=String(project.artist||'Artis / Komposer');$('#timeSignature').value=state.meter;syncEditor();renderControls();renderPreview();save();
+  $('#songTitle').value=String(project.title||'Song Title');$('#artist').value=String(project.artist||'Artist / Composer');$('#timeSignature').value=state.meter;syncEditor();renderControls();renderPreview();save();
 }
-function load(){try{const saved=JSON.parse(localStorage.getItem('chordSheetPreview'));if(!saved)return;state.key=saved.key||'C';state.chordRoot=saved.chordRoot||'C';state.customChord=typeof saved.customChord==='string'?saved.customChord:'';state.meter=saved.meter||'4/4';state.slashChords=Array.isArray(saved.slashChords)?saved.slashChords.filter(chord=>typeof chord==='string'):[];state.nashvilleNumber=nashvilleChoices.includes(saved.nashvilleNumber)?saved.nashvilleNumber:'1';state.nashvilleAccidental=['','♭','#'].includes(saved.nashvilleAccidental)?saved.nashvilleAccidental:'';state.sections=saved.sections?.length?saved.sections.map(section=>normalizeSection(section,state.meter)):[newSection('Intro')];state.lyricsEnabled=typeof saved.lyricsEnabled==='boolean'?saved.lyricsEnabled:state.sections.some(section=>Object.keys(section.lyricBeats).length>0);state.activeId=saved.activeId||state.sections[0].id;$('#songTitle').value=saved.title||'Judul Lagu';$('#artist').value=saved.artist||'Artis / Komposer';$('#timeSignature').value=state.meter}catch{}}
 function updateActive(field,value){activeSection()[field]=value;renderPreview();save()}
 function beginMetaEdit(kind){
   const config={title:{target:'#previewTitle',source:'#songTitle',type:'text'},artist:{target:'#previewArtist',source:'#artist',type:'text'},key:{target:'#previewKey',source:'#keySelect',type:'select',options:keys},meter:{target:'#previewMeter',source:'#timeSignature',type:'select',options:['2/4','3/4','4/4','6/8']}}[kind];
@@ -315,33 +368,35 @@ function beginMetaEdit(kind){
   const editor=document.createElement(config.type==='select'?'select':'input');editor.className='preview-inline-input';
   if(config.type==='select'){editor.innerHTML=config.options.map(option=>`<option value="${option}">${option}</option>`).join('');editor.value=source.value}
   else {editor.type='text';editor.value=source.value}
-  const commit=()=>{source.value=editor.value;target.classList.remove('is-editing');if(kind==='key')state.key=editor.value;if(kind==='meter')state.meter=editor.value;renderControls();renderPreview();save()};
-  target.textContent='';target.classList.add('is-editing');target.append(editor);editor.focus();editor.select?.();editor.addEventListener('blur',commit,{once:true});editor.addEventListener('change',()=>editor.blur());editor.addEventListener('keydown',event=>{if(event.key==='Enter')editor.blur();if(event.key==='Escape'){target.classList.remove('is-editing');renderPreview()}});
+  let committed=false;
+  const commit=()=>{if(committed)return;committed=true;source.value=editor.value;target.classList.remove('is-editing');if(kind==='key')state.key=editor.value;if(kind==='meter')state.meter=editor.value;renderControls();renderPreview();save()};
+  target.textContent='';target.classList.add('is-editing');target.append(editor);editor.focus();editor.select?.();editor.addEventListener('blur',commit,{once:true});editor.addEventListener('change',()=>config.type==='select'?commit():editor.blur());editor.addEventListener('keydown',event=>{if(event.key==='Enter')editor.blur();if(event.key==='Escape'){target.classList.remove('is-editing');renderPreview()}});
 }
-const ribbonLabels={chord:'Chord palette',slash:'Slash chord builder',nashville:'Nashville Number System',rhythm:'Nilai ketukan',lyrics:'Pengaturan lirik'};
+const ribbonLabels={chord:'Chord palette',slash:'Slash chord builder',nashville:'Nashville Number System',rhythm:'Rhythm values',lyrics:'Lyrics settings'};
 function activateRibbon(tab,{focus=false}={}){
   const selected=tab.dataset.ribbonTab;
   document.querySelectorAll('.ribbon-tab').forEach(item=>{const active=item===tab;item.classList.toggle('active',active);item.setAttribute('aria-selected',String(active));item.tabIndex=active?0:-1});
   document.querySelectorAll('.ribbon-panel').forEach(panel=>{const active=panel.dataset.ribbonPanel===selected;panel.classList.toggle('active',active);panel.hidden=!active});
   $('#activeToolLabel').textContent=ribbonLabels[selected]||'Arrangement tools';
+  if(prefersTap())tab.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   if($('#ribbonToggle').getAttribute('aria-expanded')==='false')toggleRibbon(true);
   if(focus)tab.focus();
 }
 function toggleRibbon(forceExpanded){
   const editor=document.querySelector('.editor-card'),currentlyExpanded=!editor.classList.contains('is-collapsed'),expanded=typeof forceExpanded==='boolean'?forceExpanded:!currentlyExpanded;
-  editor.classList.toggle('is-collapsed',!expanded);$('#ribbonToggle').setAttribute('aria-expanded',String(expanded));$('#ribbonToggle').title=expanded?'Ciutkan toolbar':'Buka toolbar';
-  $('#ribbonToggle').querySelector('.sr-only').textContent=expanded?'Ciutkan toolbar':'Buka toolbar';
+  editor.classList.toggle('is-collapsed',!expanded);$('#ribbonToggle').setAttribute('aria-expanded',String(expanded));$('#ribbonToggle').title=expanded?'Collapse toolbar':'Expand toolbar';
+  $('#ribbonToggle').querySelector('.sr-only').textContent=expanded?'Collapse toolbar':'Expand toolbar';
   requestAnimationFrame(updateViewportOverflow);
 }
 $('#keySelect').addEventListener('change',event=>{state.key=event.target.value;renderPreview();save()});
 $('#chordRootPicker').addEventListener('click',event=>{if(!event.target.dataset.root)return;clearPaletteSelection();state.chordRoot=event.target.dataset.root;renderControls();save()});
 $('#customChordInput').addEventListener('input',event=>{clearPaletteSelection();state.customChord=event.target.value;renderCustomChord();save()});
-$('#addSlashBtn').addEventListener('click',()=>{const chord=`${$('#slashRoot').value}${$('#slashQuality').value}/${$('#slashBass').value}`;if(!state.slashChords.includes(chord))state.slashChords.push(chord);renderControls();save();toast(`${chord} siap untuk di-drag`)});
+$('#addSlashBtn').addEventListener('click',()=>{const chord=`${$('#slashRoot').value}${$('#slashQuality').value}/${$('#slashBass').value}`;if(!state.slashChords.includes(chord))state.slashChords.push(chord);renderControls();save();toast(`${chord} is ready to drag`)});
 $('#nashvilleRootPicker').addEventListener('click',event=>{const button=event.target.closest('.nashville-key');if(!button)return;clearPaletteSelection();state.nashvilleNumber=button.dataset.number;renderControls();save()});
 $('#nashvilleAccidentalPicker').addEventListener('click',event=>{if(event.target.dataset.accidental===undefined)return;clearPaletteSelection();state.nashvilleAccidental=event.target.dataset.accidental;renderControls();save()});
 $('#transposeDown').addEventListener('click',()=>transposeSheet(-1));
 $('#transposeUp').addEventListener('click',()=>transposeSheet(1));
-$('#lyricsEnabled').addEventListener('change',event=>{state.lyricsEnabled=event.target.checked;renderControls();renderPreview();save();toast(state.lyricsEnabled?'Mode lirik diaktifkan':'Lirik disembunyikan dari sheet')});
+$('#lyricsEnabled').addEventListener('change',event=>{state.lyricsEnabled=event.target.checked;renderControls();renderPreview();save();toast(state.lyricsEnabled?'Lyrics mode enabled':'Lyrics hidden from score')});
 document.querySelectorAll('.ribbon-tab').forEach(tab=>{
   tab.addEventListener('click',()=>activateRibbon(tab));
   tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('.ribbon-tab:not([hidden])')],index=tabs.indexOf(tab);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):tabs[(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];activateRibbon(next,{focus:true})});
@@ -352,20 +407,31 @@ $('#zoomIn').addEventListener('click',()=>setPreviewZoom(previewZoom+.1));
 $('#fitPreview').addEventListener('click',fitPreview);
 $('#previewViewport').addEventListener('scroll',updateViewportOverflow,{passive:true});
 $('#previewTitle').addEventListener('click',event=>{if(!event.target.matches('input'))beginMetaEdit('title')});$('#previewArtist').addEventListener('click',event=>{if(!event.target.matches('input'))beginMetaEdit('artist')});$('#previewKey').addEventListener('click',event=>{if(!event.target.matches('select'))beginMetaEdit('key')});$('#previewMeter').addEventListener('click',event=>{if(!event.target.matches('select'))beginMetaEdit('meter')});
-$('#timeSignature').addEventListener('change',event=>{state.meter=event.target.value;renderPreview();save();toast(`Preview disesuaikan ke ${state.meter}`)});
+$('#timeSignature').addEventListener('change',event=>{state.meter=event.target.value;renderPreview();save();toast(`Preview updated to ${state.meter}`)});
 $('#songTitle').addEventListener('input',()=>{renderPreview();save()});$('#artist').addEventListener('input',()=>{renderPreview();save()});
-$('#addSectionBtn').addEventListener('click',()=>{const section=newSection(`Section ${state.sections.length+1}`);state.sections.push(section);state.activeId=section.id;syncEditor();renderPreview();save();toast('Section baru ditambahkan')});
-$('#resetSheetBtn').addEventListener('click',()=>{if(!window.confirm('Reset seluruh chord sheet dan kembali ke kondisi awal?'))return;const firstSection=newSection('Intro');state={key:'C',chordRoot:'C',customChord:'',meter:'4/4',lyricsEnabled:false,sections:[firstSection],slashChords:[],nashvilleNumber:'1',nashvilleAccidental:'',activeId:firstSection.id,editingId:null};selectedPaletteItem=null;$('#songTitle').value='Judul Lagu';$('#artist').value='Artis / Komposer';$('#timeSignature').value='4/4';syncEditor();renderControls();renderPreview();save();toast('Sheet dikembalikan ke tampilan awal')});
+$('#addSectionBtn').addEventListener('click',()=>{const section=newSection(`Section ${state.sections.length+1}`);state.sections.push(section);state.activeId=section.id;syncEditor();renderPreview();save();toast('New section added')});
+$('#resetSheetBtn').addEventListener('click',()=>{if(!window.confirm('Reset the entire score to its default state?'))return;const firstSection=newSection('Intro');state={key:'C',chordRoot:'C',customChord:'',meter:'4/4',lyricsEnabled:false,sections:[firstSection],slashChords:[],nashvilleNumber:'1',nashvilleAccidental:'',activeId:firstSection.id,editingId:null};selectedPaletteItem=null;$('#songTitle').value='Song Title';$('#artist').value='Artist / Composer';$('#timeSignature').value='4/4';syncEditor();renderControls();renderPreview();save();toast('Score reset to default')});
 $('#saveBtn').addEventListener('click',downloadProject);
-$('#projectFileInput').addEventListener('change',async event=>{const file=event.target.files[0];if(!file)return;try{applyProject(JSON.parse(await file.text()));toast('Chord sheet berhasil dimuat dan siap diedit')}catch(error){toast('File tidak valid atau bukan file WorshipNadaSheet')}finally{event.target.value=''}});
-$('#exportBtn').addEventListener('click',()=>{renderPreview();window.print()});
+$('#projectFileInput').addEventListener('change',async event=>{const file=event.target.files[0];if(!file)return;try{applyProject(JSON.parse(await file.text()));toast('Score loaded and ready to edit')}catch(error){toast('Invalid file or not a WorshipNotationScore project')}finally{event.target.value=''}});
+$('#exportBtn').addEventListener('click',()=>{
+  renderPreview();
+  const viewport=$('#previewViewport'),root=document.documentElement,pagePosition={x:window.scrollX,y:window.scrollY},canvasPosition={x:viewport.scrollLeft,y:viewport.scrollTop},scrollBehavior=root.style.scrollBehavior;
+  root.style.scrollBehavior='auto';
+  window.scrollTo(0,0);viewport.scrollTo(0,0);
+  requestAnimationFrame(()=>{
+    window.print();
+    window.scrollTo(pagePosition.x,pagePosition.y);viewport.scrollTo(canvasPosition.x,canvasPosition.y);
+    root.style.scrollBehavior=scrollBehavior;
+  });
+});
 window.addEventListener('scroll',()=>{const editor=document.querySelector('.editor-card');editor.classList.toggle('is-scrolled',editor.getBoundingClientRect().top<=80)},{passive:true});
 window.addEventListener('resize',updateViewportOverflow,{passive:true});
 document.addEventListener('keydown',event=>{
   const editing=event.target.matches('input,textarea,select,[contenteditable="true"]');
   if((event.ctrlKey||event.metaKey)&&['+','=','-','0'].includes(event.key)){event.preventDefault();if(event.key==='-')setPreviewZoom(previewZoom-.1);else if(event.key==='0')fitPreview();else setPreviewZoom(previewZoom+.1);return}
-  if(event.altKey&&!editing&&/^[1-4]$/.test(event.key)){event.preventDefault();const tab=document.querySelectorAll('.ribbon-tab:not([hidden])')[Number(event.key)-1];if(tab)activateRibbon(tab,{focus:true});return}
+  if(event.altKey&&!editing&&/^[1-5]$/.test(event.key)){event.preventDefault();const tab=document.querySelectorAll('.ribbon-tab:not([hidden])')[Number(event.key)-1];if(tab)activateRibbon(tab,{focus:true});return}
   if(event.key==='Escape'&&!editing&&$('#ribbonToggle').getAttribute('aria-expanded')==='true')toggleRibbon(false);
 });
-load();syncEditor();renderControls();renderPreview();activateRibbon(document.querySelector('.ribbon-tab.active'));setPreviewZoom(previewZoom,{persist:false});
+localStorage.removeItem('chordSheetPreview');
+syncEditor();renderControls();renderPreview();activateRibbon(document.querySelector('.ribbon-tab.active'));setPreviewZoom(previewZoom,{persist:false});
 if('ResizeObserver'in window)new ResizeObserver(updateViewportOverflow).observe($('#previewViewport'));

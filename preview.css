@@ -67,6 +67,18 @@
 .beat.has-chord { width: auto; min-width: 30px; }.beat.has-chord .placed-chord { position: relative; inset: auto; min-width: 42px; padding: 0 10px; white-space: nowrap; }.duration-half .sub-beats { grid-template-columns: repeat(2, max-content); }.duration-quarter .sub-beats { grid-template-columns: repeat(4, max-content); }.sub-beat.has-chord .placed-chord { position: relative; inset: auto; min-width: 32px; padding: 0 7px; white-space: nowrap; }
 .duration-half .sub-beats { grid-template-columns: repeat(2, minmax(30px, max-content)); gap: 6px; }.duration-quarter .sub-beats { grid-template-columns: repeat(4, minmax(30px, max-content)); gap: 6px; }.sub-beat.has-chord { min-width: max-content; }.duration-line { top: -16px; z-index: 1; height: 18px; background: transparent; cursor: pointer; }.duration-line::before { content: ""; position: absolute; top: 8px; right: 0; left: 0; height: 2px; border-radius: 2px; background: var(--dark-green); }.duration-quarter .duration-line { box-shadow: none; }.duration-quarter .duration-line::after { content: ""; position: absolute; top: 12px; right: 0; left: 0; height: 2px; border-radius: 2px; background: var(--dark-green); }
 
+/* A second 1/2 marker splits only one child of the first 1/2 marker. */
+.nested-beat-group { position: relative; display: flex; width: max-content; height: 34px; align-items: center; }
+.nested-sub-beats { display: grid; width: max-content; height: 34px; grid-template-columns: repeat(2,minmax(30px,max-content)); gap: 6px; }
+.beat-group.has-nested-duration > .duration-line { height: 10px; }
+.nested-duration-line { position: absolute; top: -10px; right: 3px; left: 3px; z-index: 3; height: 12px; border-radius: 4px; cursor: pointer; }
+.nested-duration-line::before { content: ""; position: absolute; top: 2px; right: 0; left: 0; height: 2px; border-radius: 2px; background: var(--dark-green); }
+.quarter-print-line { display: none; }
+.duration-line:hover::before,.nested-duration-line:hover::before { background: #0b8a50; box-shadow: 0 0 0 3px rgba(31,112,74,.12); }
+.nested-sub-beat.dragover { background: #e3f4e6; outline: 1px dashed var(--green); }
+.placed-chord,.placed-chord .nashville-octave { overflow: visible; }
+.placed-chord .nashville-octave-high .nashville-octave-dot { bottom: calc(100% - 2px); z-index: 4; font-size: .9em; }
+
 /* Distribute ordinary beats evenly across the full bar in Live Preview. */
 .bar-batch .bar:not(.has-lyrics) { justify-content: space-evenly; gap: 0; }
 
@@ -98,13 +110,13 @@ body { overflow-x: hidden; }
 .bar-batch.has-lyrics { display: flex; width: max-content; min-width: 100%; }
 .bar-batch.has-lyrics .bar.has-lyrics { flex: 0 0 auto; width: max-content; min-width: max-content; display: grid; grid-template-columns: repeat(var(--beats), max-content); align-items: start; padding-top: 9px; padding-bottom: 9px; }
 .beat-column { min-width: 30px; display: grid; grid-template-rows: 43px; align-items: center; justify-items: stretch; }
-.beat-column.with-lyrics { grid-template-rows: 43px 30px; row-gap: 7px; }
+.beat-column.with-lyrics { grid-template-rows: 43px 32px; row-gap: 8px; }
 .notation-cell { min-width: 0; height: 43px; display: flex; align-items: center; justify-content: center; }
 .notation-cell > .beat { flex: 0 0 auto; }
 .duration-column { min-width: max-content; }
 .lyric-editor { display: block; justify-self: center; min-width: 0; width: 40px; }
 .lyric-print { display: none; }
-.lyric-input { width: 100%; min-width: 0; height: 30px; border: 1px solid #d8e7dc; border-radius: 6px; padding: 5px 6px; background: rgba(255,255,255,.72); color: #314a3b; font: 600 11px/1.2 Inter,ui-sans-serif,sans-serif; text-align: center; outline: 0; transition: border-color .15s,box-shadow .15s,background .15s; }
+.lyric-input { width: 100%; min-width: 0; height: 32px; border: 1px solid #d8e7dc; border-radius: 7px; padding: 5px 6px; background: rgba(255,255,255,.78); color: #294235; font: 650 13px/1.2 Inter,ui-sans-serif,sans-serif; text-align: center; outline: 0; transition: border-color .15s,box-shadow .15s,background .15s; }
 .lyric-input::placeholder { color: #a8b7ac; font-weight: 500; }
 .lyric-input:hover { border-color: #b7d3be; background: #fff; }
 .lyric-input:focus { position: relative; z-index: 2; border-color: #64a77b; background: #fff; box-shadow: 0 0 0 3px rgba(100,167,123,.14); }
@@ -122,13 +134,13 @@ body { overflow-x: hidden; }
 .bar.has-lyrics .sub-beats,
 .bar.has-lyrics .sub-lyrics { width: max-content; }
 .bar.has-lyrics .duration-half .sub-beats,
-.bar.has-lyrics .duration-quarter .sub-beats,
-.bar.has-lyrics .duration-half .sub-lyrics,
-.bar.has-lyrics .duration-quarter .sub-lyrics { grid-template-columns: repeat(var(--subdivisions), 52px); gap: 6px; }
+.bar.has-lyrics .duration-quarter .sub-beats { grid-template-columns: repeat(var(--subdivisions), 52px); gap: 6px; }
+.bar.has-lyrics .beat-group.has-nested-duration > .sub-beats { grid-template-columns: repeat(2,max-content); }
 .bar.has-lyrics .duration-half .sub-beats,
 .bar.has-lyrics .duration-half .sub-lyrics { --subdivisions: 2; }
 .bar.has-lyrics .duration-quarter .sub-beats,
 .bar.has-lyrics .duration-quarter .sub-lyrics { --subdivisions: 4; }
+.bar.has-lyrics .sub-lyrics { grid-template-columns: repeat(var(--lyric-leaves),52px); gap: 6px; }
 .bar.has-lyrics .sub-lyrics .lyric-editor { width: 40px; }
 .bar.has-lyrics .sub-beat.has-chord .placed-chord { min-width: 42px; padding-right: 2px; padding-left: 2px; }
 
@@ -186,7 +198,7 @@ body { overflow-x: hidden; }
   .section-preview-heading { min-height: 23px; break-after: avoid; }
   .section-title { color: var(--dark-green); font-size: 14px; font-weight: 900; letter-spacing: .1em; }
   /* Bars use their content width and wrap as complete units when a row is full. */
-  .bar-grid { display: flex; flex-wrap: wrap; align-items: stretch; width: 100%; margin: 7px 0; padding: 0; column-gap: 0; row-gap: 10px; overflow: visible; }
+  .bar-grid { display: flex; flex-wrap: wrap; align-items: stretch; width: 100%; margin: 7px 0; padding: 0; column-gap: 0; row-gap: 4px; overflow: visible; }
   .bar-batch,
   .bar-batch.has-lyrics { display: contents !important; }
   .bar-batch .bar {
@@ -197,14 +209,31 @@ body { overflow-x: hidden; }
     min-height: 51px;
     margin-top: 0;
     margin-left: -1px;
-    padding: 15px 6px 8px;
-    gap: 1px;
+    padding: 15px 5px 8px;
+    gap: 0;
     border: 0;
-    border-right: 2px solid var(--ink);
-    border-left: 2px solid var(--ink);
+    border-right: 0;
+    border-left: 0;
     overflow: visible;
     break-inside: avoid;
   }
+  .bar-batch .bar::before,
+  .bar-batch .bar::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    display: block;
+    width: 2px;
+    height: 42px;
+    border-radius: 2px;
+    background: var(--ink);
+    transform: translateY(-50%);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .bar-batch .bar::before { left: 0; }
+  .bar-batch .bar::after { right: 0; }
   .bar-batch.has-lyrics .bar.has-lyrics {
     display: grid !important;
     flex: 0 0 auto !important;
@@ -213,18 +242,18 @@ body { overflow-x: hidden; }
     min-width: 0;
     min-height: 61px;
     grid-template-columns: repeat(var(--beats),max-content);
-    padding: 15px 6px 8px;
+    padding: 15px 5px 8px;
   }
   .preview-section:not(.has-lyric-content) .beat-column.with-lyrics { grid-template-rows: 34px; }
   .preview-section:not(.has-lyric-content) .lyric-editor,
   .preview-section:not(.has-lyric-content) .sub-lyrics { display: none; }
   .beat-column { flex: 0 0 auto; width: max-content; min-width: 0; grid-template-rows: 41px; }
-  .beat-column.with-lyrics { grid-template-rows: 41px minmax(17px,auto); row-gap: 2px; }
+  .beat-column.with-lyrics { grid-template-rows: 41px minmax(21px,auto); row-gap: 3px; }
   .notation-cell { height: 41px; }
   .duration-column { width: max-content; min-width: 0; }
   .lyric-editor { width: 100%; }
   .lyric-input { display: none; }
-  .lyric-print { display: block; min-width: 0; padding: 1px; color: #263b2f; font: 600 8px/1.15 Inter,ui-sans-serif,sans-serif; text-align: center; overflow-wrap: anywhere; }
+  .lyric-print { display: block; min-width: 0; padding: 1px 2px; color: #20392b; font: 700 12.5px/1.25 Inter,ui-sans-serif,sans-serif; text-align: center; overflow-wrap: anywhere; }
   .sub-lyrics { gap: 2px; }
   .bar.has-lyrics .beat-column:not(.duration-column),
   .bar.has-lyrics .sub-beat { width: max-content; min-width: 0; }
@@ -233,11 +262,10 @@ body { overflow-x: hidden; }
   .bar.has-lyrics .sub-beats,
   .bar.has-lyrics .sub-lyrics { width: max-content; }
   .bar.has-lyrics .duration-half .sub-beats,
-  .bar.has-lyrics .duration-quarter .sub-beats,
-  .bar.has-lyrics .duration-half .sub-lyrics,
-  .bar.has-lyrics .duration-quarter .sub-lyrics { grid-template-columns: repeat(var(--subdivisions),minmax(0,1fr)); gap: 2px; }
+  .bar.has-lyrics .duration-quarter .sub-beats { grid-template-columns: repeat(var(--subdivisions),max-content); gap: 2px; }
+  .bar.has-lyrics .sub-lyrics { width: 100%; grid-template-columns: repeat(var(--lyric-leaves),minmax(0,1fr)); gap: 2px; }
   .bar.has-lyrics .sub-lyrics .lyric-editor { width: 100%; }
-  .beat { width: 22px; height: 32px; }
+  .beat { width: 20px; height: 32px; }
   .beat-dot { font-size: 22px; }
   .beat .placed-chord,
   .sub-beat .placed-chord {
@@ -247,23 +275,30 @@ body { overflow-x: hidden; }
     padding-bottom: 0;
     font: 900 17px/1 Inter,ui-sans-serif,sans-serif;
   }
-  .beat.has-chord { width: max-content; min-width: 35px; }
-  .beat.has-chord .placed-chord { min-width: 35px; padding-right: 5px; padding-left: 5px; }
+  .beat.has-chord { width: max-content; min-width: 33px; }
+  .beat.has-chord .placed-chord { min-width: 33px; padding-right: 4px; padding-left: 4px; }
   .beat-group { width: max-content; height: 41px; min-width: 29px; padding-top: 0; }
   .sub-beats { height: 32px; }
-  .sub-beat { min-width: 22px; }
+  .sub-beat { min-width: 20px; }
   .sub-beat .placed-chord { min-width: 29px; padding-right: 4px; padding-left: 4px; }
-  .sub-beat.has-chord { width: max-content; min-width: 34px; }
-  .sub-beat.has-chord .placed-chord { min-width: 34px; padding-right: 5px; padding-left: 5px; }
+  .sub-beat.has-chord { width: max-content; min-width: 32px; }
+  .sub-beat.has-chord .placed-chord { min-width: 32px; padding-right: 4px; padding-left: 4px; }
   .chord-flat { margin-right: -.22em; margin-left: -.21em; }
   .duration-half .sub-beats { grid-template-columns: repeat(2,max-content); gap: 2px; }
   .duration-quarter .sub-beats { grid-template-columns: repeat(4,max-content); gap: 2px; }
+  .nested-beat-group { width: max-content; height: 32px; }
+  .nested-sub-beats { width: max-content; height: 32px; grid-template-columns: repeat(2,max-content); gap: 2px; }
   /* Keep duration markers inside the horizontal borders of the bar row. */
   .duration-line { top: -9px; height: 3px; }
+  .beat-group.has-nested-duration > .duration-line { right: 0; left: 0; height: 3px; }
   .duration-line { display: block !important; background: transparent !important; border-top: 3px solid var(--dark-green) !important; }
+  .beat-group:not(.has-nested-duration) > .duration-line { right: 0; left: 0; }
   .duration-line::before { display: none; }
   .duration-quarter .duration-line { box-shadow: none !important; }
-  .duration-quarter .duration-line::after { content: ""; position: absolute; top: 5px; right: 0; left: 0; height: 0; background: transparent; border-top: 3px solid var(--dark-green); }
+  .duration-quarter .duration-line::after { display: none; content: none; }
+  .quarter-print-line { position: absolute; top: -4.5px; right: 0; left: 0; display: block; height: 0; border-top: 3px solid var(--dark-green); }
+  .nested-duration-line { top: -9px; right: 0; left: 0; display: block !important; height: 3px; background: transparent !important; border-top: 3px solid var(--dark-green) !important; }
+  .nested-duration-line::before { display: none; }
   .lyrics-preview { min-height: 0; padding-top: 9px; font-size: 12px; line-height: 1.45; }
   .pdf-signature { position: fixed; right: 0; bottom: 0; left: 0; display: block; color: #7b8b81; font: 600 7.5px/1 Inter,ui-sans-serif,sans-serif; letter-spacing: .04em; text-align: center; }
 }

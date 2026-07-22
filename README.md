@@ -1,3 +1,3 @@
-# WorshipNadaSheet
+# WorshipNotationScore
 
-Chord & Number Sheet Builder — susun chord dan not angka, siap dimainkan.
+Chord & Number Score Builder — arrange chords and number notation, ready to play.

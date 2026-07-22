@@ -1,22 +1,23 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
    <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>WorshipNadaSheet — Chord &amp; Number Sheet Builder</title>
+      <title>WorshipNotationScore — Chord &amp; Number Score Builder</title>
       <link rel="icon" type="image/svg+xml" href="favicon.svg" />
       <meta name="theme-color" content="#1f704a" />
       <link rel="stylesheet" href="styles.css" />
-      <link rel="stylesheet" href="preview.css" />
-      <link rel="stylesheet" href="ui.css" />
+      <link rel="stylesheet" href="preview.css?v=20260722-nested-content-lines" />
+      <link rel="stylesheet" href="ui.css?v=20260722-static-header" />
    </head>
    <body>
       <header class="topbar">
          <a class="brand" href="#"
-            ><span class="brand-icon" aria-hidden="true"><img src="favicon.svg" alt="" /></span><span>WorshipNadaSheet<small>Chord &amp; Number Sheet Builder</small></span></a
+            ><span class="brand-icon" aria-hidden="true"><img src="favicon.svg" alt="" /></span
+            ><span>WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span></a
          >
          <div class="topbar-actions">
-            <span class="autosave-status"><i aria-hidden="true"></i> Tersimpan otomatis</span>
+            <span class="autosave-status"><i aria-hidden="true"></i> Active for this session</span>
             <label class="button button-ghost upload-project" for="projectFileInput"
                ><span aria-hidden="true">↑</span> Upload .file</label
             ><input id="projectFileInput" type="file" accept=".chordsheet.json,application/json" /><button
@@ -31,14 +32,14 @@
       <main>
          <section class="intro">
             <span class="eyebrow">SONG ARRANGER</span>
-            <h1>Susun chord dan not angka, siap dimainkan.</h1>
-            <p>Pilih chord atau not angka, lalu tarik ke titik ketukan pada section preview.</p>
+            <h1>Arrange chords and number notation, ready to play.</h1>
+            <p>Choose a chord or number notation, then tap or drag it onto a beat in the preview.</p>
          </section>
          <div class="workspace ribbon-workspace">
             <aside class="editor-card">
                <div class="metadata-store" aria-hidden="true">
-                  <input id="songTitle" value="Judul Lagu" />
-                  <input id="artist" value="Artis / Komposer" />
+                  <input id="songTitle" value="Song Title" />
+                  <input id="artist" value="Artist / Composer" />
                   <select id="keySelect"></select>
                   <select id="timeSignature">
                      <option value="2/4">2/4</option>
@@ -58,9 +59,9 @@
                      type="button"
                      aria-expanded="true"
                      aria-controls="ribbonPanels"
-                     title="Ciutkan toolbar"
+                     title="Collapse toolbar"
                   >
-                     <span aria-hidden="true">⌃</span><span class="sr-only">Ciutkan toolbar</span>
+                     <span aria-hidden="true">⌃</span><span class="sr-only">Collapse toolbar</span>
                   </button>
                </div>
                <div class="ribbon-tabs" role="tablist">
@@ -104,21 +105,20 @@
                      role="tab"
                      aria-selected="false"
                      aria-controls="panelRhythm"
-                     title="Ketukan (Alt+4)"
+                     title="Rhythm (Alt+4)"
                   >
-                     Ketukan
+                     Rhythm
                   </button>
                   <button
                      class="ribbon-tab"
                      id="tabLyrics"
-                     hidden
                      data-ribbon-tab="lyrics"
                      role="tab"
                      aria-selected="false"
                      aria-controls="panelLyrics"
-                     title="Lirik (Alt+5)"
+                     title="Lyrics (Alt+5)"
                   >
-                     Lirik
+                     Lyrics
                   </button>
                </div>
                <div class="ribbon-panels" id="ribbonPanels">
@@ -130,11 +130,11 @@
                      aria-labelledby="tabChord"
                   >
                      <div class="palette-group">
-                        <span class="palette-label">Pilih root chord</span>
+                        <span class="palette-label">Choose root chord</span>
                         <div
                            class="key-picker chord-root-picker"
                            id="chordRootPicker"
-                           aria-label="Pilih root chord"
+                           aria-label="Choose root chord"
                         ></div>
                      </div>
                      <div class="palette-divider"><span></span></div>
@@ -145,8 +145,8 @@
                            <input
                               class="text-input"
                               id="customChordInput"
-                              placeholder="Chord custom, contoh: C6/9"
-                              aria-label="Chord custom"
+                              placeholder="Custom chord, e.g. C6/9"
+                              aria-label="Custom chord"
                            />
                            <div class="custom-chord-preview" id="customChordPreview"></div>
                         </div>
@@ -163,12 +163,12 @@
                         <span class="palette-label">Slash chord</span>
                         <div class="slash-fields">
                            <select class="select-input" id="slashRoot" aria-label="Root slash chord"></select
-                           ><select class="select-input" id="slashQuality" aria-label="Jenis slash chord"></select
+                           ><select class="select-input" id="slashQuality" aria-label="Slash chord quality"></select
                            ><span class="slash-symbol">/</span
                            ><select class="select-input" id="slashBass" aria-label="Bass note"></select>
                         </div>
                         <button class="button button-ghost button-small add-slash" id="addSlashBtn">
-                           + Tambah slash chord
+                           + Add slash chord
                         </button>
                         <div class="chord-bank slash-chord-bank" id="slashChordBank"></div>
                      </div>
@@ -182,7 +182,7 @@
                   >
                      <div class="palette-group nashville-builder">
                         <div class="nashville-degree-panel">
-                           <span class="palette-label">Pilih notasi</span>
+                           <span class="palette-label">Choose notation</span>
                            <div class="nashville-roots" id="nashvilleRootPicker"></div>
                         </div>
                         <div class="nashville-panel-divider" aria-hidden="true"></div>
@@ -192,9 +192,9 @@
                            <div class="chord-bank nashville-family" id="nashvilleChordBank"></div>
                         </div>
                         <div class="nashville-selected-card">
-                           <span>Notasi terpilih</span>
+                           <span>Selected notation</span>
                            <strong id="nashvilleSelectedPreview">1</strong>
-                           <small>Pilih variasi, lalu klik atau tarik ke preview.</small>
+                           <small>Choose a variation, then click or drag it to the preview.</small>
                         </div>
                      </div>
                   </div>
@@ -210,57 +210,42 @@
                   <div
                      class="ribbon-panel"
                      id="panelLyrics"
-                     hidden
                      data-ribbon-panel="lyrics"
                      role="tabpanel"
                      aria-labelledby="tabLyrics"
                   >
                      <div class="palette-group lyrics-settings">
                         <div>
-                           <span class="palette-label">Lirik lagu</span>
-                           <p class="lyrics-setting-copy">
-                              Tambahkan kata atau suku kata tepat di bawah setiap ketukan.
-                           </p>
+                           <span class="palette-label">Song lyrics</span>
+                           <p class="lyrics-setting-copy">Add a word or syllable directly below each beat.</p>
                         </div>
                         <label class="switch-control" for="lyricsEnabled">
                            <input id="lyricsEnabled" type="checkbox" />
                            <span class="switch-track" aria-hidden="true"><span></span></span>
-                           <b id="lyricsEnabledLabel">Tanpa lirik</b>
+                           <b id="lyricsEnabledLabel">Lyrics off</b>
                         </label>
                      </div>
-                     <div class="lyrics-shortcuts" aria-label="Panduan input lirik">
-                        <span><kbd>Enter</kbd> ketukan berikutnya</span>
-                        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> kembali</span>
-                        <span>Paste kalimat untuk membagi kata otomatis</span>
+                     <div class="lyrics-shortcuts" aria-label="Lyrics input guide">
+                        <span><kbd>Enter</kbd> next beat</span>
+                        <span><kbd>Shift</kbd> + <kbd>Enter</kbd> previous beat</span>
+                        <span>Paste a sentence to distribute words automatically</span>
                      </div>
                   </div>
                </div>
             </aside>
 
             <div class="preview-stage">
-               <div class="canvas-toolbar" aria-label="Kontrol tampilan preview">
+               <div class="canvas-toolbar" aria-label="Preview controls">
                   <div class="canvas-title">
                      <span class="canvas-status" aria-hidden="true"></span><strong>Document canvas</strong
-                     ><small>Perubahan tersimpan otomatis</small>
+                     ><small>Refreshing resets the score</small>
                   </div>
                   <div class="zoom-controls">
-                     <button
-                        class="icon-button"
-                        id="zoomOut"
-                        type="button"
-                        aria-label="Perkecil preview"
-                        title="Perkecil preview"
-                     >
+                     <button class="icon-button" id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out">
                         −
                      </button>
                      <output id="zoomValue" aria-live="polite">100%</output>
-                     <button
-                        class="icon-button"
-                        id="zoomIn"
-                        type="button"
-                        aria-label="Perbesar preview"
-                        title="Perbesar preview"
-                     >
+                     <button class="icon-button" id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in">
                         +
                      </button>
                      <button class="fit-button" id="fitPreview" type="button">Fit width</button>
@@ -270,33 +255,23 @@
                   class="preview-viewport"
                   id="previewViewport"
                   tabindex="0"
-                  aria-label="Canvas chord sheet, dapat digulir secara horizontal"
+                  aria-label="Chord score canvas, horizontally scrollable"
                >
                   <section class="preview-card" id="previewCard">
                      <div class="preview-header">
                         <div>
                            <span class="eyebrow">LIVE PREVIEW</span>
-                           <h2 id="previewTitle" class="preview-editable" title="Klik untuk mengganti judul">
-                              Judul Lagu
-                           </h2>
-                           <p
-                              id="previewArtist"
-                              class="preview-editable"
-                              title="Klik untuk mengganti artis atau komposer"
-                           >
+                           <h2 id="previewTitle" class="preview-editable" title="Click to edit title">Song Title</h2>
+                           <p id="previewArtist" class="preview-editable" title="Click to edit artist or composer">
                               <span class="artist-label">Created by:</span>
-                              <em class="artist-value">Artis / Komposer</em>
+                              <em class="artist-value">Artist / Composer</em>
                            </p>
                         </div>
                         <div class="song-meta">
-                           <span
-                              >KEY
-                              <b id="previewKey" class="preview-editable" title="Klik untuk mengganti nada dasar"
-                                 >C</b
-                              ></span
+                           <span>KEY <b id="previewKey" class="preview-editable" title="Click to edit key">C</b></span
                            ><span
                               >TIME SIGNATURE
-                              <b id="previewMeter" class="preview-editable" title="Klik untuk mengganti time signature"
+                              <b id="previewMeter" class="preview-editable" title="Click to edit time signature"
                                  >4/4</b
                               ></span
                            ><span class="transpose-control"
@@ -305,15 +280,15 @@
                                  ><button
                                     id="transposeDown"
                                     type="button"
-                                    title="Turunkan semua chord setengah nada"
-                                    aria-label="Transpose turun setengah nada"
+                                    title="Transpose every chord down one semitone"
+                                    aria-label="Transpose down one semitone"
                                  >
                                     −</button
                                  ><button
                                     id="transposeUp"
                                     type="button"
-                                    title="Naikkan semua chord setengah nada"
-                                    aria-label="Transpose naik setengah nada"
+                                    title="Transpose every chord up one semitone"
+                                    aria-label="Transpose up one semitone"
                                  >
                                     +
                                  </button></span
@@ -322,23 +297,38 @@
                         </div>
                      </div>
                      <div class="preview-rule"></div>
-                     <div id="sectionsPreview" aria-label="Area drag and drop chord"></div>
+                     <div id="sectionsPreview" aria-label="Chord drag-and-drop area"></div>
                      <div class="preview-footer">
-                        <span id="previewHint">Tarik chord dari toolbar atas ke titik ketukan.</span>
+                        <span id="previewHint">Drag a chord from the toolbar onto a beat.</span>
                         <div class="preview-actions">
                            <button class="button button-reset button-small" id="resetSheetBtn">Reset Sheet</button
                            ><button class="button button-ghost button-small" id="addSectionBtn">+ Add section</button>
                         </div>
                      </div>
-                     <div class="pdf-signature" aria-hidden="true">Generated with WorshipNadaSheet</div>
+                     <div class="pdf-signature" aria-hidden="true">Generated with WorshipNotationScore</div>
                   </section>
                </div>
                <div class="scroll-affordance" id="scrollAffordance" aria-hidden="true">
-                  <span>Geser untuk melihat bagian lainnya</span><b>→</b>
+                  <span>Scroll to see more</span><b>→</b>
                </div>
             </div>
          </div>
       </main>
+      <footer class="site-footer">
+         <div class="site-footer-inner">
+            <div class="footer-identity">
+               <span class="footer-mark" aria-hidden="true"><img src="favicon.svg" alt="" /></span>
+               <div>
+                  <strong>WorshipNotationScore</strong>
+                  <p>Built with care by <b>dhandyjoenathan</b> for worship musicians and teams.</p>
+               </div>
+            </div>
+            <div class="footer-meta" aria-label="Project information">
+               <span class="open-source-badge"><i aria-hidden="true"></i> Open source</span>
+               <span>Free to use, learn from, and improve.</span>
+            </div>
+         </div>
+      </footer>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
       <script src="app.js"></script>
    </body>
