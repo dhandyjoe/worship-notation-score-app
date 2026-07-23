@@ -9,16 +9,19 @@
       <script>
          (() => {
             const saved = localStorage.getItem("chordSheetTheme");
-            const theme = saved === "light" || saved === "dark"
-               ? saved
-               : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            const theme =
+               saved === "light" || saved === "dark"
+                  ? saved
+                  : matchMedia("(prefers-color-scheme: dark)").matches
+                    ? "dark"
+                    : "light";
             document.documentElement.dataset.theme = theme;
             document.documentElement.style.colorScheme = theme;
          })();
       </script>
       <link rel="stylesheet" href="styles.css" />
-      <link rel="stylesheet" href="preview.css?v=20260722-triplet-rhythm" />
-      <link rel="stylesheet" href="ui.css?v=20260723-dark-picker-fix" />
+      <link rel="stylesheet" href="preview.css?v=20260723-print-gaps-1p5-5" />
+      <link rel="stylesheet" href="ui.css?v=20260723-octave-dot-thin" />
    </head>
    <body>
       <header class="topbar">
@@ -55,7 +58,7 @@
             <p>Choose a chord or number notation, then tap or drag it onto a beat in the preview.</p>
          </section>
          <div class="workspace ribbon-workspace">
-            <aside class="editor-card">
+            <aside class="editor-card is-collapsed">
                <div class="metadata-store" aria-hidden="true">
                   <input id="songTitle" value="Song Title" />
                   <input id="artist" value="Artist / Composer" />
@@ -76,11 +79,11 @@
                      class="icon-button ribbon-toggle"
                      id="ribbonToggle"
                      type="button"
-                     aria-expanded="true"
+                     aria-expanded="false"
                      aria-controls="ribbonPanels"
-                     title="Collapse toolbar"
+                     title="Expand toolbar"
                   >
-                     <span aria-hidden="true">⌃</span><span class="sr-only">Collapse toolbar</span>
+                     <span aria-hidden="true">⌃</span><span class="sr-only">Expand toolbar</span>
                   </button>
                </div>
                <div class="ribbon-tabs" role="tablist">
@@ -268,6 +271,15 @@
                         +
                      </button>
                      <button class="fit-button" id="fitPreview" type="button">Fit width</button>
+                     <button
+                        class="fit-button print-preview-toggle"
+                        id="printPreviewToggle"
+                        type="button"
+                        aria-pressed="false"
+                        title="Preview the printable PDF layout"
+                     >
+                        PDF layout
+                     </button>
                   </div>
                </div>
                <div
