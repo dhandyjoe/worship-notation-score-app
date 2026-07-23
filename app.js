@@ -27,6 +27,8 @@ let state={key:'C',chordRoot:'C',customChord:'',meter:'4/4',lyricsEnabled:false,
 state.activeId=state.sections[0].id;
 let selectedPaletteItem=null;
 let previewZoom=Math.min(1.35,Math.max(.65,Number(localStorage.getItem('chordSheetZoom'))||1));
+const storedTheme=localStorage.getItem('chordSheetTheme');
+let activeTheme=storedTheme==='light'||storedTheme==='dark'?storedTheme:(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
 const toast=message=>{const el=$('#toast');el.textContent=message;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2000)};
 const prefersTap=()=>window.matchMedia('(max-width: 680px), (pointer: coarse)').matches;
 const activeSection=()=>state.sections.find(section=>section.id===state.activeId)||state.sections[0];
@@ -398,6 +400,17 @@ function toggleRibbon(forceExpanded){
   $('#ribbonToggle').querySelector('.sr-only').textContent=expanded?'Collapse toolbar':'Expand toolbar';
   requestAnimationFrame(updateViewportOverflow);
 }
+function applyTheme(theme,{persist=true,announce=false}={}){
+  activeTheme=theme==='dark'?'dark':'light';
+  document.documentElement.dataset.theme=activeTheme;
+  document.documentElement.style.colorScheme=activeTheme;
+  const toggle=$('#themeToggle'),dark=activeTheme==='dark';
+  toggle.setAttribute('aria-pressed',String(dark));toggle.title=`Switch to ${dark?'light':'dark'} mode`;
+  toggle.querySelector('.theme-toggle-icon').textContent=dark?'☀':'☾';toggle.querySelector('.theme-toggle-label').textContent=dark?'Light':'Dark';
+  document.querySelector('meta[name="theme-color"]').content=dark?'#101110':'#1f704a';
+  if(persist)localStorage.setItem('chordSheetTheme',activeTheme);
+  if(announce)toast(`${dark?'Dark':'Light'} mode enabled`);
+}
 $('#keySelect').addEventListener('change',event=>{state.key=event.target.value;renderPreview();save()});
 $('#chordRootPicker').addEventListener('click',event=>{if(!event.target.dataset.root)return;clearPaletteSelection();state.chordRoot=event.target.dataset.root;renderControls();save()});
 $('#customChordInput').addEventListener('input',event=>{clearPaletteSelection();state.customChord=event.target.value;renderCustomChord();save()});
@@ -412,6 +425,7 @@ document.querySelectorAll('.ribbon-tab').forEach(tab=>{
   tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('.ribbon-tab:not([hidden])')],index=tabs.indexOf(tab);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):tabs[(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];activateRibbon(next,{focus:true})});
 });
 $('#ribbonToggle').addEventListener('click',()=>toggleRibbon());
+$('#themeToggle').addEventListener('click',()=>applyTheme(activeTheme==='dark'?'light':'dark',{announce:true}));
 $('#zoomOut').addEventListener('click',()=>setPreviewZoom(previewZoom-.1));
 $('#zoomIn').addEventListener('click',()=>setPreviewZoom(previewZoom+.1));
 $('#fitPreview').addEventListener('click',fitPreview);
@@ -443,5 +457,6 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&!editing&&$('#ribbonToggle').getAttribute('aria-expanded')==='true')toggleRibbon(false);
 });
 localStorage.removeItem('chordSheetPreview');
+applyTheme(activeTheme,{persist:false});
 syncEditor();renderControls();renderPreview();activateRibbon(document.querySelector('.ribbon-tab.active'));setPreviewZoom(previewZoom,{persist:false});
 if('ResizeObserver'in window)new ResizeObserver(updateViewportOverflow).observe($('#previewViewport'));
