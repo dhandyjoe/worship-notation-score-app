@@ -441,13 +441,32 @@
    border-top: 1px solid #c9d6cb;
    border-bottom: 1px solid #c9d6cb;
    padding: 13px 0;
+   /* --leaf: uniform slot width for every beat dot (normal, 1/2, 1/3, 1/4, nested). */
+   --leaf: 60px;
 }
 .bar-batch .bar {
-   flex: 1 1 170px;
+   flex: 0 0 auto;
+   position: relative;
    min-width: max-content;
    min-height: 60px;
-   padding: 12px 18px;
-   border-left: 1px solid var(--ink);
+   padding: 12px 0;
+   border: 0;
+}
+/*
+  Barline drawn as a zero-layout pseudo-element at the bar's left edge so the
+  pitch between the last dot of one bar and the first dot of the next stays
+  exactly one --leaf (the line sits centered between them). Every bar gets a
+  left line, which also renders the score's leftmost edge on the first bar.
+*/
+.bar-batch .bar::before {
+   content: "";
+   position: absolute;
+   top: 0;
+   bottom: 0;
+   left: -0.5px;
+   width: 1px;
+   background: var(--ink);
+   pointer-events: none;
 }
 .beat .placed-chord.duration-half::before,
 .beat .placed-chord.duration-quarter::before {
@@ -472,7 +491,8 @@
 .sub-beats {
    display: grid;
    height: 34px;
-   gap: 2px;
+   gap: 0;
+   padding: 0 2px;
 }
 .duration-half .sub-beats {
    grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -486,16 +506,14 @@
    place-items: center;
    position: relative;
    border-radius: 4px;
+   margin: 0 1px;
 }
-.sub-beat .beat-dot {
-   font-size: 20px;
-   transform: translateY(-2px);
-}
+/* .sub-beat .beat-dot styling is defined once in the Chart readability block below. */
 .duration-line {
    position: absolute;
    top: 1px;
-   left: 3px;
-   right: 3px;
+   left: 7px;
+   right: 7px;
    height: 2px;
    border-radius: 2px;
    background: var(--dark-green);
@@ -503,9 +521,23 @@
 .duration-quarter .duration-line {
    box-shadow: 0 4px 0 var(--dark-green);
 }
-.sub-beat.dragover {
-   background: #e3f4e6;
-   outline: 1px dashed var(--green);
+.sub-beat.dragover,
+.beat.dragover {
+   /* Match green chord block size: 60×34px for every beat type */
+   min-width: var(--leaf, 60px);
+   min-height: 34px;
+   max-height: 34px;
+   display: grid;
+   place-items: center;
+}
+/* Unified hover drag affordance for empty beats across all rhythm types */
+@media (hover: hover) {
+   html:not(.is-print-layout) body.is-dragging .beat.drop-target:not(.has-chord),
+   html:not(.is-print-layout) body.is-dragging .sub-beat.drop-target:not(.has-chord) {
+      background: rgba(35, 122, 80, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(35, 122, 80, 0.3);
+      border-radius: 4px;
+   }
 }
 .sub-beat .placed-chord {
    position: absolute;
@@ -526,7 +558,8 @@
    padding: 0;
    background: transparent;
    color: var(--green);
-   font: 800 15px inherit;
+   font-weight: 800;
+   font-size: 15px;
    letter-spacing: 0.11em;
    cursor: pointer;
 }
@@ -541,7 +574,8 @@
    padding: 5px 7px;
    color: var(--green);
    background: #fff;
-   font: 800 14px inherit;
+   font-weight: 800;
+   font-size: 14px;
    letter-spacing: 0.06em;
    outline: 0;
 }
@@ -551,12 +585,12 @@
    min-width: 34px;
 }
 .duration-triplet .sub-beats {
-   grid-template-columns: repeat(3, minmax(30px, max-content));
-   gap: 5px;
+   grid-template-columns: repeat(3, minmax(var(--leaf, 44px), max-content));
+   gap: 0;
 }
 .beat.has-chord {
    width: auto;
-   min-width: 30px;
+   min-width: var(--leaf, 60px);
 }
 .beat.has-chord .placed-chord {
    position: relative;
@@ -579,12 +613,12 @@
    white-space: nowrap;
 }
 .duration-half .sub-beats {
-   grid-template-columns: repeat(2, minmax(30px, max-content));
-   gap: 6px;
+   grid-template-columns: repeat(2, minmax(var(--leaf, 44px), max-content));
+   gap: 0;
 }
 .duration-quarter .sub-beats {
-   grid-template-columns: repeat(4, minmax(30px, max-content));
-   gap: 6px;
+   grid-template-columns: repeat(4, minmax(var(--leaf, 44px), max-content));
+   gap: 0;
 }
 .sub-beat.has-chord {
    min-width: max-content;
@@ -632,8 +666,8 @@
    display: grid;
    width: max-content;
    height: 34px;
-   grid-template-columns: repeat(2, minmax(30px, max-content));
-   gap: 6px;
+   grid-template-columns: repeat(2, minmax(var(--leaf, 44px), max-content));
+   gap: 0;
 }
 .beat-group.has-nested-duration > .duration-line {
    height: 10px;
@@ -641,8 +675,8 @@
 .nested-duration-line {
    position: absolute;
    top: -10px;
-   right: 3px;
-   left: 3px;
+   right: 7px;
+   left: 7px;
    z-index: 3;
    height: 12px;
    border-radius: 4px;
@@ -725,6 +759,11 @@
 .nested-duration-line {
    z-index: 5;
 }
+/* Uniform beat pitch (see note at the canonical rule below). */
+.bar-batch .bar:not(.has-lyrics) {
+   justify-content: flex-start;
+   gap: 0;
+}
 /* Lift primary beams: first bar ~ -22px, second (1/4) ~ -17px from group top. */
 .duration-line {
    top: -28px;
@@ -740,11 +779,11 @@
    height: 16px;
 }
 /*
-  Nested host is full-lane height (so content can sit low). Anchor the nested 1/2
-  line near the TOP of that host — not with a large negative top, or it clips away.
+  Nested 1/2 beam sits 5px below the primary beam — matching the row spacing of
+  the 1/4 (quarter) double beam — instead of dropping to the nested host top.
 */
 .nested-duration-line {
-   top: 8px;
+   top: -19px;
    right: 3px;
    left: 3px;
    height: 14px;
@@ -763,9 +802,14 @@
    background: var(--dark-green);
 }
 
-/* Distribute ordinary beats evenly across the full bar in Live Preview. */
+/*
+  Uniform beat pitch in Live Preview: every leaf slot is --leaf wide with zero
+  internal gap, and beats pack flush so the pitch between adjacent dots is the
+  same whether a beat is whole, 1/2, 1/3, 1/4, or a nested 1/2. Bars grow to
+  content width and the score scrolls horizontally instead of squeezing beats.
+*/
 .bar-batch .bar:not(.has-lyrics) {
-   justify-content: space-evenly;
+   justify-content: flex-start;
    gap: 0;
 }
 
@@ -1077,13 +1121,16 @@ body {
    align-items: start;
    padding-top: 9px;
    padding-bottom: 9px;
+   /* Uniform beat pitch in lyrics mode too: no inter-column gap so the pitch
+      matches the cross-bar pitch (both = one fixed lyric column). */
+   column-gap: 0;
 }
 /*
   Notation lane is taller so numbers/dots/lyrics sit lower.
   Duration beams stay absolute from the lane top and do not move with content.
 */
 .beat-column {
-   min-width: 30px;
+   min-width: var(--leaf, 44px);
    display: grid;
    grid-template-rows: 54px;
    align-items: center;
@@ -1313,6 +1360,7 @@ body {
 .sub-beat:not(.has-chord) {
    display: grid;
    place-items: end center;
+   min-width: var(--leaf, 60px);
    min-height: 34px;
    height: 100%;
 }
@@ -1321,13 +1369,397 @@ body {
    display: grid;
    place-items: end center;
 }
-.sub-beat .beat-dot {
-   transform: translateY(0);
-}
 .sub-beat.has-chord .placed-chord {
    min-width: 42px;
    padding-right: 10px;
    padding-left: 10px;
+}
+
+/* ============================================================
+   Chart readability (screen only) — chords lead, empty slots recede.
+   1) Chord glyphs grow to 18px and drop the pill box: bold text reads
+      like a real chart; a faint tint remains as the click/touch target.
+   2) Empty beat dots shrink and fade so they mark the grid quietly.
+   3) Small bar numbers give players a shared reference ("from bar 9").
+   4) Section titles become true anchors (the old `font: 800 15px inherit`
+      shorthand was invalid and silently dropped by browsers).
+   5) Dark-mode barlines/dividers get ~15% more contrast.
+   ============================================================ */
+.beat .placed-chord,
+.sub-beat .placed-chord {
+   background: transparent;
+   font-size: 18px;
+   font-weight: 850;
+   letter-spacing: 0.01em;
+}
+.beat.has-chord .placed-chord,
+.sub-beat.has-chord .placed-chord {
+   background: rgba(35, 122, 80, 0.07);
+}
+html[data-theme="dark"] .placed-chord,
+html[data-theme="dark"] .sub-beat .placed-chord {
+   background: transparent;
+   color: #d9f5e3;
+}
+html[data-theme="dark"] .beat.has-chord .placed-chord,
+html[data-theme="dark"] .sub-beat.has-chord .placed-chord {
+   background: rgba(120, 220, 160, 0.08);
+}
+/* Sub-beat dots match regular dots exactly — same size, weight, colour.
+   This is the single source of truth for every beat dot (fix #5). */
+.beat-dot,
+.sub-beat .beat-dot {
+   font-size: 13px;
+   font-weight: 400;
+   line-height: 1;
+   opacity: 0.4;
+   color: #9eafa1;
+   transform: none;
+}
+.bar-num {
+   position: absolute;
+   top: 2px;
+   left: 6px;
+   z-index: 1;
+   font-size: 10px;
+   font-weight: 600;
+   line-height: 1;
+   color: var(--ink);
+   opacity: 0.34;
+   pointer-events: none;
+   user-select: none;
+}
+/* .section-title base styles live in the section-heading block above (~line 546). */
+html[data-theme="dark"] .bar-batch .bar::before {
+   background: rgba(255, 255, 255, 0.28);
+}
+html[data-theme="dark"] .bar-batch {
+   border-color: #4a524b;
+}
+
+/* ============================================================
+   Structure & Polish — section chips, gaps, accent, animations.
+   9) Section color chips: a small colored dot left of the title
+      auto-detects section type so Verse/Chorus/Bridge etc.
+      read at a glance.
+   10) Section gaps + is-active accent: active section gets a soft
+       inset glow instead of just a left bar; section spacing uses
+       a consistent 32px rhythm.
+   11) Chord place/remove animations: a subtle scale-pop on drop
+       puts motion behind every edit without being distracting.
+   ============================================================ */
+.section-chip {
+   display: inline-block;
+   width: 8px;
+   height: 8px;
+   border-radius: 50%;
+   margin-right: 7px;
+   vertical-align: middle;
+   transform: translateY(-1px);
+}
+/* --- chip colours per section type --- */
+.sec-verse .section-chip {
+   background: #4a9d6e;
+}
+.sec-chorus .section-chip {
+   background: #d4973b;
+}
+.sec-bridge .section-chip {
+   background: #b876c4;
+}
+.sec-intro .section-chip {
+   background: #5b8cb8;
+}
+.sec-outro .section-chip {
+   background: #9b6f61;
+}
+.sec-prechorus .section-chip {
+   background: #7fad5e;
+}
+.sec-interlude .section-chip {
+   background: #708090;
+}
+.sec-default .section-chip {
+   background: var(--muted, #718176);
+}
+
+html[data-theme="dark"] .sec-verse .section-chip {
+   background: #6cc493;
+}
+html[data-theme="dark"] .sec-chorus .section-chip {
+   background: #e8b85a;
+}
+html[data-theme="dark"] .sec-bridge .section-chip {
+   background: #cf96e0;
+}
+html[data-theme="dark"] .sec-intro .section-chip {
+   background: #7aaed8;
+}
+html[data-theme="dark"] .sec-outro .section-chip {
+   background: #b89382;
+}
+html[data-theme="dark"] .sec-prechorus .section-chip {
+   background: #9cc57a;
+}
+html[data-theme="dark"] .sec-interlude .section-chip {
+   background: #9ba8b3;
+}
+html[data-theme="dark"] .sec-default .section-chip {
+   background: #8a978c;
+}
+
+/* --- section gaps: consistent 32px spacing rhythm --- */
+.preview-section {
+   padding: 0 0 32px;
+   margin-bottom: 32px;
+}
+
+/* --- is-active accent: soft inset glow replaces the thick left bar --- */
+.preview-section.is-active {
+   position: relative;
+   background: rgba(239, 247, 241, 0.5);
+   border-radius: 12px;
+   margin-left: -12px;
+   margin-right: -12px;
+   padding-left: 12px;
+   padding-right: 12px;
+}
+.preview-section.is-active::before {
+   content: "";
+   position: absolute;
+   top: 0;
+   bottom: 0;
+   left: 0;
+   width: 3px;
+   border-radius: 3px;
+   background: var(--lime);
+}
+html[data-theme="dark"] .preview-section.is-active {
+   background: rgba(35, 60, 45, 0.35);
+}
+html[data-theme="dark"] .preview-section.is-active::before {
+   background: #6cc493;
+}
+
+/* --- chord place animation (drop-success already exists) --- */
+/* --- chord remove: quick shrink out --- */
+.placed-chord {
+   transition:
+      transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+      opacity 0.18s ease,
+      filter 0.18s ease;
+}
+.placed-chord.chord-leaving {
+   transform: scale(0.3);
+   opacity: 0;
+   transition:
+      transform 0.12s ease-in,
+      opacity 0.12s ease-in;
+}
+
+/* --- chord arrive: overbounce pop (reuse drop-success) --- */
+.drop-success .placed-chord {
+   animation: chordPop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes chordPop {
+   0% {
+      transform: scale(0.4);
+      opacity: 0.4;
+   }
+   60% {
+      transform: scale(1.12);
+      opacity: 1;
+   }
+   100% {
+      transform: scale(1);
+      opacity: 1;
+   }
+}
+
+/* ============================================================
+   Edit affordance (screen only, pointer devices only) — the sheet
+   stays clean at rest; editing hints appear on hover.
+   6) Empty beat hover: "+" hint + soft ring says "drop a chord here".
+   7) Placed chord hover: tint strengthens to hint "tap to remove".
+   8) Bar hover: faint wash + bar number brightens; the existing
+      delete-× reveal (ui.css) rides on the same hover.
+   9) Active section tools rest at 55% opacity, full on hover, so a
+      single-section sheet still reads like a finished chart.
+   Touch devices (hover: none) keep everything always visible.
+   ============================================================ */
+@media (hover: hover) {
+   html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover,
+   html:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover {
+      background: rgba(35, 122, 80, 0.06);
+      box-shadow: inset 0 0 0 1px rgba(35, 122, 80, 0.22);
+      cursor: pointer;
+   }
+   html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover .beat-dot,
+   html:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover .beat-dot {
+      opacity: 0;
+   }
+   html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover::before,
+   html:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover::before {
+      content: "+";
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font:
+         700 14px/1 Inter,
+         ui-sans-serif,
+         sans-serif;
+      color: var(--green);
+      pointer-events: none;
+   }
+   html[data-theme="dark"]:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover,
+   html[data-theme="dark"]:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover {
+      background: rgba(120, 220, 160, 0.07);
+      box-shadow: inset 0 0 0 1px rgba(120, 220, 160, 0.25);
+   }
+   html[data-theme="dark"]:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover::before,
+   html[data-theme="dark"]:not(.is-print-layout)
+      body:not(.is-dragging)
+      .sub-beat.drop-target:not(.has-chord):hover::before {
+      color: #8fd4a8;
+   }
+
+   html:not(.is-print-layout) .beat.has-chord .placed-chord:hover,
+   html:not(.is-print-layout) .sub-beat.has-chord .placed-chord:hover {
+      background: rgba(35, 122, 80, 0.14);
+   }
+   html[data-theme="dark"]:not(.is-print-layout) .beat.has-chord .placed-chord:hover,
+   html[data-theme="dark"]:not(.is-print-layout) .sub-beat.has-chord .placed-chord:hover {
+      background: rgba(120, 220, 160, 0.16);
+   }
+
+   html:not(.is-print-layout) .bar-batch .bar:hover {
+      background: rgba(35, 122, 80, 0.025);
+   }
+   html:not(.is-print-layout) .bar-batch .bar:hover .bar-num {
+      opacity: 0.7;
+   }
+   html[data-theme="dark"]:not(.is-print-layout) .bar-batch .bar:hover {
+      background: rgba(255, 255, 255, 0.03);
+   }
+
+   .preview-section.is-active:not(:hover):not(:focus-within) .section-tools {
+      opacity: 0.55;
+   }
+   .preview-section.is-active:hover .section-tools,
+   .preview-section.is-active:focus-within .section-tools {
+      opacity: 1;
+   }
+}
+
+/* ============================================================
+   First-time-friendly editing (screen only).
+   A) × badge on placed chords: hover (or always, on touch) shows a
+      small red × at the top-right corner — an unmistakable delete
+      control that always deletes, even while a palette item is armed.
+   B) "Placing" banner above the canvas: whenever a palette item is
+      selected, a pill shows what is armed and how to cancel, so the
+      place/replace vs delete modes are never invisible.
+   ============================================================ */
+.chord-remove {
+   position: absolute;
+   top: -7px;
+   right: -7px;
+   z-index: 4;
+   width: 16px;
+   height: 16px;
+   display: grid;
+   place-items: center;
+   border: 1px solid #eccfcb;
+   border-radius: 50%;
+   background: #fff;
+   color: #b3453e;
+   font:
+      800 11px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   opacity: 0;
+   transform: scale(0.8);
+   transition:
+      opacity 0.13s ease,
+      transform 0.13s ease,
+      background 0.13s ease;
+}
+.placed-chord:hover .chord-remove,
+.placed-chord:focus-visible .chord-remove {
+   opacity: 1;
+   transform: scale(1);
+}
+.chord-remove:hover {
+   background: #fdeeec;
+}
+@media (hover: none) {
+   .chord-remove {
+      opacity: 0.85;
+      transform: scale(1);
+   }
+}
+html[data-theme="dark"] .chord-remove {
+   border-color: #6e4a46;
+   background: #2a2320;
+   color: #f0a49c;
+}
+html[data-theme="dark"] .chord-remove:hover {
+   background: #3a2b28;
+}
+html.is-print-layout .chord-remove {
+   display: none !important;
+}
+
+.placing-banner {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 10px;
+   margin: 0 0 8px;
+   padding: 7px 12px;
+   border: 1px solid #cfe6d6;
+   border-radius: 10px;
+   background: #eef8f1;
+   color: var(--dark-green, #125838);
+   font-size: 13px;
+}
+.placing-banner[hidden] {
+   display: none;
+}
+.placing-banner-text b {
+   font-weight: 800;
+}
+.placing-cancel {
+   flex: none;
+   border: 1px solid #d6e7db;
+   border-radius: 8px;
+   padding: 4px 10px;
+   background: #fff;
+   color: var(--dark-green, #125838);
+   font:
+      700 12px/1.2 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   transition: background 0.15s ease;
+}
+.placing-cancel:hover {
+   background: #f2faf4;
+}
+html[data-theme="dark"] .placing-banner {
+   border-color: #3f5a49;
+   background: #1d2b22;
+   color: #bfe9cd;
+}
+html[data-theme="dark"] .placing-cancel {
+   border-color: #46614f;
+   background: #24352a;
+   color: #bfe9cd;
+}
+html[data-theme="dark"] .placing-cancel:hover {
+   background: #2c4133;
 }
 
 /*
@@ -1342,11 +1774,15 @@ body {
 */
 @media print {
    :root {
-      --print-slot: 8.4mm;
-      --print-sub-gap: 1.1mm;
+      --print-slot: 5.3mm;
+      /* Content-hugging beats: empty slots stay slim (~20px) while chords grow
+         to max-content, matching the original tight PDF spacing. */
+      --print-sub-gap: 0.5mm;
       --print-duration-stroke: 0.38mm;
-      --print-duration-inset: 0;
-      --print-bar-pad-x: 1.6mm;
+      /* Inset beam ends so adjacent subdivided beats show a visible break
+         between their lines (with zero sub-gap they would otherwise merge). */
+      --print-duration-inset: 1.2mm;
+      --print-bar-pad-x: 0mm;
       --print-bar-pad-y-top: 2mm;
       --print-bar-pad-y-bottom: 1mm;
       --print-chord-size: 4.3mm;
@@ -1367,7 +1803,11 @@ body {
    .preview-header > div:first-child > .eyebrow,
    .section-tools,
    .preview-actions,
-   .transpose-control {
+   .transpose-control,
+   .bar-num,
+   .chord-remove,
+   .section-chip,
+   .placing-banner {
       display: none !important;
    }
 
@@ -1461,12 +1901,10 @@ body {
       min-width: 0;
       min-height: calc(var(--print-notation-h) + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
       margin-top: 0;
-      margin-left: -1px;
+      margin-left: 0;
       padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x) var(--print-bar-pad-y-bottom);
       gap: 0;
-      border: 0;
-      border-right: 0;
-      border-left: 0;
+      border: 0 !important;
       overflow: visible;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -1478,7 +1916,7 @@ body {
       top: 50%;
       z-index: 2;
       display: block;
-      width: 0.45mm;
+      width: 2.5px;
       height: var(--print-barline-h);
       border-radius: 1px;
       background: var(--ink);
@@ -1488,6 +1926,7 @@ body {
    }
    .bar-batch .bar::before {
       left: 0;
+      min-width: 2.5px;
    }
    .bar-batch .bar::after {
       right: 0;
@@ -1596,9 +2035,17 @@ body {
       place-items: end center;
       align-self: end;
    }
+   /* Beat empty slots hug content on paper. Match specificity of the screen
+      rule `.beat:not(.has-chord)` (0,2,0) so it doesn't force the 60px --leaf. */
+   .beat:not(.has-chord),
+   .sub-beat:not(.has-chord) {
+      min-width: var(--print-slot);
+   }
    .beat-dot {
       font-size: calc(var(--print-chord-size) + 0.8mm);
       color: #7d8f84;
+      /* Screen "receded dots" must not dim the printed page. */
+      opacity: 1;
    }
    .beat .placed-chord,
    .sub-beat .placed-chord {
@@ -1607,6 +2054,8 @@ body {
       padding-top: 0;
       padding-bottom: 0;
       border-radius: 1.2mm;
+      /* Keep the classic pill on paper regardless of screen styling. */
+      background: #dff2e4;
       font:
          900 var(--print-chord-size)/1 Inter,
          ui-sans-serif,
@@ -1809,11 +2258,13 @@ body {
 
 /* On-screen PDF layout preview: same unit-grid score geometry as @media print. */
 html.is-print-layout {
-   --print-slot: 8.4mm;
-   --print-sub-gap: 1.1mm;
+   --print-slot: 5.3mm;
+   /* Content-hugging beats — see note in @media print :root. */
+   --print-sub-gap: 0.5mm;
    --print-duration-stroke: 0.38mm;
-   --print-duration-inset: 0;
-   --print-bar-pad-x: 1.6mm;
+   /* Break between adjacent beams — see note in @media print :root. */
+   --print-duration-inset: 1.2mm;
+   --print-bar-pad-x: 0mm;
    --print-bar-pad-y-top: 2mm;
    --print-bar-pad-y-bottom: 1mm;
    --print-chord-size: 4.3mm;
@@ -1829,6 +2280,10 @@ html.is-print-layout .section-tools,
 html.is-print-layout .preview-actions,
 html.is-print-layout .transpose-control,
 html.is-print-layout .delete-bar,
+html.is-print-layout .bar-num,
+html.is-print-layout .chord-remove,
+html.is-print-layout .section-chip,
+html.is-print-layout .placing-banner,
 html.is-print-layout .section-menu,
 html.is-print-layout .preview-footer {
    display: none !important;
@@ -1924,7 +2379,7 @@ html.is-print-layout #previewCard .bar-batch .bar {
    min-width: 0;
    min-height: calc(var(--print-notation-h) + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
    margin-top: 0;
-   margin-left: -1px;
+   margin-left: 0;
    padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x) var(--print-bar-pad-y-bottom);
    gap: 0;
    border: 0 !important;
@@ -1937,7 +2392,7 @@ html.is-print-layout #previewCard .bar-batch .bar::after {
    top: 50%;
    z-index: 2;
    display: block;
-   width: 0.45mm;
+   width: 2.5px;
    height: var(--print-barline-h);
    border-radius: 1px;
    background: #173a28;
@@ -1945,6 +2400,7 @@ html.is-print-layout #previewCard .bar-batch .bar::after {
 }
 html.is-print-layout #previewCard .bar-batch .bar::before {
    left: 0;
+   min-width: 2.5px;
 }
 html.is-print-layout #previewCard .bar-batch .bar::after {
    right: 0;
@@ -2053,6 +2509,7 @@ html.is-print-layout #previewCard .beat {
 html.is-print-layout #previewCard .beat-dot {
    font-size: calc(var(--print-chord-size) + 0.8mm);
    color: #7d8f84;
+   opacity: 1;
 }
 html.is-print-layout #previewCard .beat .placed-chord,
 html.is-print-layout #previewCard .sub-beat .placed-chord {

@@ -1134,12 +1134,15 @@ body.is-dragging .drop-target::after {
    }
    .canvas-toolbar {
       align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 10px;
       padding: 8px 10px;
    }
    .canvas-title small {
       display: none;
    }
    .zoom-controls {
+      flex-wrap: wrap;
       gap: 4px;
    }
    .zoom-controls .icon-button,

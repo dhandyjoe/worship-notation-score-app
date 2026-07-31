@@ -1,0 +1,8 @@
+# Editor / OS
+.DS_Store
+
+# Test & tooling artifacts
+.playwright-mcp/
+
+# Dependencies (if ever added)
+node_modules/

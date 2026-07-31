@@ -4,7 +4,7 @@
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>WorshipNotationScore — Chord &amp; Number Score Builder</title>
-      <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+      <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
       <meta name="theme-color" content="#1f704a" />
       <script>
          (() => {
@@ -19,14 +19,14 @@
             document.documentElement.style.colorScheme = theme;
          })();
       </script>
-      <link rel="stylesheet" href="styles.css" />
-      <link rel="stylesheet" href="preview.css?v=20260723-print-gaps-1p5-5" />
-      <link rel="stylesheet" href="ui.css?v=20260723-octave-dot-thin" />
+      <link rel="stylesheet" href="styles/styles.css" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260801-pdf-tight-2" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260723-toolbar-wrap" />
    </head>
    <body>
       <header class="topbar">
          <a class="brand" href="#"
-            ><span class="brand-icon" aria-hidden="true"><img src="favicon.svg" alt="" /></span
+            ><span class="brand-icon" aria-hidden="true"><img src="assets/favicon.svg" alt="" /></span
             ><span>WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span></a
          >
          <div class="topbar-actions">
@@ -276,11 +276,16 @@
                         id="printPreviewToggle"
                         type="button"
                         aria-pressed="false"
-                        title="Preview the printable PDF layout"
+                        disabled
+                        title="PDF layout preview is temporarily disabled"
                      >
                         PDF layout
                      </button>
                   </div>
+               </div>
+               <div id="placingBanner" class="placing-banner" hidden role="status" aria-live="polite">
+                  <span class="placing-banner-text">Placing: <b></b> — tap a beat to drop</span>
+                  <button class="placing-cancel" type="button" id="placingCancel">Cancel</button>
                </div>
                <div
                   class="preview-viewport"
@@ -348,7 +353,7 @@
       <footer class="site-footer">
          <div class="site-footer-inner">
             <div class="footer-identity">
-               <span class="footer-mark" aria-hidden="true"><img src="favicon.svg" alt="" /></span>
+               <span class="footer-mark" aria-hidden="true"><img src="assets/favicon.svg" alt="" /></span>
                <div>
                   <strong>WorshipNotationScore</strong>
                   <p>Built with care by <b>dhandyjoenathan</b> for worship musicians and teams.</p>
@@ -361,6 +366,6 @@
          </div>
       </footer>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
-      <script src="app.js"></script>
+      <script type="module" src="src/app.js"></script>
    </body>
 </html>
