@@ -114,6 +114,17 @@ const click = (selector, index = 0) =>
    );
 const text = (selector, index = 0) =>
    evaluate(`document.querySelectorAll(${js(selector)})[${index}]?.textContent?.trim()||''`);
+// Reads a placed chord's visible label, excluding the ✕ remove badge that the
+// tap-to-remove feature injects into the same element. Also strips Nashville
+// octave dots (●) so callers can assert on the bare chord symbol.
+const chordText = (index = 0) =>
+   evaluate(
+      `(()=>{const el=document.querySelectorAll('.placed-chord')[${index}];if(!el)return'';const clone=el.cloneNode(true);clone.querySelector('.chord-remove')?.remove();return clone.textContent.trim().replaceAll('●','')})()`,
+   );
+const chordTexts = () =>
+   evaluate(
+      "[...document.querySelectorAll('.placed-chord')].map(el=>{const clone=el.cloneNode(true);clone.querySelector('.chord-remove')?.remove();return clone.textContent.trim().replaceAll('●','')})",
+   );
 
 // Desktop functional suite.
 await viewport(1440, 1000, false);
@@ -137,7 +148,7 @@ record(
 
 await click(".chord-family .chord", 3);
 await click(".drop-target", 0);
-record("Place chord through palette click", (await text(".placed-chord", 0)) === "Cmaj7");
+record("Place chord through palette click", (await chordText(0)) === "Cmaj7");
 await click("#tabSlash");
 await evaluate(
    "(()=>{for(const [id,value] of [['slashRoot','D'],['slashQuality','m'],['slashBass','F#']]){const el=document.getElementById(id);el.value=value;el.dispatchEvent(new Event('change',{bubbles:true}))}return true})()",
@@ -145,7 +156,7 @@ await evaluate(
 await click("#addSlashBtn");
 await click("#slashChordBank .chord", 0);
 await click(".drop-target", 1);
-record("Create and place slash chord", (await text(".placed-chord", 1)) === "Dm/F#");
+record("Create and place slash chord", (await chordText(1)) === "Dm/F#");
 
 await click("#tabNashville");
 const numberCounts = await evaluate(
@@ -159,7 +170,7 @@ record(
 await click(".nashville-row-block:nth-child(3) .nashville-key", 3);
 await click("#nashvilleChordBank .chord", 3);
 await click(".drop-target", 2);
-record("Place upper-octave Nashville chord", (await text(".placed-chord", 2)).replaceAll("●", "").includes("4maj7"));
+record("Place upper-octave Nashville chord", (await chordText(2)).includes("4maj7"));
 record(
    "Upper-octave dot remains rendered",
    await evaluate(
@@ -235,7 +246,7 @@ await click("#tabNashville");
 await click("#nashvilleChordBank .chord", 0);
 await click(".drop-target", 1);
 await click("#transposeUp");
-const transposed = await evaluate("[...document.querySelectorAll('.placed-chord')].map(el=>el.textContent.trim())");
+const transposed = await chordTexts();
 record("Transpose changes absolute chord", transposed[0] === "D♭maj7", JSON.stringify(transposed));
 record("Transpose preserves Nashville notation", transposed[1] === "1", JSON.stringify(transposed));
 record("Transpose updates key", (await text("#previewKey")) === "D♭");
@@ -289,9 +300,7 @@ record(
    "Upload .file restores title and section",
    (await text("#previewTitle")) === "Imported Song" && (await text(".section-title")) === "VERSE",
 );
-const importedNotation = await evaluate(
-   "[...document.querySelectorAll('.placed-chord')].map(el=>el.textContent.trim().replaceAll('●',''))",
-);
+const importedNotation = await chordTexts();
 record(
    "Upload .file restores chord and Nashville content",
    ["F", "2m", "1", "3", "4", "C/F", "Gmaj7", "7"].every((value) => importedNotation.includes(value)),
@@ -324,17 +333,24 @@ record(
    JSON.stringify(printStyles),
 );
 record("PDF signature is visible", printStyles.signature !== "none");
+// Marker lines are intentionally inset from each group edge by
+// --print-duration-inset (a visual break between subdivided beats), so a
+// marker spans notesWidth − 2×inset rather than the full content width.
+const durationInsetPx = await evaluate(
+   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:var(--print-duration-inset)';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
+);
+const insetTotal = durationInsetPx * 2;
 const rhythmLineSizing = await evaluate(
    "(()=>{const groups=[...document.querySelectorAll('.beat-group:not(.has-nested-duration)')],rows=groups.map(group=>{const notes=group.querySelector(':scope > .sub-beats').getBoundingClientRect().width,primary=group.querySelector(':scope > .duration-line').getBoundingClientRect().width,secondary=group.querySelector(':scope > .quarter-print-line')?.getBoundingClientRect().width??null;return {duration:['half','triplet','quarter'].find(value=>group.classList.contains('duration-'+value)),notes,primary,secondary}});return rows})()",
 );
 record(
-   "PDF rhythm markers follow their subdivision content width",
+   "PDF rhythm markers follow their subdivision content width (minus optical inset)",
    rhythmLineSizing.every(
       (row) =>
-         Math.abs(row.primary - row.notes) < 0.6 &&
-         (row.secondary === null || Math.abs(row.secondary - row.notes) < 0.6),
+         Math.abs(row.primary - (row.notes - insetTotal)) < 0.6 &&
+         (row.secondary === null || Math.abs(row.secondary - (row.notes - insetTotal)) < 0.6),
    ),
-   JSON.stringify(rhythmLineSizing),
+   JSON.stringify({ insetTotal, rhythmLineSizing }),
 );
 record(
    "PDF triplet marker is present and spans three notes",
@@ -353,13 +369,53 @@ const nestedLineSizing = await evaluate(
    "(()=>{const parents=[...document.querySelectorAll('.beat-group.has-nested-duration')].map(group=>({notes:group.querySelector(':scope > .sub-beats').getBoundingClientRect().width,line:group.querySelector(':scope > .duration-line').getBoundingClientRect().width})),children=[...document.querySelectorAll('.nested-beat-group')].map(group=>({notes:group.querySelector(':scope > .nested-sub-beats').getBoundingClientRect().width,line:group.querySelector(':scope > .nested-duration-line').getBoundingClientRect().width}));return {parents,children}})()",
 );
 record(
-   "PDF nested half-beat markers follow parent and child content widths",
-   [...nestedLineSizing.parents, ...nestedLineSizing.children].every((row) => Math.abs(row.line - row.notes) < 0.6),
-   JSON.stringify(nestedLineSizing),
+   "PDF nested half-beat markers follow parent and child content widths (minus optical inset)",
+   [...nestedLineSizing.parents, ...nestedLineSizing.children].every(
+      (row) => Math.abs(row.line - (row.notes - insetTotal)) < 0.6,
+   ),
+   JSON.stringify({ insetTotal, ...nestedLineSizing }),
 );
 await printPdf("mixed-chord-nashville-lyrics");
 await cdp.send("Emulation.setEmulatedMedia", { media: "screen" });
 await screenshot("desktop-1440");
+
+// Export layout (is-print-layout) geometry: the on-print class drives the real
+// PDF appearance. Verify the section-name chip, enlarged footer, and that the
+// card frame ("stamped on paper" border/shadow) is gone. Measured under screen
+// media because Chrome's print-media emulation strips backgrounds from
+// getComputedStyle even when print-color-adjust:exact keeps them on paper;
+// screen + is-print-layout is geometrically identical to print + is-print-layout.
+await evaluate("document.documentElement.classList.add('is-print-layout');true");
+const exportLayout = await evaluate(
+   "(()=>{const title=document.querySelector('.section-title'),ts=title&&getComputedStyle(title),sig=document.querySelector('.pdf-signature'),ss=sig&&getComputedStyle(sig),card=document.querySelector('#previewCard'),cs=card&&getComputedStyle(card);let chipBg='';for(const sheet of document.styleSheets){let rules;try{rules=sheet.cssRules}catch(e){continue}for(const r of rules){if(r.selectorText==='html.is-print-layout #previewCard .section-title'){chipBg=r.style.background||r.style.backgroundColor}}}return {titleDisplay:ts?.display,titleStyle:ts?.fontStyle,titleBorderRadius:ts?.borderTopLeftRadius,titleBorderWidth:ts?.borderTopWidth,chipBg,titleFontSize:parseFloat(ts?.fontSize||'0'),sigFontSize:parseFloat(ss?.fontSize||'0'),cardShadow:cs?.boxShadow}})()",
+);
+record(
+   "Export: section name is an italic chip (rounded border + tint)",
+   exportLayout.titleDisplay === "inline-block" &&
+      exportLayout.titleStyle === "italic" &&
+      parseFloat(exportLayout.titleBorderRadius) > 0 &&
+      parseFloat(exportLayout.titleBorderWidth) > 0 &&
+      /rgba?\(/.test(exportLayout.chipBg) &&
+      exportLayout.chipBg !== "rgba(0, 0, 0, 0)" &&
+      exportLayout.chipBg !== "transparent",
+   JSON.stringify(exportLayout),
+);
+record(
+   "Export: footer label is enlarged (>= 9px)",
+   exportLayout.sigFontSize >= 9,
+   JSON.stringify(exportLayout),
+);
+record(
+   "Export: section title is larger than base body text",
+   exportLayout.titleFontSize >= 14,
+   JSON.stringify(exportLayout),
+);
+record(
+   "Export: card frame shadow is removed (no stamped-on-paper look)",
+   exportLayout.cardShadow === "none",
+   JSON.stringify(exportLayout),
+);
+await evaluate("document.documentElement.classList.remove('is-print-layout');true");
 
 // Refresh must restore the clean default state.
 await navigate();
@@ -411,8 +467,11 @@ for (const [width, height, deviceScaleFactor = 1] of [
    );
    await click(".chord-family .chord", 0);
    await click(".drop-target", 0);
-   record(`${width}px tap-to-place chord works`, (await text(".placed-chord", 0)) === "C");
+   record(`${width}px tap-to-place chord works`, (await chordText(0)) === "C");
    await click(".placed-chord", 0);
+   // Removal is animated (chord-leaving → transitionend / 200ms fallback), so
+   // wait for the element to actually leave the DOM before asserting.
+   await waitFor("document.querySelectorAll('.placed-chord').length===0");
    record(
       `${width}px tapping a placed chord removes it`,
       (await evaluate("document.querySelectorAll('.placed-chord').length")) === 0,
@@ -423,7 +482,7 @@ for (const [width, height, deviceScaleFactor = 1] of [
    await click(".drop-target", 1);
    record(
       `${width}px Nashville mobile selection works`,
-      (await text(".placed-chord", 0)).replaceAll("●", "").includes("7m"),
+      (await chordText(0)).includes("7m"),
    );
    await click("#tabLyrics");
    await click("#lyricsEnabled");

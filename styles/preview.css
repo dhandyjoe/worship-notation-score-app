@@ -2373,6 +2373,10 @@ html.is-print-layout #previewCard .section-title {
    border: 1.4px solid rgba(50, 122, 82, 0.5);
    border-radius: 8px;
    background: rgba(184, 232, 92, 0.16);
+   /* Keep the chip tint + border when printed (Chrome drops backgrounds under
+      the default economy color adjustment otherwise). */
+   -webkit-print-color-adjust: exact;
+   print-color-adjust: exact;
    pointer-events: none;
    text-decoration: none;
 }
