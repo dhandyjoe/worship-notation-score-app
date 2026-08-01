@@ -2425,6 +2425,13 @@ html.is-print-layout #previewCard .bar-batch .bar::before {
 html.is-print-layout #previewCard .bar-batch .bar::after {
    right: 0;
 }
+/* When a bar is NOT the first bar on its printed row, its left barline sits on
+   top of the previous bar's right barline, doubling the thickness. The export
+   flow (src/pdf.js) tags such bars `.pdf-mid-bar` so we drop the redundant
+   left barline; the previous bar's right barline serves as the divider. */
+html.is-print-layout #previewCard .bar-batch .bar.pdf-mid-bar::before {
+   display: none;
+}
 html.is-print-layout #previewCard .bar-batch.has-lyrics .bar.has-lyrics {
    display: grid !important;
    flex: 0 0 auto !important;
@@ -2538,7 +2545,8 @@ html.is-print-layout #previewCard .sub-beat .placed-chord {
    padding-top: 0;
    padding-bottom: 0;
    border-radius: 1.2mm;
-   background: #e7f5eb !important;
+   /* Ink-only chords on paper: no filled pill, just the chord text. */
+   background: transparent !important;
    color: #155c3c !important;
    font:
       900 var(--print-chord-size)/1 Inter,
@@ -2546,8 +2554,6 @@ html.is-print-layout #previewCard .sub-beat .placed-chord {
       sans-serif;
    letter-spacing: -0.02em;
    cursor: default;
-   /* Force the green pill background to render on paper (Chrome/Safari drop
-      backgrounds when printing unless this hint is set). */
    -webkit-print-color-adjust: exact;
    print-color-adjust: exact;
 }

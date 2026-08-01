@@ -25,6 +25,41 @@ import { safeFileName } from "./notation.js";
 // preview toggle that the user may have switched on themselves.
 let printClassAddedForJob = false;
 
+// CSS class marking bars that are NOT the first bar on their printed row. Their
+// left barline overlaps the previous bar's right barline (doubling thickness),
+// so we hide it via CSS (see styles/preview.css). Bars at the start of a row
+// keep their left barline so every row opens with a clean divider.
+const MID_BAR_CLASS = "pdf-mid-bar";
+
+/**
+ * Tag every bar that does not start a printed row with MID_BAR_CLASS so its
+ * redundant left barline can be hidden. Must run while `is-print-layout` is
+ * active (its geometry decides where bars wrap). Row membership is derived from
+ * each bar's vertical offset within its .bar-grid (bars on the same row share a
+ * top; a new top means a new row → that bar is a row start → keep its barline).
+ */
+export function markMidRowBars() {
+   document.querySelectorAll(".bar-grid").forEach((grid) => {
+      let rowTop = null;
+      grid.querySelectorAll(".bar").forEach((bar) => {
+         const top = Math.round(bar.getBoundingClientRect().top);
+         // First bar overall, or first bar whose top differs from the current
+         // row, starts a new row → keep its left barline.
+         if (rowTop === null || Math.abs(top - rowTop) > 1) {
+            rowTop = top;
+            bar.classList.remove(MID_BAR_CLASS);
+         } else {
+            bar.classList.add(MID_BAR_CLASS);
+         }
+      });
+   });
+}
+
+/** Remove all MID_BAR_CLASS tags added by markMidRowBars(). */
+export function clearMidRowBars() {
+   document.querySelectorAll(`.${MID_BAR_CLASS}`).forEach((bar) => bar.classList.remove(MID_BAR_CLASS));
+}
+
 /**
  * Register the global beforeprint/afterprint listeners that make the
  * `is-print-layout` geometry the single source of truth for printed output.
@@ -37,8 +72,12 @@ export function initPrintListeners() {
          root.classList.add("is-print-layout");
          printClassAddedForJob = true;
       }
+      // Tag mid-row bars now that print geometry is active, so overlapping
+      // left barlines can be hidden.
+      markMidRowBars();
    });
    window.addEventListener("afterprint", () => {
+      clearMidRowBars();
       if (printClassAddedForJob) {
          document.documentElement.classList.remove("is-print-layout");
          printClassAddedForJob = false;
