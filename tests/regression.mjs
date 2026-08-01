@@ -400,11 +400,7 @@ record(
       exportLayout.chipBg !== "transparent",
    JSON.stringify(exportLayout),
 );
-record(
-   "Export: footer label is enlarged (>= 9px)",
-   exportLayout.sigFontSize >= 9,
-   JSON.stringify(exportLayout),
-);
+record("Export: footer label is enlarged (>= 9px)", exportLayout.sigFontSize >= 9, JSON.stringify(exportLayout));
 record(
    "Export: section title is larger than base body text",
    exportLayout.titleFontSize >= 14,
@@ -480,10 +476,7 @@ for (const [width, height, deviceScaleFactor = 1] of [
    await click(".nashville-row-block:nth-child(2) .nashville-key", 6);
    await click("#nashvilleChordBank .chord", 1);
    await click(".drop-target", 1);
-   record(
-      `${width}px Nashville mobile selection works`,
-      (await chordText(0)).includes("7m"),
-   );
+   record(`${width}px Nashville mobile selection works`, (await chordText(0)).includes("7m"));
    await click("#tabLyrics");
    await click("#lyricsEnabled");
    record(

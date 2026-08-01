@@ -749,8 +749,28 @@ body.is-dragging .drop-target::after {
    z-index: 3;
    background: #def2e3 !important;
    outline: 2px solid #63a77a !important;
-   outline-offset: 2px;
-   transform: scale(1.07);
+   outline-offset: -2px;
+}
+/* Uniform drag ghost: a fixed-size chip used as the drag image for every
+   palette item (chords and rhythm symbols alike) so the "+"/symbol no longer
+   render at wildly different sizes while dragging. */
+.drag-ghost {
+   box-sizing: border-box;
+   min-width: 44px;
+   height: 40px;
+   padding: 0 14px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   font:
+      700 16px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   color: #fff;
+   background: var(--green, #237a50);
+   border-radius: 10px;
+   box-shadow: 0 6px 16px rgba(35, 122, 80, 0.35);
+   white-space: nowrap;
 }
 .drop-target.drop-success {
    animation: dropPulse 0.42s ease;
@@ -1131,6 +1151,14 @@ body.is-dragging .drop-target::after {
       gap: 8px 12px;
       padding: 0 2px;
       white-space: normal;
+   }
+   .auto-syllable-actions {
+      flex-direction: column;
+      align-items: stretch;
+   }
+   .auto-syllable-actions .button {
+      width: 100%;
+      min-height: 44px;
    }
    .canvas-toolbar {
       align-items: center;
@@ -1538,6 +1566,11 @@ html[data-theme="dark"] .section-title-input,
 html[data-theme="dark"] .chord-root-picker .key,
 html[data-theme="dark"] .nashville-key,
 html[data-theme="dark"] .nashville-accidental {
+   border-color: var(--line);
+   background: #101110;
+   color: var(--ink);
+}
+html[data-theme="dark"] .auto-syllable-input {
    border-color: var(--line);
    background: #101110;
    color: var(--ink);

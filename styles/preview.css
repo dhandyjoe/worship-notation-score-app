@@ -441,8 +441,16 @@
    border-top: 1px solid #c9d6cb;
    border-bottom: 1px solid #c9d6cb;
    padding: 13px 0;
-   /* --leaf: uniform slot width for every beat dot (normal, 1/2, 1/3, 1/4, nested). */
-   --leaf: 60px;
+   /*
+     Live-preview spacing tokens — single source of truth. Every beat slot
+     (normal, 1/2, 1/3, 1/4, nested) is exactly --leaf wide with zero gap, so
+     the beat pitch is identical whether lyrics are ON or OFF. Never hardcode
+     these widths again; always reference the tokens below.
+   */
+   --leaf: 60px; /* uniform slot width / beat pitch */
+   --lyric-h: 32px; /* lyric input + lyric row height */
+   --lyric-gap: 8px; /* gap between notation lane and lyric row */
+   --lyric-bar-pad: 14px; /* breathing room between barline and beats (lyrics ON only) */
 }
 .bar-batch .bar {
    flex: 0 0 auto;
@@ -523,12 +531,14 @@
 }
 .sub-beat.dragover,
 .beat.dragover {
-   /* Match green chord block size: 60×34px for every beat type */
-   min-width: var(--leaf, 60px);
-   min-height: 34px;
-   max-height: 34px;
-   display: grid;
-   place-items: center;
+   /*
+     Visual-only hover affordance during drag. MUST NOT change height, display,
+     or alignment — doing so reflows the beat out from under the cursor, which
+     triggers a dragleave/dragenter loop (flicker) and makes the drop fail.
+   */
+   background: rgba(35, 122, 80, 0.12);
+   box-shadow: inset 0 0 0 1px rgba(35, 122, 80, 0.45);
+   border-radius: 4px;
 }
 /* Unified hover drag affordance for empty beats across all rhythm types */
 @media (hover: hover) {
@@ -585,7 +595,7 @@
    min-width: 34px;
 }
 .duration-triplet .sub-beats {
-   grid-template-columns: repeat(3, minmax(var(--leaf, 44px), max-content));
+   grid-template-columns: repeat(3, minmax(var(--leaf, 60px), max-content));
    gap: 0;
 }
 .beat.has-chord {
@@ -613,11 +623,11 @@
    white-space: nowrap;
 }
 .duration-half .sub-beats {
-   grid-template-columns: repeat(2, minmax(var(--leaf, 44px), max-content));
+   grid-template-columns: repeat(2, minmax(var(--leaf, 60px), max-content));
    gap: 0;
 }
 .duration-quarter .sub-beats {
-   grid-template-columns: repeat(4, minmax(var(--leaf, 44px), max-content));
+   grid-template-columns: repeat(4, minmax(var(--leaf, 60px), max-content));
    gap: 0;
 }
 .sub-beat.has-chord {
@@ -666,7 +676,7 @@
    display: grid;
    width: max-content;
    height: 34px;
-   grid-template-columns: repeat(2, minmax(var(--leaf, 44px), max-content));
+   grid-template-columns: repeat(2, minmax(var(--leaf, 60px), max-content));
    gap: 0;
 }
 .beat-group.has-nested-duration > .duration-line {
@@ -758,11 +768,6 @@
 .duration-line,
 .nested-duration-line {
    z-index: 5;
-}
-/* Uniform beat pitch (see note at the canonical rule below). */
-.bar-batch .bar:not(.has-lyrics) {
-   justify-content: flex-start;
-   gap: 0;
 }
 /* Lift primary beams: first bar ~ -22px, second (1/4) ~ -17px from group top. */
 .duration-line {
@@ -1077,6 +1082,39 @@ body {
    color: var(--ink);
    font: 700 10px inherit;
 }
+.auto-syllable {
+   display: flex;
+   flex-direction: column;
+   gap: 9px;
+   align-items: stretch;
+}
+.auto-syllable-input {
+   width: 100%;
+   min-height: 44px;
+   resize: vertical;
+   padding: 9px 11px;
+   border: 1px solid #cfe4d4;
+   border-radius: 10px;
+   background: #fff;
+   color: var(--ink);
+   font: 500 13px/1.4 inherit;
+}
+.auto-syllable-input:focus-visible {
+   outline: 3px solid #d9efd6;
+   outline-offset: 1px;
+   border-color: var(--green);
+}
+.auto-syllable-actions {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   flex-wrap: wrap;
+}
+.auto-syllable-hint {
+   color: var(--muted);
+   font-size: 11px;
+   line-height: 1.3;
+}
 .section-lyrics-toggle {
    border: 1px solid #cfe4d4;
    border-radius: 999px;
@@ -1121,6 +1159,11 @@ body {
    align-items: start;
    padding-top: 9px;
    padding-bottom: 9px;
+   /* Breathing room so beats don't touch the barline in lyrics mode — keeps the
+      score readable. The barline pseudo-element sits at the bar's left edge, so
+      symmetric left/right padding centers each bar's beats between its lines. */
+   padding-left: var(--lyric-bar-pad, 14px);
+   padding-right: var(--lyric-bar-pad, 14px);
    /* Uniform beat pitch in lyrics mode too: no inter-column gap so the pitch
       matches the cross-bar pitch (both = one fixed lyric column). */
    column-gap: 0;
@@ -1130,15 +1173,15 @@ body {
   Duration beams stay absolute from the lane top and do not move with content.
 */
 .beat-column {
-   min-width: var(--leaf, 44px);
+   min-width: var(--leaf, 60px);
    display: grid;
    grid-template-rows: 54px;
    align-items: center;
    justify-items: stretch;
 }
 .beat-column.with-lyrics {
-   grid-template-rows: 54px 32px;
-   row-gap: 8px;
+   grid-template-rows: 54px var(--lyric-h, 32px);
+   row-gap: var(--lyric-gap, 8px);
 }
 .notation-cell {
    min-width: 0;
@@ -1167,7 +1210,7 @@ body {
 .lyric-input {
    width: 100%;
    min-width: 0;
-   height: 32px;
+   height: var(--lyric-h, 32px);
    border: 1px solid #d8e7dc;
    border-radius: 7px;
    padding: 5px 6px;
@@ -1217,11 +1260,17 @@ body {
    width: 34px;
 }
 
-/* A duration marker divides one beat; it must never widen that beat. */
+/*
+  A duration marker divides one beat; it must never widen OR narrow that beat.
+  Lyrics ON must keep the EXACT same beat pitch as lyrics OFF. Non-lyrics slots
+  are `min-width: --leaf` and grow to `max-content` when a chord is wider than
+  --leaf, so lyrics slots must do the same — never lock them to --leaf, or a
+  wide chord (e.g. Cmaj7#11) would widen the slot only when lyrics are OFF.
+*/
 .bar.has-lyrics .beat-column:not(.duration-column),
 .bar.has-lyrics .sub-beat {
-   min-width: 52px;
-   width: 52px;
+   min-width: var(--leaf, 60px);
+   width: max-content;
 }
 .bar.has-lyrics .duration-column {
    width: max-content;
@@ -1238,8 +1287,8 @@ body {
 .bar.has-lyrics .duration-half .sub-beats,
 .bar.has-lyrics .duration-triplet .sub-beats,
 .bar.has-lyrics .duration-quarter .sub-beats {
-   grid-template-columns: repeat(var(--subdivisions), 52px);
-   gap: 6px;
+   grid-template-columns: repeat(var(--subdivisions), minmax(var(--leaf, 60px), max-content));
+   gap: 0;
 }
 .bar.has-lyrics .beat-group.has-nested-duration > .sub-beats {
    grid-template-columns: repeat(2, max-content);
@@ -1257,8 +1306,8 @@ body {
    --subdivisions: 4;
 }
 .bar.has-lyrics .sub-lyrics {
-   grid-template-columns: repeat(var(--lyric-leaves), 52px);
-   gap: 6px;
+   grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--leaf, 60px), max-content));
+   gap: 0;
 }
 .bar.has-lyrics .sub-lyrics .lyric-editor {
    width: 40px;
@@ -1794,9 +1843,13 @@ html[data-theme="dark"] .placing-cancel:hover {
    /* Inset beam ends so adjacent subdivided beats show a visible break
       between their lines (with zero sub-gap they would otherwise merge). */
    --print-duration-inset: 1.2mm;
-   --print-bar-pad-x: 0mm;
+   --print-bar-pad-x: 2.6mm;
    --print-bar-pad-y-top: 2mm;
    --print-bar-pad-y-bottom: 1mm;
+   /* Extra horizontal breathing room between the barline and the beats when
+      lyrics are printed, so the sung chart is easier to read. Matches the
+      no-lyric bar padding (--print-bar-pad-x) so spacing is uniform. */
+   --print-bar-pad-x-lyrics: 2.6mm;
    --print-chord-size: 4.3mm;
    --print-lyric-size: 3.2mm;
    /* Extra headroom so raised beams + high-octave dots never collide/clip. */
@@ -1827,7 +1880,15 @@ html[data-theme="dark"] .placing-cancel:hover {
       ========================================================================== */
    @page {
       size: A4;
-      margin: 0;
+      /* Margin lives on @page (not body padding) so EVERY page — including the
+         2nd and beyond — gets the same left/right/bottom margins. Body padding
+         only pads the first page, leaving later pages flush to the paper edge.
+         Page 2+ gets a larger TOP margin so content starts lower and is easier
+         to read; the first page keeps a tight top via @page :first below. */
+      margin: 18mm 9mm 12mm;
+   }
+   @page :first {
+      margin-top: 9mm;
    }
    .preview-header > div:first-child > .eyebrow,
    .section-tools,
@@ -1841,7 +1902,7 @@ html[data-theme="dark"] .placing-cancel:hover {
    }
 
    body {
-      padding: 9mm 9mm 12mm;
+      padding: 0;
    }
    .preview-card {
       font-size: 11px;
@@ -1875,7 +1936,7 @@ html[data-theme="dark"] .placing-cancel:hover {
       font-size: 17px;
    }
    .preview-rule {
-      margin: 5px 0 6px;
+      margin: 5px 0 22px;
    }
    .preview-section,
    .preview-section:last-child {
@@ -1968,7 +2029,7 @@ html[data-theme="dark"] .placing-cancel:hover {
       min-width: 0;
       min-height: calc(var(--print-notation-h) + 3.8mm + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
       grid-template-columns: repeat(var(--beats), max-content);
-      padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x) var(--print-bar-pad-y-bottom);
+      padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x-lyrics) var(--print-bar-pad-y-bottom);
       column-gap: 0;
    }
    .preview-section:not(.has-lyric-content) .beat-column.with-lyrics {
@@ -2335,7 +2396,7 @@ html.is-print-layout #previewCard .song-meta b {
    color: #173a28;
 }
 html.is-print-layout #previewCard .preview-rule {
-   margin: 5px 0 6px;
+   margin: 5px 0 22px;
 }
 html.is-print-layout #previewCard .preview-section,
 html.is-print-layout #previewCard .preview-section:last-child {
@@ -2451,7 +2512,7 @@ html.is-print-layout #previewCard .bar-batch.has-lyrics .bar.has-lyrics {
    min-width: 0;
    min-height: calc(var(--print-notation-h) + 3.8mm + var(--print-bar-pad-y-top) + var(--print-bar-pad-y-bottom));
    grid-template-columns: repeat(var(--beats), max-content);
-   padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x) var(--print-bar-pad-y-bottom);
+   padding: var(--print-bar-pad-y-top) var(--print-bar-pad-x-lyrics) var(--print-bar-pad-y-bottom);
 }
 html.is-print-layout #previewCard .preview-section:not(.has-lyric-content) .beat-column.with-lyrics {
    grid-template-rows: var(--print-notation-h);

@@ -120,6 +120,138 @@ export function slotBarIndex(slot) {
    return match ? Number(match[1]) : -1;
 }
 
+// ---- Lyric syllable splitting (pure, DOM-free) ----
+// Lightweight English-oriented syllabifier. It is heuristic (no dictionary), so
+// it won't be perfect for every word, but it produces natural, singable breaks
+// for typical worship lyrics (e.g. "amazing" -> a·maz·ing). Users can always
+// hand-tune the result afterwards in the per-beat inputs.
+const VOWELS = "aeiouy";
+const isVowel = (character) => VOWELS.includes(String(character).toLowerCase());
+
+/**
+ * Split a single word into syllable chunks. Returns an array of 1+ pieces.
+ * Punctuation attached to the word (commas, apostrophes) is preserved on the
+ * chunk it belongs to. Very short words and single-nucleus words are not split.
+ *
+ * Strategy (classic vowel-group heuristic):
+ *  1. Find vowel groups (maximal runs of vowels) — each is one syllable nucleus.
+ *  2. Drop a silent trailing "e" nucleus ("grace", "saved" stay one syllable).
+ *  3. Between two nuclei, assign the consonant cluster: a single consonant goes
+ *     to the following syllable (V|CV → "a·maz"); two or more consonants split
+ *     (VC|CV → "won·der"), leaving the last consonant with the next syllable.
+ */
+export function splitSyllables(word) {
+   const raw = String(word ?? "");
+   if (!raw) return [];
+   const match = raw.match(/^([^A-Za-z]*)([A-Za-z][A-Za-z'’-]*)?([^A-Za-z]*)$/);
+   if (!match || !match[2]) return [raw];
+   const [, lead, core, trail] = match;
+   // Already hyphenated by the user (e.g. "a-maz-ing")? Respect their breaks.
+   if (core.includes("-")) {
+      return applyAffix(core.split("-").filter(Boolean), lead, trail);
+   }
+   const chars = core.split("");
+   const letters = core.replace(/['’]/g, "");
+   if (letters.length <= 3) return applyAffix([core], lead, trail);
+
+   // 1) Vowel groups → nuclei (store start index of each group).
+   const groups = [];
+   let inVowel = false;
+   for (let i = 0; i < chars.length; i += 1) {
+      const v = /[A-Za-z]/.test(chars[i]) && isVowel(chars[i]);
+      if (v && !inVowel) groups.push({ start: i, end: i });
+      else if (v) groups[groups.length - 1].end = i;
+      inVowel = v;
+   }
+   // 2) Drop silent trailing "e" (e.g. grace, saved, more) — but not "the"/"be"
+   //    handled by the length<=3 guard above.
+   if (groups.length >= 2) {
+      const last = groups[groups.length - 1];
+      const isFinalE =
+         last.start === last.end && chars[last.start].toLowerCase() === "e" && last.end === chars.length - 1;
+      if (isFinalE) groups.pop();
+   }
+   // 2b) Drop a silent "e" in a "-ed"/"-es" ending (saved, praised, ransomed,
+   //     raises) so the ending clings to the previous syllable rather than
+   //     forming its own beat. The "e" is voiced after t/d ("wanted"), so skip
+   //     those.
+   if (groups.length >= 2) {
+      const last = groups[groups.length - 1];
+      const tail = core.slice(last.start).toLowerCase();
+      const beforeE = last.start > 0 ? chars[last.start - 1].toLowerCase() : "";
+      if (last.start === last.end && (tail === "ed" || tail === "es") && beforeE && !"td".includes(beforeE)) {
+         groups.pop();
+      }
+   }
+   if (groups.length <= 1) return applyAffix([core], lead, trail);
+
+   // 3) Choose a cut index between each pair of adjacent nuclei.
+   const cuts = [];
+   for (let g = 0; g < groups.length - 1; g += 1) {
+      const vowelEnd = groups[g].end; // last vowel of this nucleus
+      const nextVowelStart = groups[g + 1].start; // first vowel of next nucleus
+      const consonants = nextVowelStart - vowelEnd - 1;
+      // 1 (or 0) consonant → cut right after the vowel (V|CV).
+      // 2+ consonants → keep the first consonant with this syllable (VC|CV).
+      const cut = consonants <= 1 ? vowelEnd + 1 : vowelEnd + 2;
+      if (cut > 0 && cut < chars.length) cuts.push(cut);
+   }
+   if (!cuts.length) return applyAffix([core], lead, trail);
+
+   const pieces = [];
+   let start = 0;
+   for (const cut of cuts) {
+      pieces.push(core.slice(start, cut));
+      start = cut;
+   }
+   pieces.push(core.slice(start));
+   return applyAffix(mergeVowelless(pieces.filter(Boolean)), lead, trail);
+}
+
+// Merge any chunk that has no vowel (unsingable, e.g. a lone "g"/"ch") into an
+// adjacent chunk so every syllable carries a nucleus.
+function mergeVowelless(pieces) {
+   const out = [];
+   for (const piece of pieces) {
+      if (!/[aeiouy]/i.test(piece) && out.length) out[out.length - 1] += piece;
+      else out.push(piece);
+   }
+   return out.length ? out : pieces;
+}
+
+// Re-attach leading/trailing punctuation to the first/last syllable chunk.
+function applyAffix(pieces, lead, trail) {
+   if (!pieces.length) return [`${lead}${trail}`];
+   const out = pieces.slice();
+   out[0] = `${lead}${out[0]}`;
+   out[out.length - 1] = `${out[out.length - 1]}${trail}`;
+   return out;
+}
+
+/**
+ * Turn a free-form lyric line/paragraph into an ordered list of syllable
+ * tokens ready to drop into consecutive beats. Multi-syllable words get a
+ * trailing hyphen on every chunk except the last, matching hymnal style
+ * (e.g. "amazing grace" -> ["a-", "maz-", "ing", "grace"]).
+ */
+export function syllabifyLyrics(text) {
+   const words = String(text ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean);
+   const tokens = [];
+   for (const word of words) {
+      const pieces = splitSyllables(word);
+      pieces.forEach((piece, index) => {
+         const isLast = index === pieces.length - 1;
+         const needsHyphen = !isLast && !/[-.,;:!?]$/.test(piece);
+         tokens.push(needsHyphen ? `${piece}-` : piece);
+      });
+   }
+   return tokens;
+}
+
 // ---- Section-data helpers (mutate plain data; no DOM) ----
 export function beatValue(section, slot) {
    const value = section.beats[slot];

@@ -20,8 +20,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260801-pdf-section-chip-2" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260801-pdf-section-chip-2" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260808-auto-syllable-off" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260808-auto-syllable-off" />
    </head>
    <body>
       <header class="topbar">
@@ -252,6 +252,31 @@
                         <span><kbd>Shift</kbd> + <kbd>Enter</kbd> previous beat</span>
                         <span>Paste a sentence to distribute words automatically</span>
                      </div>
+                     <!-- Auto-syllable feature temporarily disabled (kept for future use). Logic remains in src/notation.js + src/events.js.
+                     <div class="palette-group auto-syllable" aria-label="Auto-split lyrics into syllables">
+                        <div>
+                           <span class="palette-label">Auto syllables</span>
+                           <p class="lyrics-setting-copy">
+                              Paste a full line, and we'll split it into singable syllables across the beats of the
+                              active section.
+                           </p>
+                        </div>
+                        <textarea
+                           id="autoSyllableInput"
+                           class="auto-syllable-input"
+                           rows="2"
+                           placeholder="e.g. Amazing grace how sweet the sound"
+                           spellcheck="false"
+                        ></textarea>
+                        <div class="auto-syllable-actions">
+                           <button class="button button-primary button-small" id="autoSyllableApply" type="button">
+                              Split &amp; fill beats
+                           </button>
+                           <span class="auto-syllable-hint" id="autoSyllableHint"></span>
+                        </div>
+                     </div>
+                     -->
+                  </div>
                   </div>
                </div>
             </aside>
@@ -366,6 +391,6 @@
          </div>
       </footer>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
-      <script type="module" src="src/app.js"></script>
+      <script type="module" src="src/app.js?v=20260808-auto-syllable-off"></script>
    </body>
 </html>

@@ -13,6 +13,8 @@ import {
    prepareLyricsForDuration,
    barHasContent,
    slotBarIndex,
+   splitSyllables,
+   syllabifyLyrics,
    MAX_BARS,
 } from "../src/notation.js";
 
@@ -105,4 +107,32 @@ test("safeFileName produces a filesystem-safe slug", () => {
    assert.equal(safeFileName("My Song! (v2)"), "My-Song-v2");
    assert.equal(safeFileName(""), "worship-notation-score");
    assert.equal(safeFileName("///"), "worship-notation-score");
+});
+
+test("splitSyllables keeps short words and single-nucleus words intact", () => {
+   assert.deepEqual(splitSyllables("God"), ["God"]);
+   assert.deepEqual(splitSyllables("the"), ["the"]);
+   assert.deepEqual(splitSyllables("grace"), ["grace"]); // silent trailing e
+   assert.deepEqual(splitSyllables("saved"), ["saved"]); // silent -ed
+});
+
+test("splitSyllables breaks multi-syllable words naturally", () => {
+   assert.deepEqual(splitSyllables("wonderful"), ["won", "der", "ful"]);
+   assert.deepEqual(splitSyllables("mercy"), ["mer", "cy"]);
+   assert.deepEqual(splitSyllables("salvation"), ["sal", "va", "tion"]);
+});
+
+test("splitSyllables respects user-supplied hyphenation", () => {
+   assert.deepEqual(splitSyllables("a-maz-ing"), ["a", "maz", "ing"]);
+});
+
+test("splitSyllables preserves attached punctuation", () => {
+   const pieces = splitSyllables("gone,");
+   assert.equal(pieces[pieces.length - 1].endsWith(","), true);
+});
+
+test("syllabifyLyrics returns hymnal-style tokens with trailing hyphens", () => {
+   assert.deepEqual(syllabifyLyrics("amazing grace"), ["a-", "ma-", "zing", "grace"]);
+   assert.deepEqual(syllabifyLyrics("  God   is  "), ["God", "is"]);
+   assert.deepEqual(syllabifyLyrics(""), []);
 });

@@ -1,6 +1,6 @@
 // store.js — single source of truth for app state + palette selection.
 // State is reassigned wholesale on import/reset, so consumers must read via getState().
-import { newSection } from "./notation.js";
+import { newSection } from "./notation.js?v=20260808-auto-syllable-off";
 
 function defaultState() {
    const first = newSection("Intro");
@@ -30,8 +30,7 @@ export function resetState() {
    state = defaultState();
    return state;
 }
-export const activeSection = () =>
-   state.sections.find((section) => section.id === state.activeId) || state.sections[0];
+export const activeSection = () => state.sections.find((section) => section.id === state.activeId) || state.sections[0];
 export const findSection = (id) => state.sections.find((section) => section.id === id);
 
 export const getSelectedPaletteItem = () => selectedPaletteItem;

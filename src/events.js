@@ -19,9 +19,10 @@ import {
    setLyric,
    prepareLyricsForDuration,
    barHasContent,
+   syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js";
-import { $, prefersTap, toast } from "./dom.js";
+} from "./notation.js?v=20260808-auto-syllable-off";
+import { $, prefersTap, toast } from "./dom.js?v=20260808-auto-syllable-off";
 import {
    getState,
    setState,
@@ -29,9 +30,15 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js";
-import { initRender, renderControls, renderPreview, renderCustomChord, chordLabel } from "./render.js";
-import { initPrintListeners, exportToPdf } from "./pdf.js";
+} from "./store.js?v=20260808-auto-syllable-off";
+import {
+   initRender,
+   renderControls,
+   renderPreview,
+   renderCustomChord,
+   chordLabel,
+} from "./render.js?v=20260808-auto-syllable-off";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260808-auto-syllable-off";
 
 // ---- UI-only state (not part of the serializable document) ----
 let previewZoom = Math.min(1.35, Math.max(0.65, Number(localStorage.getItem("chordSheetZoom")) || 1));
@@ -88,6 +95,22 @@ function selectPaletteItem(element, item) {
       );
    }
 }
+function buildDragGhost(item) {
+   const ghost = document.createElement("div");
+   ghost.className = "drag-ghost";
+   if (item.type === "chord") {
+      ghost.innerHTML = chordLabel(item.value);
+   } else {
+      ghost.textContent = durationMeta[item.value]?.symbol || item.value;
+   }
+   // Positioned off-screen so it never flashes at its DOM location before the
+   // browser snapshots it for the drag image.
+   ghost.style.position = "fixed";
+   ghost.style.top = "-1000px";
+   ghost.style.left = "-1000px";
+   ghost.style.pointerEvents = "none";
+   return ghost;
+}
 function bindPaletteItem(element, item) {
    if (element.dataset.paletteBound) return;
    element.dataset.paletteBound = "true";
@@ -116,6 +139,15 @@ function bindPaletteItem(element, item) {
       event.dataTransfer.setData("application/chord-sheet", JSON.stringify(item));
       element.classList.add("is-dragging");
       document.body.classList.add("is-dragging");
+      // Uniform drag ghost: chord chips and duration options have very different
+      // intrinsic sizes, so the native drag image looked inconsistent ("+"/symbol
+      // rendered at different sizes). Use a single fixed-size chip for every item.
+      const ghost = buildDragGhost(item);
+      if (ghost && event.dataTransfer.setDragImage) {
+         document.body.appendChild(ghost);
+         event.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+         requestAnimationFrame(() => ghost.remove());
+      }
    });
    element.addEventListener("dragend", () => {
       element.classList.remove("is-dragging");
@@ -516,6 +548,8 @@ const MIN_LEAF = 60;
   every dot identical. Each batch (one printed line of up to 4 bars) fills its
   container: leaf = availableWidth / leavesInThatLine, floored at MIN_LEAF. When
   there are too many beats to fit, leaf stays at MIN_LEAF and the line scrolls.
+  Lyrics mode uses the SAME dynamic --leaf so the beat pitch never changes when
+  lyrics are toggled on/off (lyric columns are min-width:--leaf, width:max-content).
 */
 function distributeLeafWidth() {
    // Print-layout preview uses fixed mm geometry, not --leaf; leave it alone.
@@ -524,11 +558,6 @@ function distributeLeafWidth() {
       const available = grid.clientWidth;
       if (!available) return;
       grid.querySelectorAll(".bar-batch").forEach((batch) => {
-         // Lyrics mode uses fixed-width lyric columns (need room for text); skip.
-         if (batch.classList.contains("has-lyrics")) {
-            batch.style.removeProperty("--leaf");
-            return;
-         }
          const leaves =
             batch.querySelectorAll(".beat-column:not(.duration-column)").length +
             batch.querySelectorAll(".sub-beat").length;
@@ -854,6 +883,7 @@ function bindControlListeners() {
       save();
       toast(getState().lyricsEnabled ? "Lyrics mode enabled" : "Lyrics hidden from score");
    });
+   bindAutoSyllable();
    document.querySelectorAll(".ribbon-tab").forEach((tab) => {
       tab.addEventListener("click", () => activateRibbon(tab));
       tab.addEventListener("keydown", (event) => {
@@ -995,6 +1025,88 @@ function bindControlListeners() {
       }
       if (event.key === "Escape" && !editing && $("#ribbonToggle").getAttribute("aria-expanded") === "true")
          toggleRibbon(false);
+   });
+}
+
+// ---- Auto-syllable: split a pasted line into singable syllables across beats ----
+// The lyric inputs are already laid out in visual (beat) order in the DOM, so we
+// reuse that ordering — the same approach the per-input paste handler uses.
+function bindAutoSyllable() {
+   const input = $("#autoSyllableInput");
+   const apply = $("#autoSyllableApply");
+   const hint = $("#autoSyllableHint");
+   if (!input || !apply) return;
+
+   const setHint = (text) => {
+      if (hint) hint.textContent = text || "";
+   };
+
+   const run = () => {
+      const state = getState();
+      const text = input.value.trim();
+      if (!text) {
+         setHint("Type or paste a lyric line first.");
+         input.focus();
+         return;
+      }
+      // Ensure lyrics mode is on for the active section so the beat inputs exist.
+      const section = findSection(state.activeId) || state.sections[0];
+      if (!section) return;
+      if (!state.lyricsEnabled) {
+         state.lyricsEnabled = true;
+         $("#lyricsEnabled").checked = true;
+      }
+      section.lyricsEnabled = true;
+      state.activeId = section.id;
+      renderControls();
+      renderPreview();
+
+      // Collect this section's lyric inputs in visual order.
+      const inputs = [...document.querySelectorAll(`.lyric-input[data-section="${section.id}"]`)];
+      if (!inputs.length) {
+         setHint("This section has no beats to fill.");
+         return;
+      }
+      const tokens = syllabifyLyrics(text);
+      if (!tokens.length) {
+         setHint("Nothing to split.");
+         return;
+      }
+      // Write syllables into consecutive beats; if we run out of beats, pack the
+      // remaining syllables into the last available slot so nothing is lost.
+      inputs.forEach((field, index) => {
+         if (index >= tokens.length) {
+            // Clear leftover beats beyond the lyric so old text doesn't linger.
+            field.value = "";
+            setLyric(section, field.dataset.slot, "");
+            return;
+         }
+         const value =
+            index === inputs.length - 1 && tokens.length > inputs.length
+               ? tokens.slice(index).join(" ")
+               : tokens[index];
+         field.value = value;
+         setLyric(section, field.dataset.slot, value);
+      });
+      save();
+
+      const placed = Math.min(tokens.length, inputs.length);
+      const overflow = tokens.length > inputs.length;
+      setHint(
+         overflow
+            ? `${tokens.length} syllables placed; extras packed into the last beat.`
+            : `${tokens.length} syllable${tokens.length === 1 ? "" : "s"} → ${placed} beat${placed === 1 ? "" : "s"} in “${section.name}”.`,
+      );
+      toast(`Filled ${placed} beat${placed === 1 ? "" : "s"} with syllables`);
+   };
+
+   apply.addEventListener("click", run);
+   input.addEventListener("keydown", (event) => {
+      // Ctrl/Cmd+Enter runs the split without leaving the textarea.
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+         event.preventDefault();
+         run();
+      }
    });
 }
 
