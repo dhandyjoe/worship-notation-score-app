@@ -1808,6 +1808,22 @@ html[data-theme="dark"] .placing-cancel:hover {
 }
 
 @media print {
+   /* ==========================================================================
+      REAL PRINT / PDF OUTPUT (Cmd+P, Export PDF button).
+      --------------------------------------------------------------------------
+      IMPORTANT for maintainers:
+      • Spacing/geometry values live in the `:root` tokens above AND in the
+        `html.is-print-layout #previewCard …` block below. During printing the
+        beforeprint listener (src/events.js) adds `is-print-layout`, so BOTH this
+        block and that block are active at once. Because is-print-layout uses the
+        `#previewCard` id (higher specificity), IT WINS for any shared selector.
+        => To change score geometry, edit `html.is-print-layout #previewCard …`,
+           NOT the rules here. Editing geometry here has NO visible effect.
+      • This @media print block's real job is the print-ONLY concerns that the
+        on-screen preview must NOT apply: the @page box, page body padding, and
+        hiding interactive chrome (buttons, menus) from paper. (App shell chrome
+        — topbar/editor-card/footer — is hidden by @media print in ui.css.)
+      ========================================================================== */
    @page {
       size: A4;
       margin: 0;
