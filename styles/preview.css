@@ -1785,10 +1785,11 @@ html[data-theme="dark"] .placing-cancel:hover {
    does NOT affect the live editor layout.
    ============================================================================ */
 :root {
-   /* Content-hugging beats: empty slots stay slim (~20px) while chords grow
-      to max-content, matching the original tight PDF spacing. */
-   --print-slot: 5.3mm;
-   --print-sub-gap: 0.5mm;
+   /* Content-hugging beats: empty slots stay slim while chords grow to
+      max-content. Slightly widened for clearer beat separation while still
+      hugging content (empty beats stay slim, chords grow to max-content). */
+   --print-slot: 6.2mm;
+   --print-sub-gap: 0.9mm;
    --print-duration-stroke: 0.38mm;
    /* Inset beam ends so adjacent subdivided beats show a visible break
       between their lines (with zero sub-gap they would otherwise merge). */
@@ -1840,7 +1841,7 @@ html[data-theme="dark"] .placing-cancel:hover {
    }
 
    body {
-      padding: 9mm 9mm 13mm;
+      padding: 9mm 9mm 12mm;
    }
    .preview-card {
       font-size: 11px;
@@ -2276,7 +2277,7 @@ html[data-theme="dark"] .placing-cancel:hover {
       display: block;
       color: #7b8b81;
       font:
-         600 7.5px/1 Inter,
+         600 10.5px/1 Inter,
          ui-sans-serif,
          sans-serif;
       letter-spacing: 0.04em;
@@ -2339,7 +2340,7 @@ html.is-print-layout #previewCard .preview-rule {
 html.is-print-layout #previewCard .preview-section,
 html.is-print-layout #previewCard .preview-section:last-child {
    position: relative;
-   margin: 0 0 5px;
+   margin: 0 0 12px;
    padding: 0 0 1px 8px;
    border-bottom: 0;
 }
@@ -2355,17 +2356,23 @@ html.is-print-layout #previewCard .preview-section.is-active::before {
    background: var(--lime);
 }
 html.is-print-layout #previewCard .section-preview-heading {
-   min-height: 16px;
+   min-height: 13px;
    margin-bottom: 0;
    /* Never orphan a section title at the bottom of a page. */
    break-after: avoid;
    page-break-after: avoid;
 }
 html.is-print-layout #previewCard .section-title {
+   display: inline-block;
    color: var(--dark-green);
-   font-size: 13px;
-   font-weight: 900;
-   letter-spacing: 0.1em;
+   font-size: 14.5px;
+   font-style: italic;
+   font-weight: 800;
+   letter-spacing: 0.03em;
+   padding: 2.5px 11px 3px;
+   border: 1.4px solid rgba(50, 122, 82, 0.5);
+   border-radius: 8px;
+   background: rgba(184, 232, 92, 0.16);
    pointer-events: none;
    text-decoration: none;
 }
@@ -2375,7 +2382,7 @@ html.is-print-layout #previewCard .bar-grid {
    flex-wrap: wrap;
    align-items: stretch;
    width: 100%;
-   margin: 1px 0;
+   margin: 0 0 1px;
    padding: 0;
    column-gap: 0;
    row-gap: 0;
@@ -2717,7 +2724,7 @@ html.is-print-layout #previewCard .pdf-signature {
    margin-top: 18px;
    color: #7b8b81;
    font:
-      600 7.5px/1 Inter,
+      600 10.5px/1 Inter,
       ui-sans-serif,
       sans-serif;
    letter-spacing: 0.04em;

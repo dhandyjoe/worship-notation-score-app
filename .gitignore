@@ -4,5 +4,11 @@
 # Test & tooling artifacts
 .playwright-mcp/
 
+# Screenshot / debug artifacts (never commit these)
+*.png
+!assets/**/*.png
+pdf-layout-check.png
+tests/Pasted*
+
 # Dependencies (if ever added)
 node_modules/

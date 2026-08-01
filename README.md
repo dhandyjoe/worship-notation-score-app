@@ -2,6 +2,8 @@
 
 Chord & Number Score Builder — arrange chords and number (Nashville) notation, ready to play and export to PDF.
 
+**Live demo:** https://dhandyjoe.github.io/chord-sheet-app/
+
 ## Features
 
 - 🎸 Chord palette, slash-chord builder, and full Nashville Number System (with upper/lower octave dots)
@@ -22,6 +24,14 @@ python3 -m http.server 4173
 ```
 
 > ⚠️ The score lives in memory for the session only — use **Export .file** to save your work.
+
+## Deployment (GitHub Pages)
+
+This is a fully static site (no build step). It is deployed with **Settings → Pages → Deploy from a branch → `master` / `/root`**.
+
+- All asset paths are **relative**, so the app works under the `/chord-sheet-app/` subpath.
+- A `.nojekyll` file at the repo root disables Jekyll processing.
+- To publish changes: commit and `git push origin master` — Pages redeploys automatically.
 
 ## Architecture
 

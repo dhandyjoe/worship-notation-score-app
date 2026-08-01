@@ -457,11 +457,11 @@ html.is-print-layout .preview-viewport {
 html.is-print-layout .ribbon-workspace .preview-card {
    min-width: min(920px, 100%);
    margin: 0 auto;
-   border: 1px solid #d5e0d8;
-   border-radius: 2px;
-   padding: 14mm 12mm 16mm;
+   border: 0;
+   border-radius: 0;
+   padding: 9mm 9mm 12mm;
    background: #fff;
-   box-shadow: 0 10px 30px rgba(24, 67, 42, 0.1);
+   box-shadow: none;
    zoom: 1 !important;
 }
 html.is-print-layout .scroll-affordance {
@@ -1428,10 +1428,11 @@ body.is-dragging .drop-target::after {
    .ribbon-workspace .preview-card {
       min-width: 0;
       margin: 0;
-      border: 0;
-      border-radius: 0;
+      border: 0 !important;
+      border-radius: 0 !important;
       background: #fff;
-      box-shadow: none;
+      box-shadow: none !important;
+      padding: 0 !important;
       zoom: 1 !important;
    }
    .preview-section .section-tools,
@@ -1440,14 +1441,15 @@ body.is-dragging .drop-target::after {
       display: none !important;
    }
    .pdf-signature {
-      position: fixed;
+      position: fixed !important;
       right: 9mm;
-      bottom: 4mm;
+      bottom: 3mm !important;
       left: 9mm;
+      margin: 0 !important;
       display: block !important;
       color: #7b8b81;
       font:
-         600 7.5px/1 Inter,
+         600 10.5px/1 Inter,
          ui-sans-serif,
          sans-serif;
       letter-spacing: 0.04em;
