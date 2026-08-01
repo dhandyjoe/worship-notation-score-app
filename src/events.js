@@ -31,6 +31,7 @@ import {
    setSelectedPaletteItem,
 } from "./store.js";
 import { initRender, renderControls, renderPreview, renderCustomChord, chordLabel } from "./render.js";
+import { initPrintListeners, exportToPdf } from "./pdf.js";
 
 // ---- UI-only state (not part of the serializable document) ----
 let previewZoom = Math.min(1.35, Math.max(0.65, Number(localStorage.getItem("chordSheetZoom")) || 1));
@@ -950,27 +951,7 @@ function bindControlListeners() {
    });
    $("#exportBtn").addEventListener("click", () => {
       renderPreview();
-      const viewport = $("#previewViewport");
-      const root = document.documentElement;
-      const pagePosition = { x: window.scrollX, y: window.scrollY };
-      const canvasPosition = { x: viewport.scrollLeft, y: viewport.scrollTop };
-      const scrollBehavior = root.style.scrollBehavior;
-      const wasPrintPreview = printLayoutPreview;
-      const card = $("#previewCard");
-      const previousZoom = card?.style.zoom;
-      // Export always uses the print stylesheet at paper scale (zoom 1).
-      root.style.scrollBehavior = "auto";
-      window.scrollTo(0, 0);
-      viewport.scrollTo(0, 0);
-      if (card) card.style.zoom = 1;
-      requestAnimationFrame(() => {
-         window.print();
-         if (card) card.style.zoom = wasPrintPreview ? 1 : previousZoom || "";
-         window.scrollTo(pagePosition.x, pagePosition.y);
-         viewport.scrollTo(canvasPosition.x, canvasPosition.y);
-         root.style.scrollBehavior = scrollBehavior;
-         requestAnimationFrame(updateViewportOverflow);
-      });
+      exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
    });
    window.addEventListener(
       "scroll",
@@ -982,25 +963,9 @@ function bindControlListeners() {
    );
    window.addEventListener("resize", updateViewportOverflow, { passive: true });
 
-   // Single source of truth for print geometry: the `is-print-layout` class.
-   // Browsers fire beforeprint/afterprint for BOTH the Export button (window.print())
-   // and a manual Cmd/Ctrl+P, so the printed page always matches the on-screen
-   // PDF-layout preview. We remember whether the class was already on (manual
-   // "PDF layout" toggle) so we only strip it afterward if WE added it.
-   let printClassAddedForJob = false;
-   window.addEventListener("beforeprint", () => {
-      const root = document.documentElement;
-      if (!root.classList.contains("is-print-layout")) {
-         root.classList.add("is-print-layout");
-         printClassAddedForJob = true;
-      }
-   });
-   window.addEventListener("afterprint", () => {
-      if (printClassAddedForJob) {
-         document.documentElement.classList.remove("is-print-layout");
-         printClassAddedForJob = false;
-      }
-   });
+   // Register beforeprint/afterprint so the `is-print-layout` geometry is the
+   // single source of truth for printed output (see src/pdf.js).
+   initPrintListeners();
 
    document.addEventListener("keydown", (event) => {
       const editing = event.target?.matches?.('input,textarea,select,[contenteditable="true"]') ?? false;
