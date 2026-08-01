@@ -2357,6 +2357,9 @@ html.is-print-layout #previewCard .preview-section.is-active::before {
 html.is-print-layout #previewCard .section-preview-heading {
    min-height: 16px;
    margin-bottom: 0;
+   /* Never orphan a section title at the bottom of a page. */
+   break-after: avoid;
+   page-break-after: avoid;
 }
 html.is-print-layout #previewCard .section-title {
    color: var(--dark-green);
@@ -2395,6 +2398,9 @@ html.is-print-layout #previewCard .bar-batch .bar {
    gap: 0;
    border: 0 !important;
    overflow: visible;
+   /* Keep each bar whole — never split a bar across a page boundary. */
+   break-inside: avoid;
+   page-break-inside: avoid;
 }
 html.is-print-layout #previewCard .bar-batch .bar::before,
 html.is-print-layout #previewCard .bar-batch .bar::after {
