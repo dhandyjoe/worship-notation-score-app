@@ -2392,6 +2392,9 @@ html.is-print-layout #previewCard .bar-batch .bar::after {
    border-radius: 1px;
    background: #173a28;
    transform: translateY(-50%);
+   /* Ensure barlines render on paper. */
+   -webkit-print-color-adjust: exact;
+   print-color-adjust: exact;
 }
 html.is-print-layout #previewCard .bar-batch .bar::before {
    left: 0;
@@ -2521,6 +2524,15 @@ html.is-print-layout #previewCard .sub-beat .placed-chord {
       sans-serif;
    letter-spacing: -0.02em;
    cursor: default;
+   /* Force the green pill background to render on paper (Chrome/Safari drop
+      backgrounds when printing unless this hint is set). */
+   -webkit-print-color-adjust: exact;
+   print-color-adjust: exact;
+}
+/* Flat glyph needs tighter negative margins at print type size than on screen. */
+html.is-print-layout #previewCard .chord-flat {
+   margin-right: -0.22em;
+   margin-left: -0.21em;
 }
 html.is-print-layout #previewCard .beat.has-chord {
    width: max-content;
@@ -2612,6 +2624,9 @@ html.is-print-layout #previewCard .nested-duration-line {
    border-radius: 0;
    cursor: default;
    pointer-events: none;
+   /* Beam strokes are colored borders — force them to print. */
+   -webkit-print-color-adjust: exact;
+   print-color-adjust: exact;
 }
 html.is-print-layout #previewCard .duration-line {
    top: var(--print-beam-top);
