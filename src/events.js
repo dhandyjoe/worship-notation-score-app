@@ -981,6 +981,27 @@ function bindControlListeners() {
       { passive: true },
    );
    window.addEventListener("resize", updateViewportOverflow, { passive: true });
+
+   // Single source of truth for print geometry: the `is-print-layout` class.
+   // Browsers fire beforeprint/afterprint for BOTH the Export button (window.print())
+   // and a manual Cmd/Ctrl+P, so the printed page always matches the on-screen
+   // PDF-layout preview. We remember whether the class was already on (manual
+   // "PDF layout" toggle) so we only strip it afterward if WE added it.
+   let printClassAddedForJob = false;
+   window.addEventListener("beforeprint", () => {
+      const root = document.documentElement;
+      if (!root.classList.contains("is-print-layout")) {
+         root.classList.add("is-print-layout");
+         printClassAddedForJob = true;
+      }
+   });
+   window.addEventListener("afterprint", () => {
+      if (printClassAddedForJob) {
+         document.documentElement.classList.remove("is-print-layout");
+         printClassAddedForJob = false;
+      }
+   });
+
    document.addEventListener("keydown", (event) => {
       const editing = event.target?.matches?.('input,textarea,select,[contenteditable="true"]') ?? false;
       if ((event.ctrlKey || event.metaKey) && ["+", "=", "-", "0"].includes(event.key)) {

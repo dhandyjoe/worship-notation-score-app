@@ -1772,30 +1772,42 @@ html[data-theme="dark"] .placing-cancel:hover {
   --print-chord-size      chord glyph size
   --print-lyric-size      lyric text size
 */
-@media print {
-   :root {
-      --print-slot: 5.3mm;
-      /* Content-hugging beats: empty slots stay slim (~20px) while chords grow
-         to max-content, matching the original tight PDF spacing. */
-      --print-sub-gap: 0.5mm;
-      --print-duration-stroke: 0.38mm;
-      /* Inset beam ends so adjacent subdivided beats show a visible break
-         between their lines (with zero sub-gap they would otherwise merge). */
-      --print-duration-inset: 1.2mm;
-      --print-bar-pad-x: 0mm;
-      --print-bar-pad-y-top: 2mm;
-      --print-bar-pad-y-bottom: 1mm;
-      --print-chord-size: 4.3mm;
-      --print-lyric-size: 3.2mm;
-      /* Extra headroom so raised beams + high-octave dots never collide/clip. */
-      --print-notation-h: 11.5mm;
-      --print-chord-h: 8.2mm;
-      --print-beam-top: 0.7mm;
-      --print-beam-gap: 0.75mm;
-      /* Keep 42px so print barlines stay visually stable and regression-safe. */
-      --print-barline-h: 42px;
-   }
+/* ============================================================================
+   PRINT / PDF SPACING TOKENS — SINGLE SOURCE OF TRUTH
+   ----------------------------------------------------------------------------
+   Edit these values in ONE place to tune PDF/print geometry. They are consumed
+   by BOTH print contexts:
+     • @media print          — the real print/PDF output (Cmd+P, Export PDF)
+     • html.is-print-layout   — the on-screen "PDF layout" preview
+   Both contexts are active simultaneously during printing (see the beforeprint
+   listener in src/events.js). Because these are custom properties, defining
+   them unconditionally is inert until referenced by a print-scoped rule, so it
+   does NOT affect the live editor layout.
+   ============================================================================ */
+:root {
+   /* Content-hugging beats: empty slots stay slim (~20px) while chords grow
+      to max-content, matching the original tight PDF spacing. */
+   --print-slot: 5.3mm;
+   --print-sub-gap: 0.5mm;
+   --print-duration-stroke: 0.38mm;
+   /* Inset beam ends so adjacent subdivided beats show a visible break
+      between their lines (with zero sub-gap they would otherwise merge). */
+   --print-duration-inset: 1.2mm;
+   --print-bar-pad-x: 0mm;
+   --print-bar-pad-y-top: 2mm;
+   --print-bar-pad-y-bottom: 1mm;
+   --print-chord-size: 4.3mm;
+   --print-lyric-size: 3.2mm;
+   /* Extra headroom so raised beams + high-octave dots never collide/clip. */
+   --print-notation-h: 11.5mm;
+   --print-chord-h: 8.2mm;
+   --print-beam-top: 0.7mm;
+   --print-beam-gap: 0.75mm;
+   /* Keep 42px so print barlines stay visually stable and regression-safe. */
+   --print-barline-h: 42px;
+}
 
+@media print {
    @page {
       size: A4;
       margin: 0;
@@ -2256,25 +2268,8 @@ html[data-theme="dark"] .placing-cancel:hover {
    }
 }
 
-/* On-screen PDF layout preview: same unit-grid score geometry as @media print. */
-html.is-print-layout {
-   --print-slot: 5.3mm;
-   /* Content-hugging beats — see note in @media print :root. */
-   --print-sub-gap: 0.5mm;
-   --print-duration-stroke: 0.38mm;
-   /* Break between adjacent beams — see note in @media print :root. */
-   --print-duration-inset: 1.2mm;
-   --print-bar-pad-x: 0mm;
-   --print-bar-pad-y-top: 2mm;
-   --print-bar-pad-y-bottom: 1mm;
-   --print-chord-size: 4.3mm;
-   --print-lyric-size: 3.2mm;
-   --print-notation-h: 11.5mm;
-   --print-chord-h: 8.2mm;
-   --print-beam-top: 0.7mm;
-   --print-beam-gap: 0.75mm;
-   --print-barline-h: 42px;
-}
+/* On-screen PDF layout preview: same unit-grid score geometry as @media print.
+   Spacing tokens come from the single :root block at the top of this section. */
 html.is-print-layout .preview-header > div:first-child > .eyebrow,
 html.is-print-layout .section-tools,
 html.is-print-layout .preview-actions,
