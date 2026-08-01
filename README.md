@@ -2,7 +2,7 @@
 
 Chord & Number Score Builder — arrange chords and number (Nashville) notation, ready to play and export to PDF.
 
-**Live demo:** https://dhandyjoe.github.io/chord-sheet-app/
+**Live demo:** https://dhandyjoe.github.io/worship-notation-score-app/
 
 ## Features
 
@@ -29,7 +29,7 @@ python3 -m http.server 4173
 
 This is a fully static site (no build step). It is deployed with **Settings → Pages → Deploy from a branch → `master` / `/root`**.
 
-- All asset paths are **relative**, so the app works under the `/chord-sheet-app/` subpath.
+- All asset paths are **relative**, so the app works under the `/worship-notation-score-app/` subpath.
 - A `.nojekyll` file at the repo root disables Jekyll processing.
 - To publish changes: commit and `git push origin master` — Pages redeploys automatically.
 
