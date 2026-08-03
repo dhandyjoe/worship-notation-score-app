@@ -14,9 +14,9 @@ import {
    escapeHTML,
    beatValue,
    lyricValue,
-} from "./notation.js?v=20260808-auto-syllable-off";
-import { $, prefersTap } from "./dom.js?v=20260808-auto-syllable-off";
-import { getState } from "./store.js?v=20260808-auto-syllable-off";
+} from "./notation.js?v=20260810-devicehint-modal";
+import { $, prefersTap } from "./dom.js?v=20260810-devicehint-modal";
+import { getState } from "./store.js?v=20260810-devicehint-modal";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {

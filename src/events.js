@@ -21,8 +21,8 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260808-auto-syllable-off";
-import { $, prefersTap, toast } from "./dom.js?v=20260808-auto-syllable-off";
+} from "./notation.js?v=20260810-devicehint-modal";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260810-devicehint-modal";
 import {
    getState,
    setState,
@@ -30,15 +30,16 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260808-auto-syllable-off";
+} from "./store.js?v=20260810-devicehint-modal";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260808-auto-syllable-off";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260808-auto-syllable-off";
+} from "./render.js?v=20260810-devicehint-modal";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260810-devicehint-modal";
+import { initPdfOptions } from "./pdfOptions.js?v=20260810-devicehint-modal";
 
 // ---- UI-only state (not part of the serializable document) ----
 let previewZoom = Math.min(1.35, Math.max(0.65, Number(localStorage.getItem("chordSheetZoom")) || 1));
@@ -983,6 +984,16 @@ function bindControlListeners() {
       renderPreview();
       exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
    });
+   // PDF options modal: tweaks --print-* tokens live (mirrors into the on-screen
+   // PDF layout preview) without touching the live editor.
+   initPdfOptions({
+      setPreview: (on, opts) => setPrintLayoutPreview(on, opts),
+      isPreviewOn: () => printLayoutPreview,
+      onExport: () => {
+         renderPreview();
+         exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
+      },
+   });
    window.addEventListener(
       "scroll",
       () => {
@@ -1111,6 +1122,34 @@ function bindAutoSyllable() {
 }
 
 // ---- Public bootstrap entry point ----
+// Desktop-recommendation hint: on PHONES only, gently suggest a larger screen
+// for a roomier arranging + preview experience. Shown on EVERY load/refresh (no
+// persistence) as a centered modal over a blurred backdrop. NOT shown on
+// tablets/iPads or desktop — those are all considered recommended devices
+// (desktop / laptop / tablet). Dismissing it just closes it for the current visit.
+function initDeviceHint() {
+   const hint = $("#deviceHint");
+   if (!hint) return;
+   // Only phones (<= 680px) get the hint. Tablets & desktop are recommended.
+   if (!isPhone()) return;
+
+   const dismiss = () => {
+      hint.classList.remove("is-open");
+      // Wait for the fade-out transition before hiding from the a11y tree.
+      setTimeout(() => {
+         hint.hidden = true;
+      }, 300);
+   };
+
+   hint.hidden = false;
+   // Force a reflow so the browser commits the hidden→visible start state
+   // (opacity:0) before we add the class that fades it in. A tiny timeout is a
+   // robust fallback to nested rAF, which can be throttled in background tabs.
+   void hint.offsetHeight;
+   setTimeout(() => hint.classList.add("is-open"), 60);
+   $("#deviceHintClose")?.addEventListener("click", dismiss);
+}
+
 export function initEvents() {
    // Inject rendering hooks so render.js never needs to import this module (keeps graph acyclic).
    initRender({ bindDraggableChords, bindPaletteItem, bindPreview, updateViewportOverflow });
@@ -1129,4 +1168,5 @@ export function initEvents() {
    updateViewportOverflow();
    if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateViewportOverflow);
    window.addEventListener("load", updateViewportOverflow, { once: true });
+   initDeviceHint();
 }

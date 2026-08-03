@@ -1455,14 +1455,17 @@ html[data-theme="dark"] .sub-beat.has-chord .placed-chord {
    background: rgba(120, 220, 160, 0.08);
 }
 /* Sub-beat dots match regular dots exactly — same size, weight, colour.
-   This is the single source of truth for every beat dot (fix #5). */
+   This is the single source of truth for every beat dot (fix #5).
+   On-screen only: dots are bolder/darker so empty beats read clearly in the
+   live editor. The print/PDF dot is overridden separately in the
+   html.is-print-layout block, so this does NOT affect the exported PDF. */
 .beat-dot,
 .sub-beat .beat-dot {
-   font-size: 13px;
-   font-weight: 400;
+   font-size: 16px;
+   font-weight: 700;
    line-height: 1;
-   opacity: 0.4;
-   color: #9eafa1;
+   opacity: 0.75;
+   color: #6b7d72;
    transform: none;
 }
 .bar-num {
@@ -2405,6 +2408,17 @@ html.is-print-layout #previewCard .preview-section:last-child {
    padding: 0 0 1px 8px;
    border-bottom: 0;
 }
+/* The "active section" highlight (soft fill + rounded negative-margin card) is an
+   editor-only cue. Strip it in print so the PDF (and its live preview) show clean
+   content with no coloured band at the start of a section's row. */
+html.is-print-layout #previewCard .preview-section.is-active {
+   background: transparent !important;
+   border-radius: 0 !important;
+   margin-left: 0 !important;
+   margin-right: 0 !important;
+   padding-left: 8px !important;
+   padding-right: 0 !important;
+}
 html.is-print-layout #previewCard .preview-section::before,
 html.is-print-layout #previewCard .preview-section.is-active::before {
    content: "";
@@ -2706,6 +2720,19 @@ html.is-print-layout #previewCard .nested-beat-group {
    display: flex;
    align-items: flex-end;
    align-self: stretch;
+}
+/* Nested 1/2-beat start alignment: the parent's .sub-beats carries a 2px
+   horizontal padding (an on-screen affordance). That padding pushes the nested
+   beat-group — and therefore the nested beam — 2px to the right of the parent
+   half beam, so their START edges no longer line up (the parent beam is anchored
+   to the padding-free .beat-group). Drop the padding for beats that actually
+   host a nested subdivision so the nested beam starts exactly where the parent
+   beam does, matching how the 1/4-beat lines align. Scoped to
+   .has-nested-duration only, so every other beat (and the verified PDF geometry)
+   is untouched; bar wrapping and beam length are unaffected. */
+html.is-print-layout #previewCard .beat-group.has-nested-duration > .sub-beats {
+   padding-left: 0;
+   padding-right: 0;
 }
 html.is-print-layout #previewCard .nested-sub-beats {
    width: max-content;

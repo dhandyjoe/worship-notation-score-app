@@ -1,6 +1,6 @@
 // store.js — single source of truth for app state + palette selection.
 // State is reassigned wholesale on import/reset, so consumers must read via getState().
-import { newSection } from "./notation.js?v=20260808-auto-syllable-off";
+import { newSection } from "./notation.js?v=20260810-devicehint-modal";
 
 function defaultState() {
    const first = newSection("Intro");

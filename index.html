@@ -20,8 +20,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260808-auto-syllable-off" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260808-auto-syllable-off" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260810-devicehint-modal" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260810-devicehint-modal" />
    </head>
    <body>
       <header class="topbar">
@@ -47,6 +47,15 @@
                id="saveBtn"
             >
                <span aria-hidden="true">↓</span> Export .file</button
+            ><button
+               class="button button-ghost"
+               id="pdfOptionsBtn"
+               type="button"
+               title="Adjust PDF font size, spacing, paper and margins"
+               aria-haspopup="dialog"
+               aria-controls="pdfOptionsModal"
+            >
+               <span aria-hidden="true">⚙</span> PDF options</button
             ><button class="button button-primary" id="exportBtn"><span aria-hidden="true">↗</span> Export .pdf</button>
          </div>
       </header>
@@ -390,7 +399,146 @@
             </div>
          </div>
       </footer>
+
+      <div class="pdf-options-modal" id="pdfOptionsModal" hidden>
+         <div class="pdf-options-backdrop" aria-hidden="true"></div>
+         <div
+            class="pdf-options-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdfOptionsTitle"
+            aria-describedby="pdfOptionsDesc"
+         >
+            <header class="pdf-options-head">
+               <div>
+                  <span class="pdf-options-kicker">EXPORT SETTINGS</span>
+                  <h2 id="pdfOptionsTitle">PDF options</h2>
+                  <p id="pdfOptionsDesc" class="pdf-options-sub">
+                     Live preview updates as you tweak. These settings only affect the exported PDF, never the editor.
+                  </p>
+               </div>
+               <button class="icon-button pdf-options-close" id="pdfOptionsClose" type="button" aria-label="Close PDF options">
+                  <span aria-hidden="true">✕</span>
+               </button>
+            </header>
+
+            <div class="pdf-options-layout">
+               <section class="pdf-options-preview" aria-label="PDF preview">
+                  <div class="pdf-preview-bar">
+                     <span class="pdf-preview-title">Live PDF preview</span>
+                     <span class="pdf-preview-scale" id="pdfPreviewScale">100%</span>
+                  </div>
+                  <div class="pdf-preview-scroll" id="pdfPreviewScroll">
+                     <div class="pdf-preview-paper" id="pdfPreviewHost"></div>
+                  </div>
+               </section>
+
+               <div class="pdf-options-panel">
+                  <div class="pdf-options-body">
+                     <section class="pdf-field">
+                        <div class="pdf-field-label">
+                           <span>Quick preset</span>
+                           <small>One tap sizes everything</small>
+                        </div>
+                        <div class="pdf-choice-group" id="pdfPresetGroup" role="group" aria-label="Size preset">
+                           <button class="pdf-choice" type="button" data-preset="compact" aria-pressed="false">
+                              Compact
+                           </button>
+                           <button class="pdf-choice" type="button" data-preset="normal" aria-pressed="false">
+                              Normal
+                           </button>
+                           <button class="pdf-choice" type="button" data-preset="large" aria-pressed="false">
+                              Large
+                           </button>
+                           <button class="pdf-choice" type="button" data-preset="xlarge" aria-pressed="false">
+                              X-Large
+                           </button>
+                        </div>
+                     </section>
+
+                     <div class="pdf-field-divider"><span>Fine-tune</span></div>
+
+                     <section class="pdf-field pdf-slider-field">
+                        <label class="pdf-field-label" for="pdfOpt_chord">
+                           <span>Chord size</span>
+                           <output id="pdfOptVal_chord" class="pdf-slider-value">4.3 mm</output>
+                        </label>
+                        <input type="range" id="pdfOpt_chord" class="pdf-slider" />
+                     </section>
+                     <section class="pdf-field pdf-slider-field">
+                        <label class="pdf-field-label" for="pdfOpt_lyric">
+                           <span>Lyric size</span>
+                           <output id="pdfOptVal_lyric" class="pdf-slider-value">3.2 mm</output>
+                        </label>
+                        <input type="range" id="pdfOpt_lyric" class="pdf-slider" />
+                     </section>
+                     <section class="pdf-field pdf-slider-field">
+                        <label class="pdf-field-label" for="pdfOpt_slot">
+                           <span>Beat spacing</span>
+                           <output id="pdfOptVal_slot" class="pdf-slider-value">6.2 mm</output>
+                        </label>
+                        <input type="range" id="pdfOpt_slot" class="pdf-slider" />
+                     </section>
+
+                     <div class="pdf-field-divider"><span>Page</span></div>
+
+                     <section class="pdf-field">
+                        <div class="pdf-field-label"><span>Paper size</span></div>
+                        <div class="pdf-choice-group" id="pdfPaperGroup" role="group" aria-label="Paper size">
+                           <button class="pdf-choice" type="button" data-paper="a4" aria-pressed="false">A4</button>
+                           <button class="pdf-choice" type="button" data-paper="letter" aria-pressed="false">
+                              Letter
+                           </button>
+                        </div>
+                     </section>
+                     <section class="pdf-field">
+                        <div class="pdf-field-label"><span>Margins</span></div>
+                        <div class="pdf-choice-group" id="pdfMarginGroup" role="group" aria-label="Page margins">
+                           <button class="pdf-choice" type="button" data-margin="narrow" aria-pressed="false">
+                              Narrow
+                           </button>
+                           <button class="pdf-choice" type="button" data-margin="normal" aria-pressed="false">
+                              Normal
+                           </button>
+                           <button class="pdf-choice" type="button" data-margin="wide" aria-pressed="false">
+                              Wide
+                           </button>
+                        </div>
+                     </section>
+                  </div>
+
+                  <footer class="pdf-options-foot">
+                     <button class="button button-ghost button-small" id="pdfOptionsReset" type="button">
+                        Reset to defaults
+                     </button>
+                     <button class="button button-primary" id="pdfOptionsExport" type="button">
+                        <span aria-hidden="true">↗</span> Export PDF
+                     </button>
+                  </footer>
+               </div>
+            </div>
+         </div>
+      </div>
+
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
-      <script type="module" src="src/app.js?v=20260808-auto-syllable-off"></script>
+
+      <!-- Shown on every load on PHONES only (<= 680px): this builder is easier
+           on a bigger screen. Tablets/iPads and desktop are recommended devices,
+           so they never see this. Centered modal over a blurred backdrop;
+           dismissing it just closes it for this visit (no persistence). -->
+      <div class="device-hint" id="deviceHint" hidden role="dialog" aria-modal="true" aria-labelledby="deviceHintTitle" aria-describedby="deviceHintDesc">
+         <div class="device-hint-card">
+            <div class="device-hint-icon" aria-hidden="true">🖥️</div>
+            <div class="device-hint-copy">
+               <strong id="deviceHintTitle">Best on a bigger screen</strong>
+               <p id="deviceHintDesc">
+                  You can arrange on your phone, but a desktop, laptop, or tablet gives you more room to place chords and preview the full page.
+               </p>
+            </div>
+            <button class="device-hint-close" id="deviceHintClose" type="button">Got it</button>
+         </div>
+      </div>
+
+      <script type="module" src="src/app.js?v=20260810-devicehint-modal"></script>
    </body>
 </html>

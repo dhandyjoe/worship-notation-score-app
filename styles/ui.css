@@ -811,6 +811,93 @@ body.is-dragging .drop-target::after {
    box-shadow: 0 12px 35px rgba(15, 45, 30, 0.23);
 }
 
+/* Desktop-recommendation hint. Rendered on small/touch devices only (JS gates
+   it with prefersTap()). Shown on every load/refresh — no persistence. Centered
+   modal card over a blurred backdrop. Purely informational — dismiss to use the
+   app. */
+.device-hint {
+   position: fixed;
+   inset: 0;
+   z-index: 120;
+   display: grid;
+   place-items: center;
+   padding: 24px;
+   background: rgba(12, 28, 20, 0.42);
+   -webkit-backdrop-filter: blur(8px);
+   backdrop-filter: blur(8px);
+   opacity: 0;
+   transition: opacity 0.28s ease;
+}
+/* When hidden, fully remove it from the layout so its full-screen backdrop can
+   never trap clicks — a bare `.device-hint{display:grid}` outranks the built-in
+   [hidden] rule, leaving an invisible click-blocking overlay behind. */
+.device-hint[hidden] {
+   display: none;
+}
+.device-hint.is-open {
+   opacity: 1;
+}
+.device-hint-card {
+   width: min(360px, 100%);
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 12px;
+   padding: 26px 24px 22px;
+   text-align: center;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-lg);
+   background: var(--surface);
+   box-shadow: var(--shadow-md);
+   transform: translateY(12px) scale(0.98);
+   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.device-hint.is-open .device-hint-card {
+   transform: translateY(0) scale(1);
+}
+.device-hint-icon {
+   flex: 0 0 auto;
+   font-size: 40px;
+   line-height: 1;
+}
+.device-hint-copy {
+   min-width: 0;
+}
+.device-hint-copy strong {
+   display: block;
+   font-size: 17px;
+   font-weight: 700;
+   color: var(--ink);
+}
+.device-hint-copy p {
+   margin: 6px 0 0;
+   font-size: 13px;
+   line-height: 1.45;
+   color: var(--muted);
+}
+.device-hint-close {
+   flex: 0 0 auto;
+   width: 100%;
+   min-height: 44px;
+   margin-top: 4px;
+   padding: 0 16px;
+   border: 0;
+   border-radius: 999px;
+   background: var(--green, #1f7a4d);
+   color: #fff;
+   font-size: 14px;
+   font-weight: 700;
+   cursor: pointer;
+   transition: filter 0.15s ease;
+}
+.device-hint-close:hover {
+   filter: brightness(1.06);
+}
+.device-hint-close:focus-visible {
+   outline: 2px solid var(--green, #1f7a4d);
+   outline-offset: 2px;
+}
+
 /* Site footer */
 .site-footer {
    border-top: 1px solid rgba(201, 219, 206, 0.9);
@@ -1439,6 +1526,7 @@ body.is-dragging .drop-target::after {
    .canvas-toolbar,
    .scroll-affordance,
    .site-footer,
+   .pdf-options-modal,
    .toast {
       display: none !important;
    }
@@ -1677,7 +1765,7 @@ html[data-theme="dark"] .bar {
    border-color: var(--ink);
 }
 html[data-theme="dark"] .beat-dot {
-   color: #6f7771;
+   color: #9fb0a6;
 }
 html[data-theme="dark"] .placed-chord,
 html[data-theme="dark"] .sub-beat .placed-chord {
@@ -1760,5 +1848,499 @@ html[data-theme="dark"] .site-footer {
    }
    html[data-theme="dark"] .bar {
       border-color: #173a28 !important;
+   }
+}
+
+/* ============================================================================
+   PDF OPTIONS MODAL
+   ----------------------------------------------------------------------------
+   Export-settings sheet. Adjusts the --print-* tokens live; hidden in print via
+   the @media print rule above. Centred dialog on desktop, bottom sheet on phones.
+   ============================================================================ */
+.pdf-options-modal {
+   position: fixed;
+   inset: 0;
+   z-index: 60;
+   display: grid;
+   place-items: center;
+   padding: clamp(12px, 4vw, 32px);
+}
+.pdf-options-modal[hidden] {
+   display: none;
+}
+.pdf-options-backdrop {
+   position: absolute;
+   inset: 0;
+   background: rgba(16, 38, 27, 0.5);
+   opacity: 0;
+   transition: opacity 0.2s ease;
+}
+.pdf-options-modal.is-open .pdf-options-backdrop {
+   opacity: 1;
+}
+.pdf-options-dialog {
+   position: relative;
+   display: flex;
+   flex-direction: column;
+   /* Wider + taller than a normal dialog on purpose: the left pane shows a whole
+      physical page (A4/Letter portrait), so it needs real vertical room to stay
+      readable. */
+   width: min(1180px, 100%);
+   max-height: min(94vh, 940px);
+   overflow: hidden;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-lg);
+   background: var(--surface);
+   box-shadow: var(--shadow-md);
+   opacity: 0;
+   transform: translateY(10px) scale(0.985);
+   transition:
+      opacity 0.2s ease,
+      transform 0.2s ease;
+}
+.pdf-options-modal.is-open .pdf-options-dialog {
+   opacity: 1;
+   transform: translateY(0) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+   .pdf-options-backdrop,
+   .pdf-options-dialog {
+      transition: none;
+   }
+}
+
+/* Header */
+.pdf-options-head {
+   flex: none;
+   display: flex;
+   align-items: flex-start;
+   justify-content: space-between;
+   gap: 14px;
+   padding: 20px 20px 14px;
+   border-bottom: 1px solid var(--line);
+}
+.pdf-options-kicker {
+   display: block;
+   margin-bottom: 3px;
+   color: var(--green);
+   font-size: 10px;
+   font-weight: 800;
+   letter-spacing: 1.1px;
+}
+.pdf-options-head h2 {
+   margin: 0;
+   font-size: 19px;
+   letter-spacing: -0.4px;
+   color: var(--ink);
+}
+.pdf-options-sub {
+   margin: 6px 0 0;
+   max-width: 34ch;
+   color: var(--muted);
+   font-size: 11.5px;
+   line-height: 1.45;
+}
+.pdf-options-close {
+   flex: none;
+}
+
+/* Body */
+.pdf-options-body {
+   flex: 1;
+   min-height: 0;
+   overflow-y: auto;
+   padding: 16px 20px 18px;
+   display: flex;
+   flex-direction: column;
+   gap: 14px;
+}
+
+/* Two-pane split: paper preview on the left, controls on the right */
+.pdf-options-layout {
+   flex: 1;
+   min-height: 0;
+   display: grid;
+   grid-template-columns: minmax(0, 1fr) 372px;
+}
+.pdf-options-preview {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   min-height: 0;
+   border-right: 1px solid var(--line);
+   background: linear-gradient(180deg, #eef3ef, #e7ede8);
+}
+.pdf-preview-bar {
+   flex: none;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 10px;
+   padding: 10px 16px;
+   border-bottom: 1px solid var(--line);
+   background: rgba(255, 255, 255, 0.6);
+}
+.pdf-preview-title {
+   color: var(--muted);
+   font-size: 10px;
+   font-weight: 800;
+   letter-spacing: 1px;
+   text-transform: uppercase;
+}
+.pdf-preview-scale {
+   padding: 2px 8px;
+   border-radius: 999px;
+   background: var(--soft);
+   color: var(--green);
+   font-size: 10.5px;
+   font-weight: 800;
+   font-variant-numeric: tabular-nums;
+}
+.pdf-preview-scroll {
+   flex: 1;
+   min-height: 0;
+   overflow: auto;
+   padding: 16px 12px;
+   display: grid;
+   /* `safe` centers only while the paper fits; when a multi-page paper is taller
+      than the pane it falls back to start-alignment so the TOP stays reachable
+      (plain `center` would push the top out of view and clip it). */
+   place-content: safe center;
+}
+/* The real #previewCard is moved in here. To make this preview MATCH THE PRINTED
+   PDF EXACTLY we reproduce true paper geometry:
+     • the host is one physical page: --pdf-page-w × --pdf-page-h (mm, set by JS
+       from the chosen paper size)
+     • page margins come from --pdf-page-margin-* (mm, from the chosen margin
+       preset) applied as padding, exactly like the real @page box
+     • the card itself gets NO padding/min-width of its own, so its content box
+       equals the real printable area (paper − margins)
+   The whole page is then visually scaled with --pdf-preview-scale to fit the pane. */
+.pdf-preview-paper {
+   --pdf-preview-scale: 1;
+   --pdf-page-w: 210mm;
+   --pdf-page-h: 297mm;
+   --pdf-page-count: 1;
+   --pdf-page-margin-top: 9mm;
+   --pdf-page-margin-x: 9mm;
+   --pdf-page-margin-bottom: 12mm;
+   width: calc(var(--pdf-page-w) * var(--pdf-preview-scale));
+   height: calc(var(--pdf-page-h) * var(--pdf-page-count, 1) * var(--pdf-preview-scale));
+   margin: 0 auto;
+   filter: drop-shadow(0 8px 22px rgba(20, 58, 41, 0.18));
+}
+.pdf-preview-page {
+   position: relative;
+   box-sizing: border-box;
+   width: var(--pdf-page-w);
+   /* --pdf-page-count pages tall, so multi-page songs are fully visible instead
+      of being clipped at page 1. */
+   height: calc(var(--pdf-page-h) * var(--pdf-page-count, 1));
+   padding: var(--pdf-page-margin-top) var(--pdf-page-margin-x) var(--pdf-page-margin-bottom);
+   transform: scale(var(--pdf-preview-scale));
+   transform-origin: top left;
+   background: #fff;
+   /* outline, not border: a border would consume 2px of the printable width and
+      make text wrap differently from the real PDF. */
+   outline: 1px solid #dfe6e0;
+}
+/* Neutralise the editor card chrome so only the real print rules shape it. */
+.pdf-preview-page > #previewCard {
+   width: 100% !important;
+   min-width: 0 !important;
+   max-width: none !important;
+   margin: 0 !important;
+   padding: 0 !important;
+   border: 0 !important;
+   border-radius: 0 !important;
+   background: #fff !important;
+   box-shadow: none !important;
+   zoom: 1 !important;
+}
+/* Read-only preview: this is the LIVE #previewCard node, so block ALL pointer
+   interaction (clicks, drags, text-field focus, contenteditable edits) while it
+   lives in the preview. It's a faithful PDF mock-up, not an editing surface. */
+.pdf-preview-page > #previewCard {
+   pointer-events: none !important;
+   -webkit-user-select: none !important;
+   user-select: none !important;
+   cursor: default !important;
+}
+.pdf-preview-page > #previewCard * {
+   pointer-events: none !important;
+}
+.pdf-preview-page > #previewCard input,
+.pdf-preview-page > #previewCard textarea,
+.pdf-preview-page > #previewCard button,
+.pdf-preview-page > #previewCard [contenteditable] {
+   pointer-events: none !important;
+   -webkit-user-modify: read-only !important;
+   user-select: none !important;
+}
+/* Signature footer is a REAL-PDF-only flourish. Hide it in the live preview so
+   the pane shows only the actual score content (the generated PDF still keeps
+   it via the @media print rules). */
+.pdf-preview-page > #previewCard .pdf-signature {
+   display: none !important;
+}
+.pdf-options-panel {
+   display: flex;
+   flex-direction: column;
+   min-height: 0;
+   min-width: 0;
+}
+.pdf-field {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+}
+.pdf-field-inline {
+   flex-direction: row;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   flex-wrap: wrap;
+}
+.pdf-field-label {
+   display: flex;
+   align-items: baseline;
+   justify-content: space-between;
+   gap: 10px;
+   font-size: 12.5px;
+   font-weight: 700;
+   color: var(--ink);
+}
+.pdf-field-label small {
+   font-weight: 500;
+   font-size: 10.5px;
+   color: var(--muted);
+}
+.pdf-field-divider {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   margin-top: 2px;
+   color: var(--muted);
+   font-size: 10px;
+   font-weight: 800;
+   letter-spacing: 1px;
+   text-transform: uppercase;
+}
+.pdf-field-divider::after {
+   content: "";
+   flex: 1;
+   height: 1px;
+   background: var(--line);
+}
+
+/* Segmented choice buttons (presets, paper, margins) */
+.pdf-choice-group {
+   display: flex;
+   gap: 6px;
+   flex-wrap: wrap;
+}
+.pdf-choice {
+   flex: 1 1 auto;
+   min-width: 68px;
+   min-height: 38px;
+   padding: 0 12px;
+   border: 1px solid var(--line);
+   border-radius: 999px;
+   background: var(--surface);
+   color: var(--ink);
+   font-size: 12.5px;
+   font-weight: 700;
+   cursor: pointer;
+   transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.pdf-choice:hover {
+   border-color: var(--green);
+   background: var(--soft);
+}
+.pdf-choice.is-active {
+   border-color: var(--green);
+   background: var(--green);
+   color: #fff;
+}
+.pdf-choice:focus-visible {
+   outline: 3px solid #d9efd6;
+   outline-offset: 1px;
+}
+
+/* Sliders */
+.pdf-slider-value {
+   min-width: 52px;
+   padding: 2px 7px;
+   border-radius: 999px;
+   background: var(--soft);
+   color: var(--green);
+   font-size: 11px;
+   font-weight: 800;
+   font-variant-numeric: tabular-nums;
+   text-align: center;
+}
+.pdf-slider {
+   -webkit-appearance: none;
+   appearance: none;
+   width: 100%;
+   height: 22px;
+   background: transparent;
+   cursor: pointer;
+}
+.pdf-slider::-webkit-slider-runnable-track {
+   height: 6px;
+   border-radius: 999px;
+   background: var(--soft);
+}
+.pdf-slider::-webkit-slider-thumb {
+   -webkit-appearance: none;
+   appearance: none;
+   width: 20px;
+   height: 20px;
+   margin-top: -7px;
+   border: 3px solid #fff;
+   border-radius: 50%;
+   background: var(--green);
+   box-shadow: 0 1px 4px rgba(20, 58, 41, 0.28);
+}
+.pdf-slider::-moz-range-track {
+   height: 6px;
+   border-radius: 999px;
+   background: var(--soft);
+}
+.pdf-slider::-moz-range-thumb {
+   width: 16px;
+   height: 16px;
+   border: 3px solid #fff;
+   border-radius: 50%;
+   background: var(--green);
+}
+.pdf-slider:focus-visible {
+   outline: none;
+}
+.pdf-slider:focus-visible::-webkit-slider-thumb {
+   box-shadow: 0 0 0 4px #d9efd6;
+}
+
+/* Footer */
+.pdf-options-foot {
+   flex: none;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 10px;
+   padding: 14px 20px 18px;
+   border-top: 1px solid var(--line);
+}
+
+/* Dark theme */
+html[data-theme="dark"] .pdf-options-dialog {
+   border-color: var(--line);
+   background: #151715;
+}
+html[data-theme="dark"] .pdf-options-backdrop {
+   background: rgba(4, 8, 6, 0.62);
+}
+html[data-theme="dark"] .pdf-choice {
+   border-color: var(--line);
+   background: #101110;
+   color: var(--ink);
+}
+html[data-theme="dark"] .pdf-choice:hover {
+   border-color: #55b982;
+   background: #1d211e;
+   color: #f1f4f2;
+}
+html[data-theme="dark"] .pdf-choice.is-active {
+   border-color: var(--green);
+   background: var(--green);
+   color: #08130d;
+}
+html[data-theme="dark"] .pdf-slider::-webkit-slider-runnable-track,
+html[data-theme="dark"] .pdf-slider::-moz-range-track {
+   background: #23271f;
+}
+html[data-theme="dark"] .pdf-slider::-webkit-slider-thumb,
+html[data-theme="dark"] .pdf-slider::-moz-range-thumb {
+   border-color: #151715;
+}
+html[data-theme="dark"] .pdf-slider-value {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .pdf-options-preview {
+   border-color: var(--line);
+   background: linear-gradient(180deg, #0e100e, #121412);
+}
+html[data-theme="dark"] .pdf-preview-bar {
+   border-color: var(--line);
+   background: rgba(255, 255, 255, 0.03);
+}
+html[data-theme="dark"] .pdf-preview-scale {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+
+/* Tablets / small laptops: stack the preview above the controls */
+@media (max-width: 900px) {
+   .pdf-options-dialog {
+      width: min(560px, 100%);
+   }
+   .pdf-options-layout {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(140px, 34vh) minmax(0, 1fr);
+   }
+   .pdf-options-preview {
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+   }
+}
+
+/* Phones: present as a bottom sheet with comfortable touch targets. The live
+   PDF preview is HIDDEN here — on a phone there isn't room to render a full page
+   usefully, so we show only the PDF options controls. The card is still adopted
+   into the (hidden) host and restored on close, so nothing breaks. */
+@media (max-width: 560px) {
+   .pdf-options-modal {
+      place-items: end stretch;
+      padding: 0;
+   }
+   .pdf-options-dialog {
+      width: 100%;
+      max-height: 88vh;
+      border-width: 1px 0 0;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      transform: translateY(16px);
+   }
+   .pdf-options-modal.is-open .pdf-options-dialog {
+      transform: translateY(0);
+   }
+   /* Options-only layout: drop the preview row entirely. */
+   .pdf-options-preview {
+      display: none !important;
+   }
+   .pdf-options-layout {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+   }
+   .pdf-choice {
+      min-height: 44px;
+   }
+   .pdf-field-inline {
+      flex-direction: column;
+      align-items: stretch;
+   }
+   .pdf-options-foot .button {
+      min-height: 44px;
+   }
+   /* styles.css hides .button-ghost on phones to declutter the topbar; the
+      modal's own actions must stay visible. */
+   .pdf-options-foot .button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
    }
 }

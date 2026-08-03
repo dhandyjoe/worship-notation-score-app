@@ -413,6 +413,107 @@ record(
 );
 await evaluate("document.documentElement.classList.remove('is-print-layout');true");
 
+// ---------------------------------------------------------------------------
+// PDF Options dialog + live preview (desktop). The preview moves the real
+// #previewCard into a simulated paper box; these guard that (a) the paper
+// geometry matches the chosen paper/margins, (b) the card returns to the editor
+// on close, (c) editor-only chrome (active-section highlight, signature footer)
+// is stripped in the preview, and (d) the barline mid-row logic is applied.
+// ---------------------------------------------------------------------------
+await cdp.send("Emulation.setEmulatedMedia", { media: "" });
+await viewport(1440, 1000, false);
+await navigate();
+await evaluate("document.querySelector('#pdfOptionsBtn').click();true");
+await waitFor("!document.querySelector('#pdfOptionsModal').hidden");
+await evaluate(
+   "(()=>{const d=document.querySelector('.pdf-options-dialog');if(d)d.style.transition='none';void d?.offsetHeight;return true})()",
+);
+await waitFor("!!document.querySelector('.pdf-preview-page #previewCard')");
+record(
+   "PDF options: real #previewCard is adopted into the preview paper",
+   await evaluate("!!document.querySelector('.pdf-preview-page #previewCard')"),
+);
+record(
+   "PDF options: live preview is read-only (pointer-events none)",
+   (await evaluate("getComputedStyle(document.querySelector('.pdf-preview-page #previewCard')).pointerEvents")) ===
+      "none",
+);
+record(
+   "PDF options: signature footer is hidden in the live preview",
+   (await evaluate(
+      "(()=>{const s=document.querySelector('.pdf-preview-page #previewCard .pdf-signature');return s?getComputedStyle(s).display:'none'})()",
+   )) === "none",
+);
+record(
+   "PDF options: active-section highlight is stripped in the live preview",
+   await evaluate(
+      "(()=>{const a=document.querySelector('.pdf-preview-page #previewCard .preview-section.is-active');if(!a)return true;const bg=getComputedStyle(a).backgroundColor;return bg==='rgba(0, 0, 0, 0)'||bg==='transparent'})()",
+   ),
+);
+record(
+   "PDF options: no page-number label badges are rendered",
+   (await evaluate("document.querySelectorAll('.pdf-page-label').length")) === 0,
+);
+record(
+   "PDF options: no green page-boundary guide is drawn",
+   (await evaluate("getComputedStyle(document.querySelector('.pdf-preview-page'),'::after').backgroundImage")) ===
+      "none",
+);
+const a4PaperWidth = await evaluate(
+   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:210mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
+);
+record(
+   "PDF options: default preview paper is A4 width (210mm)",
+   Math.abs((await evaluate("document.querySelector('.pdf-preview-page').offsetWidth")) - a4PaperWidth) <= 2,
+   JSON.stringify({ a4PaperWidth }),
+);
+const a4Printable = await evaluate(
+   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:192mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
+);
+record(
+   "PDF options: default content width equals A4 printable area (192mm)",
+   Math.abs((await evaluate("document.querySelector('.pdf-preview-page #previewCard').clientWidth")) - a4Printable) <=
+      2,
+   JSON.stringify({ a4Printable }),
+);
+record(
+   "PDF options: mid-row bars are tagged so redundant barlines are hidden",
+   (await evaluate("document.querySelectorAll('.pdf-preview-page #previewCard .bar.pdf-mid-bar').length")) >= 1,
+);
+// Switch to Letter + Wide and confirm the paper geometry tracks the choice.
+const letterPaperWidth = await evaluate(
+   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:215.9mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
+);
+await evaluate("document.querySelector('[data-paper=\"letter\"]').click();true");
+await evaluate("document.querySelector('[data-margin=\"wide\"]').click();true");
+record(
+   "PDF options: choosing Letter resizes the preview paper",
+   Math.abs((await evaluate("document.querySelector('.pdf-preview-page').offsetWidth")) - letterPaperWidth) <= 2,
+   JSON.stringify({ letterPaperWidth }),
+);
+await evaluate("document.querySelector('#pdfOptionsReset').click();true");
+record(
+   "PDF options: Reset returns the preview to A4",
+   Math.abs((await evaluate("document.querySelector('.pdf-preview-page').offsetWidth")) - a4PaperWidth) <= 2,
+);
+// Close the dialog and confirm the card is handed back to the live editor intact.
+await evaluate("document.querySelector('#pdfOptionsClose').click();true");
+await waitFor("document.querySelector('#pdfOptionsModal').hidden");
+record(
+   "PDF options: closing returns #previewCard to the editor",
+   await evaluate(
+      "!document.querySelector('.pdf-preview-page') && !!document.querySelector('#previewViewport #previewCard')",
+   ),
+);
+record(
+   "PDF options: editor is interactive again after close",
+   (await evaluate("getComputedStyle(document.querySelector('#previewCard')).pointerEvents")) !== "none",
+);
+record(
+   "PDF options: mid-row barline tags are cleared from the live editor",
+   (await evaluate("document.querySelectorAll('#previewCard .bar.pdf-mid-bar').length")) === 0,
+);
+
 // Refresh must restore the clean default state.
 await navigate();
 record("Refresh resets title", (await text("#previewTitle")) === "Song Title");
@@ -500,6 +601,44 @@ for (const [width, height, deviceScaleFactor = 1] of [
    record(
       `${width}px delete-bar removes one bar`,
       await evaluate(`document.querySelectorAll('.bar').length===${mobileBarsBefore - 1}`),
+   );
+   // PDF options on phones: the dialog opens as an options-only sheet — the live
+   // PDF preview pane is hidden (no room to render a full page usefully), but all
+   // controls stay reachable and closing still restores the editor.
+   await evaluate("document.querySelector('#pdfOptionsBtn').click();true");
+   await waitFor("!document.querySelector('#pdfOptionsModal').hidden");
+   await evaluate(
+      "(()=>{const d=document.querySelector('.pdf-options-dialog');if(d)d.style.transition='none';void d?.offsetHeight;return true})()",
+   );
+   record(
+      `${width}px PDF options hides the live preview pane`,
+      (await evaluate("getComputedStyle(document.querySelector('.pdf-options-preview')).display")) === "none",
+   );
+   record(
+      `${width}px PDF options panel stays visible`,
+      await evaluate(
+         "(()=>{const p=document.querySelector('.pdf-options-panel');return getComputedStyle(p).display!=='none'&&p.offsetWidth>0})()",
+      ),
+   );
+   record(
+      `${width}px PDF options controls are reachable`,
+      await evaluate(
+         "document.querySelectorAll('#pdfPresetGroup [data-preset]').length===4 && getComputedStyle(document.querySelector('#pdfOptionsExport')).display!=='none' && getComputedStyle(document.querySelector('#pdfOptionsReset')).display!=='none'",
+      ),
+   );
+   record(
+      `${width}px PDF options dialog has no horizontal overflow`,
+      await evaluate(
+         "(()=>{const d=document.querySelector('.pdf-options-dialog');return d.scrollWidth<=d.clientWidth+1})()",
+      ),
+   );
+   await evaluate("document.querySelector('#pdfOptionsClose').click();true");
+   await waitFor("document.querySelector('#pdfOptionsModal').hidden");
+   record(
+      `${width}px PDF options closing restores the editor`,
+      await evaluate(
+         "!document.querySelector('.pdf-preview-page') && !!document.querySelector('#previewViewport #previewCard')",
+      ),
    );
    await screenshot(`mobile-${width}${deviceScaleFactor === 1 ? "" : "-dpr-" + deviceScaleFactor}`);
 }
