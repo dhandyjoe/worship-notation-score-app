@@ -272,14 +272,17 @@ record(
    JSON.stringify(editedTitle),
 );
 
-// Export and import project file without triggering a real download.
+// Export and import project file without triggering a real download. The
+// editor's topbar Export .file was moved to a per-card action in My Songs, so we
+// exercise the gallery's pure download helper (exposed as __cloudDownloadSong in
+// test mode) with the current project data.
 await evaluate(
-   "(()=>{window.prompt=()=> 'regression-score';window.__downloadName='';window.__exportBlob=null;URL.createObjectURL=blob=>(window.__exportBlob=blob,'blob:regression');URL.revokeObjectURL=()=>{};HTMLAnchorElement.prototype.click=function(){window.__downloadName=this.download};document.querySelector('#saveBtn').click();return true})()",
+   "(()=>{window.__downloadName='';window.__exportBlob=null;URL.createObjectURL=blob=>(window.__exportBlob=blob,'blob:regression');URL.revokeObjectURL=()=>{};HTMLAnchorElement.prototype.click=function(){window.__downloadName=this.download};const p=window.__projectDataForTest?window.__projectDataForTest():null;window.__cloudDownloadSong({title:'Mobile Grace',meter:'3/4',format:'chord-sheet',version:2,sections:[{name:'Verse',beats:{'0-0':{chord:'C',duration:null}}}]});return true})()",
 );
 const exported = await evaluate(
    "(async()=>({name:window.__downloadName,data:JSON.parse(await window.__exportBlob.text())}))()",
 );
-record("Export .file uses the expected extension", exported.name === "regression-score.chordsheet.json", exported.name);
+record("Export .file uses the expected extension", exported.name === "mobile-grace.chordsheet.json", exported.name);
 record(
    "Export .file contains metadata, meter, sections and beats",
    exported.data.title === "Mobile Grace" &&
@@ -294,7 +297,7 @@ record(
    }),
 );
 await evaluate(
-   `(async()=>{const project=${JSON.stringify({ format: "chord-sheet", version: 2, title: "Imported Song", artist: "Regression Artist", key: "F", chordRoot: "F", customChord: "F6/9", meter: "4/4", lyricsEnabled: true, sections: [{ id: "imported", name: "Verse", lyricsEnabled: true, lyricBeats: { "0-0": "Sing", "0-1:1": "grace", "0-2:0": "through", "0-2:3": "night", "0-3:0": "for", "0-3:1": "me", "1-0:0.0": "nested", "1-0:0.1": "half", "1-1": "slash" }, bars: 4, beats: { "0-0": { chord: "F", duration: null }, "0-1": { chord: null, duration: "half" }, "0-1:1": { chord: "2̇m", duration: null }, "0-2": { chord: null, duration: "quarter" }, "0-2:0": { chord: "1̇", duration: null }, "0-2:3": { chord: "3̣", duration: null }, "0-3": { chord: null, duration: "half" }, "0-3:0": { chord: "4̇", duration: null }, "0-3:1": { chord: "1̇", duration: null }, "1-0": { chord: null, duration: "half" }, "1-0:0": { chord: null, duration: "half" }, "1-0:0.0": { chord: "4", duration: null }, "1-0:0.1": { chord: "Gmaj7", duration: null }, "1-0:1": { chord: "7", duration: null }, "1-1": { chord: "C/F", duration: null } } }], slashChords: ["F/A"], nashvilleNumber: "2̇", nashvilleAccidental: "" })};const input=document.querySelector('#projectFileInput'),file=new File([JSON.stringify(project)],'import.chordsheet.json',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));return true})()`,
+   `(async()=>{const project=${JSON.stringify({ format: "chord-sheet", version: 2, title: "Imported Song", artist: "Regression Artist", key: "F", chordRoot: "F", customChord: "F6/9", meter: "4/4", lyricsEnabled: true, sections: [{ id: "imported", name: "Verse", lyricsEnabled: true, lyricBeats: { "0-0": "Sing", "0-1:1": "grace", "0-2:0": "through", "0-2:3": "night", "0-3:0": "for", "0-3:1": "me", "1-0:0.0": "nested", "1-0:0.1": "half", "1-1": "slash" }, bars: 4, beats: { "0-0": { chord: "F", duration: null }, "0-1": { chord: null, duration: "half" }, "0-1:1": { chord: "2̇m", duration: null }, "0-2": { chord: null, duration: "quarter" }, "0-2:0": { chord: "1̇", duration: null }, "0-2:3": { chord: "3̣", duration: null }, "0-3": { chord: null, duration: "half" }, "0-3:0": { chord: "4̇", duration: null }, "0-3:1": { chord: "1̇", duration: null }, "1-0": { chord: null, duration: "half" }, "1-0:0": { chord: null, duration: "half" }, "1-0:0.0": { chord: "4", duration: null }, "1-0:0.1": { chord: "Gmaj7", duration: null }, "1-0:1": { chord: "7", duration: null }, "1-1": { chord: "C/F", duration: null } } }], slashChords: ["F/A"], nashvilleNumber: "2̇", nashvilleAccidental: "" })};const input=document.querySelector('#galleryUploadInput'),file=new File([JSON.stringify(project)],'import.chordsheet.json',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));return true})()`,
 );
 record(
    "Upload .file restores title and section",
@@ -423,7 +426,7 @@ await evaluate("document.documentElement.classList.remove('is-print-layout');tru
 await cdp.send("Emulation.setEmulatedMedia", { media: "" });
 await viewport(1440, 1000, false);
 await navigate();
-await evaluate("document.querySelector('#pdfOptionsBtn').click();true");
+await evaluate("document.querySelector('#exportBtn').click();true");
 await waitFor("!document.querySelector('#pdfOptionsModal').hidden");
 await evaluate(
    "(()=>{const d=document.querySelector('.pdf-options-dialog');if(d)d.style.transition='none';void d?.offsetHeight;return true})()",
@@ -524,6 +527,336 @@ record(
    ),
 );
 
+// ============================ CLOUD SYNC UI ============================
+// The Firebase network layer can't be exercised in headless CI, so these tests
+// cover the UI contract: topbar buttons exist, modals open centered & close,
+// the gallery renders cards (title/creator/key/time) in a two-row zigzag grid
+// that scrolls horizontally inside its container, search exists, prev/next
+// scroll the grid, and the layout never pushes the shell wider than the
+// viewport. Cards are rendered through the real render path via
+// window.__cloudRenderMock (exposed in test mode).
+await navigate();
+
+// Helper: render N mock song cards through the real gallery render logic.
+const injectCards = (n) => evaluate(`window.__cloudRenderMock(${n})`);
+
+record(
+   "Cloud: editor topbar exposes Back to My Songs + Save to Cloud (theme/profile moved to My Songs)",
+   await evaluate(
+      "!!document.querySelector('#backToSongsBtn')&&!!document.querySelector('#saveCloudBtn')&&!!document.querySelector('#accountBtn')&&!!document.querySelector('#themeToggle')",
+   ),
+);
+record(
+   "Editor: the standalone PDF options button is gone (folded into Export .pdf)",
+   await evaluate("!document.querySelector('#pdfOptionsBtn')"),
+);
+record(
+   "Editor: Save to Cloud and Export .pdf are both prominent, with distinct accents",
+   await evaluate(
+      "(()=>{const s=document.querySelector('#saveCloudBtn'),e=document.querySelector('#exportBtn');if(!s||!e)return false;const bg=el=>getComputedStyle(el).backgroundColor;const filled=v=>v&&v!=='rgba(0, 0, 0, 0)'&&v!=='transparent';return s.classList.contains('button-save')&&e.classList.contains('button-dark')&&filled(bg(s))&&filled(bg(e))&&bg(s)!==bg(e)})()",
+   ),
+);
+record(
+   "Editor: Export .pdf opens the PDF options dialog (does not export straight away)",
+   await evaluate(
+      "(async()=>{const modal=document.querySelector('#pdfOptionsModal');if(!modal.hidden){document.querySelector('#pdfOptionsClose').click();await new Promise(r=>setTimeout(r,360));}document.querySelector('#exportBtn').click();await new Promise(r=>setTimeout(r,420));const opened=!modal.hidden;document.querySelector('#pdfOptionsClose').click();await new Promise(r=>setTimeout(r,360));return opened})()",
+   ),
+);
+record(
+   "Nav: the editor is a sub-page - it leads with Back, not the app brand lockup",
+   await evaluate(
+      "(()=>{const back=document.querySelector('.topbar #backToSongsBtn');return !!back&&!document.querySelector('.topbar .brand')&&/my songs/i.test(back.textContent)})()",
+   ),
+);
+record(
+   "Nav: the editor header shows the document being edited (breadcrumb)",
+   await evaluate(
+      "(()=>{const c=document.querySelector('.topbar #editorSongName');if(!c)return false;const t=document.querySelector('#songTitle');t.value='Breadcrumb Probe';t.dispatchEvent(new Event('input',{bubbles:true}));return c.textContent.trim()==='Breadcrumb Probe'})()",
+   ),
+);
+record(
+   "Nav: home (My Songs) owns the brand lockup and the page title",
+   await evaluate(
+      "(()=>{const b=document.querySelector('#mySongsModal .home-brand');const h=document.querySelector('#mySongsModal .home-intro h1');return !!b&&!!h&&/your song library/i.test(h.textContent)})()",
+   ),
+);
+record(
+   "Nav: the editor page no longer carries the hero intro section",
+   await evaluate("!document.querySelector('main .intro')"),
+);
+record(
+   "Nav: home is a page, not a dismissible dialog (no close button, not aria-modal)",
+   await evaluate(
+      "(()=>{const m=document.querySelector('#mySongsModal');return !document.querySelector('#mySongsClose')&&m.getAttribute('aria-modal')===null})()",
+   ),
+);
+record(
+   "Cloud: theme + profile controls live inside the My Songs header",
+   await evaluate(
+      "!!document.querySelector('.cloud-gallery-actions #themeToggle')&&!!document.querySelector('.cloud-gallery-actions #accountBtn')",
+   ),
+);
+record(
+   "Nav: the profile button opens a card with identity, theme and Sign out",
+   await evaluate(
+      "(()=>{const pop=document.querySelector('#accountPopover');if(!pop)return false;return !!pop.querySelector('#accountPopoverName')&&!!pop.querySelector('#accountPopoverEmail')&&!!pop.querySelector('#themeToggle')&&!!pop.querySelector('#signOutBtn')&&pop.hidden})()",
+   ),
+);
+record(
+   "Cloud: editor topbar no longer has theme, Export .file, or profile buttons",
+   await evaluate(
+      "!document.querySelector('.topbar #themeToggle')&&!document.querySelector('.topbar #saveBtn')&&!document.querySelector('.topbar #accountBtn')&&!document.querySelector('#projectFileInput')&&!document.querySelector('.upload-project')",
+   ),
+);
+record("Cloud: gallery starts hidden", await evaluate("document.querySelector('#mySongsModal').hidden"));
+
+// The dedicated full-screen login page exists and, in test mode, is gated off
+// (auth gate resolves to "app" so the editor suite runs without a real sign-in).
+record(
+   "Cloud: dedicated login page exists (not a dismissible modal)",
+   await evaluate("!!document.querySelector('#loginPage')&&!document.querySelector('#loginModal')"),
+);
+record(
+   "Cloud: login page hidden in test mode (auth gate bypassed)",
+   await evaluate("document.querySelector('#loginPage').hidden && document.documentElement.dataset.authGate==='app'"),
+);
+// Force the login page open to verify its layout + controls.
+await evaluate(
+   "(()=>{const p=document.querySelector('#loginPage');p.hidden=false;p.classList.add('is-open');return true})()",
+);
+record(
+   "Cloud: login page uses a two-column gate layout",
+   await evaluate("getComputedStyle(document.querySelector('#loginPage')).display==='grid'"),
+);
+record(
+   "Cloud: login offers Google + email/password sign-in",
+   await evaluate(
+      "!!document.querySelector('#googleSignInBtn')&&!!document.querySelector('#authEmail')&&!!document.querySelector('#authPassword')&&!!document.querySelector('#emailSignUpBtn')",
+   ),
+);
+record(
+   "Cloud: login page has a brand panel with product highlights",
+   await evaluate(
+      "!!document.querySelector('#loginPage .login-aside')&&document.querySelectorAll('#loginPage .login-aside-points li').length>=3",
+   ),
+);
+record(
+   "Cloud: login page shares the My Songs brand lockup + hero heading",
+   await evaluate(
+      "(()=>{const brand=document.querySelector('#loginPage .login-aside-brand.home-brand');const hero=document.querySelector('#loginPage .login-aside-title');return !!brand&&!!brand.querySelector('.home-brand-icon')&&!!hero&&/arrange chords/i.test(hero.textContent)})()",
+   ),
+);
+record(
+   "Cloud: login page dropped the old bespoke icon tiles for the shared lockup",
+   await evaluate(
+      "!document.querySelector('#loginPage .login-card-icon')&&!document.querySelector('#loginPage .login-brand-icon')&&!!document.querySelector('#loginPage .login-card-brand')",
+   ),
+);
+// Hide it again so it doesn't overlap the rest of the suite.
+await evaluate(
+   "(()=>{const p=document.querySelector('#loginPage');p.classList.remove('is-open');p.hidden=true;return true})()",
+);
+
+// Themed confirm dialog (replaces window.confirm for Sign out).
+record(
+   "Cloud: a themed confirm dialog exists and starts hidden",
+   await evaluate(
+      "(()=>{const d=document.querySelector('#confirmDialog');return !!d&&d.hidden&&!!d.querySelector('#confirmDialogConfirm')&&!!d.querySelector('#confirmDialogCancel')})()",
+   ),
+);
+record(
+   "Cloud: Sign out asks for confirmation via the themed dialog (Cancel aborts)",
+   await evaluate(
+      "(async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));const pop=document.querySelector('#accountPopover');pop.hidden=false;pop.classList.add('is-open');document.querySelector('#signOutBtn').click();await wait(120);const d=document.querySelector('#confirmDialog');const opened=!d.hidden;const labelled=/sign out/i.test(document.querySelector('#confirmDialogConfirm').textContent)&&/cancel/i.test(document.querySelector('#confirmDialogCancel').textContent);document.querySelector('#confirmDialogCancel').click();await wait(360);return opened&&labelled&&d.hidden})()",
+   ),
+);
+record(
+   "Cloud: the confirm dialog outranks the login + home overlays (z-index)",
+   await evaluate(
+      "(()=>{const z=el=>parseInt(getComputedStyle(el).zIndex,10)||0;return z(document.querySelector('#confirmDialog'))>z(document.querySelector('#loginPage'))&&z(document.querySelector('#confirmDialog'))>z(document.querySelector('#mySongsModal'))})()",
+   ),
+);
+record(
+   "Cloud: the device hint sits above every full-screen surface (z-index)",
+   await evaluate(
+      "(()=>{const z=el=>parseInt(getComputedStyle(el).zIndex,10)||0;return z(document.querySelector('#deviceHint'))>z(document.querySelector('#loginPage'))&&z(document.querySelector('#deviceHint'))>z(document.querySelector('#mySongsModal'))})()",
+   ),
+);
+
+// Force the gallery open (bypassing auth) and inject mock cards to test UI.
+await evaluate(
+   "(()=>{const m=document.querySelector('#mySongsModal');m.hidden=false;m.classList.add('is-open');document.querySelector('#galleryLoading').hidden=true;return true})()",
+);
+record(
+   "Cloud: gallery overlay uses a grid layer",
+   await evaluate("getComputedStyle(document.querySelector('#mySongsModal')).display==='grid'"),
+);
+await injectCards(6);
+record(
+   "Cloud: gallery renders one card per song",
+   (await evaluate("document.querySelectorAll('.song-card').length")) === 6,
+);
+record(
+   "Cloud: each card shows title, creator, key, and time",
+   await evaluate(
+      "[...document.querySelectorAll('.song-card')].every(c=>c.querySelector('.song-card-title')&&c.querySelector('.song-card-creator')&&c.querySelectorAll('.song-card-chip').length===2)",
+   ),
+);
+record(
+   "Cloud: cards are laid out in a two-row grid",
+   await evaluate(
+      "(()=>{const g=document.querySelector('.cloud-cards');const rows=getComputedStyle(g).gridTemplateRows.trim().split(/\\s+/).filter(Boolean);return getComputedStyle(g).display==='grid'&&rows.length===2})()",
+   ),
+);
+record(
+   "Cloud: columns zigzag (alternating up/down offsets)",
+   await evaluate(
+      "(()=>{const cards=[...document.querySelectorAll('.song-card')];const a=getComputedStyle(cards[0]).getPropertyValue('--shift').trim();const b=getComputedStyle(cards[2]).getPropertyValue('--shift').trim();return a!==b&&a!==''&&b!==''})()",
+   ),
+);
+record(
+   "Cloud: each card exposes export + delete + duplicate actions",
+   await evaluate(
+      "[...document.querySelectorAll('.song-card')].every(c=>c.querySelector('.song-card-action.is-export')&&c.querySelector('.song-card-action.is-delete')&&c.querySelector('.song-card-action.is-duplicate'))",
+   ),
+);
+record(
+   "Cloud: card actions + detail are revealed on hover/focus",
+   await evaluate(
+      "(async()=>{const card=document.querySelector('.song-card');const actions=card.querySelector('.song-card-actions');const detail=card.querySelector('.song-card-detail');actions.style.transition='none';detail.style.transition='none';card.focus();await new Promise(r=>setTimeout(r,40));const ok=parseFloat(getComputedStyle(actions).opacity)===1&&parseFloat(getComputedStyle(detail).opacity)>0.5;card.blur();actions.style.transition='';detail.style.transition='';return ok})()",
+   ),
+);
+record(
+   "Cloud: gallery never pushes the shell wider than the viewport",
+   await evaluate(
+      "(()=>{const shell=document.querySelector('.cloud-gallery-shell');const head=document.querySelector('.cloud-gallery-head');return shell.scrollWidth<=innerWidth+1&&head.getBoundingClientRect().right<=innerWidth+1})()",
+   ),
+);
+record(
+   "Cloud: gallery has a title search box",
+   await evaluate("!!document.querySelector('#songSearch')&&document.querySelector('#songSearch').type==='search'"),
+);
+record(
+   "Cloud: search sits in a centered bar above the card list",
+   await evaluate(
+      "(()=>{const bar=document.querySelector('.cloud-gallery-searchbar');const body=document.querySelector('.cloud-gallery-body');const search=document.querySelector('.cloud-search');if(!bar||!body||!search)return false;const br=bar.getBoundingClientRect(),sr=search.getBoundingClientRect();const centered=Math.abs((sr.left+sr.right)/2-(br.left+br.right)/2)<=2;const above=br.bottom<=body.getBoundingClientRect().top+1;return centered&&above})()",
+   ),
+);
+record(
+   "Cloud: the hero heading sits above the search bar on its own row",
+   await evaluate(
+      "(()=>{const hero=document.querySelector('.home-intro');const bar=document.querySelector('.cloud-gallery-searchbar');if(!hero||!bar)return false;return hero.getBoundingClientRect().bottom<=bar.getBoundingClientRect().top+1&&!bar.contains(hero)})()",
+   ),
+);
+record(
+   "Cloud: there is clear breathing room between the search bar and the song list",
+   await evaluate(
+      "(()=>{const search=document.querySelector('.cloud-search');const card=document.querySelector('.song-card');if(!search||!card)return false;const gap=card.getBoundingClientRect().top-search.getBoundingClientRect().bottom;return gap>=12})()",
+   ),
+);
+record(
+   "Cloud: each card exposes an Export .file action",
+   await evaluate("!!document.querySelector('.song-card .song-card-action.is-export[data-act=\"export\"]')"),
+);
+record(
+   "Cloud: each card exposes an Edit action that routes to the chord editor",
+   await evaluate(
+      "[...document.querySelectorAll('.song-card')].every(c=>!!c.querySelector('.song-card-action.is-edit[data-act=\"edit\"]'))",
+   ),
+);
+record(
+   "Cloud: each card exposes an Export .pdf action",
+   await evaluate(
+      "[...document.querySelectorAll('.song-card')].every(c=>!!c.querySelector('.song-card-action.is-pdf[data-act=\"pdf\"]'))",
+   ),
+);
+record(
+   "Cloud: the per-card Export .pdf action is labelled for hover/assistive tech",
+   await evaluate(
+      "(()=>{const b=document.querySelector('.song-card .is-pdf');return !!b&&b.dataset.label==='Export .pdf'&&/as PDF$/.test(b.getAttribute('aria-label'))})()",
+   ),
+);
+record(
+   "Cloud: all five card actions fit inside the card (no clipping)",
+   await evaluate(
+      "(()=>{const card=document.querySelector('.song-card');const a=card.querySelector('.song-card-actions');if(a.querySelectorAll('button').length!==5)return false;const dock=card.querySelector('.song-card-dock');dock.style.transition='none';a.style.transition='none';card.focus();const ar=a.getBoundingClientRect(),cr=card.getBoundingClientRect();const ok=ar.left>=cr.left-0.5&&ar.right<=cr.right+0.5;card.blur();dock.style.transition='';a.style.transition='';return ok})()",
+   ),
+);
+record(
+   "PDF: the options dialog can be driven for a song opened from My Songs",
+   await evaluate(
+      "(async()=>{const t=document.querySelector('#songTitle');t.value='Card PDF Probe';t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#exportBtn').click();await new Promise(r=>setTimeout(r,420));const modal=document.querySelector('#pdfOptionsModal');const host=document.querySelector('#pdfPreviewHost');const ok=!modal.hidden&&!!host.querySelector('#previewCard')&&document.querySelector('#previewTitle').textContent==='Card PDF Probe';document.querySelector('#pdfOptionsClose').click();await new Promise(r=>setTimeout(r,360));return ok&&modal.hidden})()",
+   ),
+);
+// With many songs the grid scrolls horizontally INSIDE its container; the page
+// and header must stay put (this is the header-drift bug fix).
+await injectCards(30);
+await evaluate("window.__cloudUpdateBlur()");
+record(
+   "Cloud: many songs keep the page + header within the viewport (no drift)",
+   await evaluate(
+      "(()=>{const shell=document.querySelector('.cloud-gallery-shell');const head=document.querySelector('.cloud-gallery-head');return document.documentElement.scrollWidth<=document.documentElement.clientWidth+1&&shell.scrollWidth<=innerWidth+1&&head.getBoundingClientRect().right<=innerWidth+1})()",
+   ),
+);
+record(
+   "Cloud: the card grid itself overflows horizontally (scrollable)",
+   await evaluate("(()=>{const g=document.querySelector('.cloud-cards');return g.scrollWidth>g.clientWidth+4})()"),
+);
+record(
+   "Cloud: next nudge button appears when the grid can scroll",
+   await evaluate("!document.querySelector('#galleryNext').hidden"),
+);
+record("Cloud: grid starts scrolled to the left", (await evaluate("window.__cloudScrollLeft()")) <= 2);
+record(
+   "Cloud: prev nudge button is hidden at the start",
+   await evaluate("document.querySelector('#galleryPrev').hidden"),
+);
+await evaluate("window.__cloudNudge(1)");
+await evaluate("(async()=>{await new Promise(r=>setTimeout(r,420));return true})()");
+await evaluate("window.__cloudUpdateBlur()");
+record("Cloud: next nudge scrolls the grid to the right", (await evaluate("window.__cloudScrollLeft()")) > 2);
+record(
+   "Cloud: prev nudge becomes available after scrolling",
+   await evaluate("!document.querySelector('#galleryPrev').hidden"),
+);
+await evaluate("window.__cloudRenderMock(6);true");
+record(
+   "Cloud: gallery exposes New Song and Upload controls",
+   await evaluate("!!document.querySelector('#newSongBtn')&&!!document.querySelector('#galleryUploadInput')"),
+);
+// Home is not dismissible, so instead of a close button the route drives the
+// screen: #/song/... shows the editor, #/songs shows home.
+await evaluate("(()=>{location.hash='#/song/new';return true})()");
+await waitFor("document.querySelector('#mySongsModal').hidden");
+record(
+   "Nav: routing to #/song/... leaves home and shows the editor",
+   await evaluate("document.querySelector('#mySongsModal').hidden"),
+);
+await evaluate("(()=>{location.hash='#/songs';return true})()");
+await waitFor("!document.querySelector('#mySongsModal').hidden");
+record(
+   "Nav: routing to #/songs returns to home (browser Back works)",
+   await evaluate("!document.querySelector('#mySongsModal').hidden"),
+);
+record(
+   "Nav: the Back to My Songs button routes home",
+   await evaluate(
+      "(()=>{location.hash='#/song/new';document.querySelector('#backToSongsBtn').click();return location.hash==='#/songs'})()",
+   ),
+);
+record(
+   "Nav: home locks the page so the editor behind it shows no scrollbar",
+   await evaluate(
+      "(async()=>{const de=document.documentElement;location.hash='#/song/new';await new Promise(r=>setTimeout(r,320));const editorOverflow=getComputedStyle(de).overflowY;const editorScreen=de.dataset.screen;location.hash='#/songs';await new Promise(r=>setTimeout(r,320));const homeOverflow=getComputedStyle(de).overflowY;const homeBody=getComputedStyle(document.body).overflowY;return editorScreen==='editor'&&editorOverflow!=='hidden'&&de.dataset.screen==='home'&&homeOverflow==='hidden'&&homeBody==='hidden'})()",
+   ),
+);
+record(
+   "Nav: routing back to the editor restores page scrolling",
+   await evaluate(
+      "(async()=>{location.hash='#/song/new';await new Promise(r=>setTimeout(r,320));const de=document.documentElement;return de.dataset.screen==='editor'&&getComputedStyle(de).overflowY!=='hidden'&&getComputedStyle(document.body).overflowY!=='hidden'})()",
+   ),
+);
+
 // Mobile interaction and layout suite.
 for (const [width, height, deviceScaleFactor = 1] of [
    [390, 844],
@@ -540,6 +873,43 @@ for (const [width, height, deviceScaleFactor = 1] of [
    record(`${width}px all arrangement tabs remain visible`, layout.tabs, JSON.stringify(layout));
    record(`${width}px arrangement panel does not collide`, !layout.editorOverflow, JSON.stringify(layout));
    record(`${width}px canvas controls remain visible`, layout.toolbar, JSON.stringify(layout));
+   // Cloud UI on mobile: topbar cloud buttons stay visible (styles.css hides
+   // .button-ghost <=560px; ui.css re-shows the cloud ones), and modals fit.
+   record(
+      `${width}px cloud topbar buttons stay visible`,
+      await evaluate(
+         "(()=>{const vis=id=>{const el=document.querySelector(id);if(!el)return false;const r=el.getBoundingClientRect();return getComputedStyle(el).display!=='none'&&r.width>0&&r.height>0};return vis('#backToSongsBtn')&&vis('#saveCloudBtn')})()",
+      ),
+   );
+   await evaluate(
+      "(()=>{const p=document.querySelector('#loginPage');p.hidden=false;p.classList.add('is-open');return true})()",
+   );
+   record(
+      `${width}px login page fits with no horizontal overflow`,
+      await evaluate(
+         "(()=>{const c=document.querySelector('#loginPage .login-card');if(!c)return false;const r=c.getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.width>0})()",
+      ),
+   );
+   record(
+      `${width}px login page hides the brand panel on mobile`,
+      await evaluate("getComputedStyle(document.querySelector('#loginPage .login-aside')).display==='none'"),
+   );
+   await evaluate(
+      "(()=>{const p=document.querySelector('#loginPage');p.classList.remove('is-open');p.hidden=true;return true})()",
+   );
+   // Gallery cards fit within the viewport width on mobile.
+   await evaluate(
+      '(()=>{const m=document.querySelector(\'#mySongsModal\');m.hidden=false;m.classList.add(\'is-open\');document.querySelector(\'#galleryLoading\').hidden=true;const t=document.querySelector(\'#songCards\');t.innerHTML=\'<article class="song-card" data-id="x"><h3 class="song-card-title">Test</h3><div class="song-card-creator">A</div><div class="song-card-meta"><span class="song-card-chip"><small>Key</small> G</span><span class="song-card-chip"><small>Time</small> 4/4</span></div></article>\';return true})()',
+   );
+   record(
+      `${width}px gallery card fits within viewport`,
+      await evaluate(
+         "(()=>{const c=document.querySelector('.song-card');if(!c)return false;const r=c.getBoundingClientRect();return r.width>0&&r.width<=innerWidth-8})()",
+      ),
+   );
+   await evaluate(
+      "(()=>{const m=document.querySelector('#mySongsModal');m.classList.remove('is-open');m.hidden=true;return true})()",
+   );
    const mobileSticky = await evaluate(
       "(async()=>{const editor=document.querySelector('.editor-card'),smooth=document.documentElement.style.scrollBehavior;document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:editor.offsetTop+120,behavior:'instant'});await new Promise(resolve=>setTimeout(resolve,80));const header=document.querySelector('.topbar').getBoundingClientRect(),ribbon=editor.getBoundingClientRect();const result={headerBottom:header.bottom,ribbonTop:ribbon.top};window.scrollTo(0,0);document.documentElement.style.scrollBehavior=smooth;return result})()",
    );
@@ -605,7 +975,7 @@ for (const [width, height, deviceScaleFactor = 1] of [
    // PDF options on phones: the dialog opens as an options-only sheet — the live
    // PDF preview pane is hidden (no room to render a full page usefully), but all
    // controls stay reachable and closing still restores the editor.
-   await evaluate("document.querySelector('#pdfOptionsBtn').click();true");
+   await evaluate("document.querySelector('#exportBtn').click();true");
    await waitFor("!document.querySelector('#pdfOptionsModal').hidden");
    await evaluate(
       "(()=>{const d=document.querySelector('.pdf-options-dialog');if(d)d.style.transition='none';void d?.offsetHeight;return true})()",

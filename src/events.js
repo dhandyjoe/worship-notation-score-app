@@ -40,8 +40,11 @@ import {
 } from "./render.js?v=20260810-devicehint-modal";
 import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260810-devicehint-modal";
 import { initPdfOptions } from "./pdfOptions.js?v=20260810-devicehint-modal";
+import { initCloudUI } from "./cloudUI.js?v=20260810-devicehint-modal";
 
 // ---- UI-only state (not part of the serializable document) ----
+// Firestore doc id of the currently-open cloud song (null = unsaved / local only).
+let currentCloudId = null;
 let previewZoom = Math.min(1.35, Math.max(0.65, Number(localStorage.getItem("chordSheetZoom")) || 1));
 const storedTheme = localStorage.getItem("chordSheetTheme");
 let activeTheme =
@@ -51,6 +54,9 @@ let activeTheme =
         ? "dark"
         : "light";
 let printLayoutPreview = false;
+// Handle returned by initPdfOptions(), so features outside the editor (the
+// My Songs cards) can open the PDF options dialog for a freshly-loaded song.
+let pdfOptionsControl = null;
 
 // Project content intentionally lives in memory only. Use Export .file for persistence.
 function save() {}
@@ -825,7 +831,7 @@ function applyTheme(theme, { persist = true, announce = false } = {}) {
    toggle.setAttribute("aria-pressed", String(dark));
    toggle.title = `Switch to ${dark ? "light" : "dark"} mode`;
    toggle.querySelector(".theme-toggle-icon").textContent = dark ? "☀" : "☾";
-   toggle.querySelector(".theme-toggle-label").textContent = dark ? "Light" : "Dark";
+   toggle.querySelector(".theme-toggle-label").textContent = dark ? "Light mode" : "Dark mode";
    document.querySelector('meta[name="theme-color"]').content = dark ? "#101110" : "#1f704a";
    if (persist) localStorage.setItem("chordSheetTheme", activeTheme);
    if (announce) toast(`${dark ? "Dark" : "Light"} mode enabled`);
@@ -967,8 +973,8 @@ function bindControlListeners() {
       save();
       toast("Score reset to default");
    });
-   $("#saveBtn").addEventListener("click", downloadProject);
-   $("#projectFileInput").addEventListener("change", async (event) => {
+   $("#saveBtn")?.addEventListener("click", downloadProject);
+   $("#projectFileInput")?.addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (!file) return;
       try {
@@ -982,11 +988,14 @@ function bindControlListeners() {
    });
    $("#exportBtn").addEventListener("click", () => {
       renderPreview();
-      exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
+      // The Export .pdf button now opens the PDF options dialog (initPdfOptions
+      // wires the actual click→open). renderPreview() first so the adopted
+      // #previewCard shows the current score. The real export runs from the
+      // dialog's own "Export PDF" button via the onExport callback below.
    });
-   // PDF options modal: tweaks --print-* tokens live (mirrors into the on-screen
-   // PDF layout preview) without touching the live editor.
-   initPdfOptions({
+   // PDF options dialog: tweaks --print-* tokens live (mirrors into the on-screen
+   // PDF layout preview) without touching the live editor. Opened by #exportBtn.
+   pdfOptionsControl = initPdfOptions({
       setPreview: (on, opts) => setPrintLayoutPreview(on, opts),
       isPreviewOn: () => printLayoutPreview,
       onExport: () => {
@@ -1169,4 +1178,20 @@ export function initEvents() {
    if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateViewportOverflow);
    window.addEventListener("load", updateViewportOverflow, { once: true });
    initDeviceHint();
+   // Cloud sync (login + My Songs). Bridged via callbacks so cloudUI never
+   // imports this module — keeps the dependency graph acyclic.
+   initCloudUI({
+      getProject: () => projectData(),
+      applyProject: (project) => applyProject(project),
+      getCloudId: () => currentCloudId,
+      setCloudId: (id) => {
+         currentCloudId = id || null;
+      },
+      // Used by the per-card "Export .pdf" action: the song is applied to the
+      // editor first, so the dialog's live preview shows that song's score.
+      openPdfOptions: () => {
+         renderPreview();
+         pdfOptionsControl?.open();
+      },
+   });
 }

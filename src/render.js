@@ -243,6 +243,10 @@ export function renderPreview() {
    renderPreview._cumulativeBarCount = 0;
    const artist = $("#artist").value || "Artist / Composer";
    $("#previewTitle").textContent = $("#songTitle").value || "Song Title";
+   // The editor header shows the document being edited (breadcrumb), so it has
+   // to track the title too — this runs on every title edit / project load.
+   const crumb = $("#editorSongName");
+   if (crumb) crumb.textContent = $("#songTitle").value || "Untitled";
    $("#previewArtist").innerHTML =
       `<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;
    $("#previewKey").textContent = state.key;

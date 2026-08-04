@@ -32,6 +32,9 @@ This is a fully static site (no build step). It is deployed with **Settings → 
 - All asset paths are **relative**, so the app works under the `/worship-notation-score-app/` subpath.
 - A `.nojekyll` file at the repo root disables Jekyll processing.
 - To publish changes: commit and `git push origin master` — Pages redeploys automatically.
+- **Firebase login** requires the Pages host (`dhandyjoe.github.io`) to be listed under
+  **Firebase Console → Authentication → Settings → Authorized domains**. See
+  [`docs/FIREBASE-SETUP.md`](docs/FIREBASE-SETUP.md).
 
 ## Architecture
 
@@ -47,12 +50,19 @@ chord-sheet/
 │   ├── render.js       #   view layer — builds score HTML
 │   ├── store.js        #   single source of truth for state
 │   ├── notation.js     #   pure music/notation logic (unit-tested)
-│   └── dom.js          #   thin browser helpers
+│   ├── pdf.js          #   PDF export pipeline
+│   ├── pdfOptions.js   #   PDF layout options modal
+│   ├── dom.js          #   thin browser helpers
+│   ├── cloud.js        #   Firebase wrapper (lazy-loaded auth + Firestore)
+│   ├── cloudUI.js      #   login modal + "My Songs" gallery
+│   └── firebase-config.js  # public-safe Firebase web config
 ├── styles/             # Stylesheets
 │   ├── styles.css      #   design tokens (:root variables)
 │   ├── ui.css          #   app shell, ribbon, responsive, dark theme
 │   └── preview.css     #   score canvas + print/PDF layout
 ├── assets/             # Static assets (favicon)
+├── docs/               # Project docs (Firebase / Firestore setup)
+├── samples/            # Example .chordsheet.json songbooks
 └── tests/              # Unit + regression tests
     ├── unit.test.mjs
     └── regression.mjs
@@ -68,9 +78,22 @@ The JavaScript is split into small, focused ES modules with an acyclic dependenc
 | `src/render.js`   | View layer: builds score HTML and writes it to the DOM    | notation, dom, store         |
 | `src/events.js`   | All user interaction, listeners, import/export, bootstrap | notation, dom, store, render |
 | `src/app.js`      | Entry point (`initEvents()`)                              | events                       |
+| `src/cloud.js`    | Firebase wrapper — lazy-loads auth + Firestore from CDN   | firebase-config              |
+| `src/cloudUI.js`  | Login modal + "My Songs" cloud gallery                    | cloud, dom                   |
 
 `render.js` never imports `events.js`; instead `events.js` injects its DOM-binding
-hooks via `initRender(...)`, which keeps the module graph free of cycles.
+hooks via `initRender(...)`, which keeps the module graph free of cycles. The cloud
+feature is self-contained: `cloudUI` talks to Firebase only through `cloud.js`, and
+to the editor only through injected callbacks — so it never imports `events.js`.
+
+### Cloud sync (optional)
+
+Sign-in is **optional** — the editor works fully without an account. Signing in
+adds a personal cloud library (**Save to Cloud** / **My Songs**) backed by Firebase
+Auth + Firestore. The Firebase web config in `src/firebase-config.js` is
+**public-safe**; data is protected by Firestore security rules and the project's
+authorized domains. See [`docs/FIREBASE-SETUP.md`](docs/FIREBASE-SETUP.md) for the
+Firestore rules, data model, and setup checklist.
 
 ### Stylesheets
 

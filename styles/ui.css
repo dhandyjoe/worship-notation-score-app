@@ -137,6 +137,39 @@ label,
    border-color: #bfd7c6;
    background: #eef7f0;
 }
+/* Editor topbar's two prominent actions. Both are filled (so they clearly read
+   as primary), but carry distinct accents so their purpose is unmistakable:
+   Save to Cloud = brand green (the safety action users look for first), and
+   Export .pdf = a deep charcoal (the output action). */
+.button-save {
+   background: var(--green);
+   color: #fff;
+   box-shadow: 0 6px 14px rgba(35, 122, 80, 0.2);
+}
+.button-save:hover {
+   background: #1e6e47;
+   box-shadow: 0 8px 18px rgba(35, 122, 80, 0.26);
+}
+.button-save.is-saving {
+   opacity: 0.75;
+   pointer-events: none;
+}
+.button-dark {
+   background: #223029;
+   color: #fff;
+   box-shadow: 0 6px 14px rgba(16, 40, 28, 0.22);
+}
+.button-dark:hover {
+   background: #2c3e34;
+   box-shadow: 0 8px 18px rgba(16, 40, 28, 0.28);
+}
+html[data-theme="dark"] .button-dark {
+   background: #e7ece8;
+   color: #10231b;
+}
+html[data-theme="dark"] .button-dark:hover {
+   background: #f3f6f3;
+}
 .theme-toggle {
    min-width: 76px;
 }
@@ -818,7 +851,10 @@ body.is-dragging .drop-target::after {
 .device-hint {
    position: fixed;
    inset: 0;
-   z-index: 120;
+   /* Must sit above every full-screen surface — the login page (140) and the My
+      Songs home overlay (130) — so the hint is visible no matter which screen
+      the phone user refreshes on. */
+   z-index: 160;
    display: grid;
    place-items: center;
    padding: 24px;
@@ -896,6 +932,97 @@ body.is-dragging .drop-target::after {
 .device-hint-close:focus-visible {
    outline: 2px solid var(--green, #1f7a4d);
    outline-offset: 2px;
+}
+
+/* Themed confirm dialog — a drop-in replacement for window.confirm(). Sits above
+   every full-screen surface (login 140, home 130) so it's usable from any
+   screen. Backdrop click, Cancel and Escape all resolve as "cancelled". */
+.confirm-dialog {
+   position: fixed;
+   inset: 0;
+   z-index: 170;
+   display: grid;
+   place-items: center;
+   padding: 24px;
+   opacity: 0;
+   transition: opacity 0.24s ease;
+}
+.confirm-dialog[hidden] {
+   display: none;
+}
+.confirm-dialog.is-open {
+   opacity: 1;
+}
+.confirm-dialog-backdrop {
+   position: absolute;
+   inset: 0;
+   background: rgba(12, 28, 20, 0.44);
+   -webkit-backdrop-filter: blur(8px);
+   backdrop-filter: blur(8px);
+}
+.confirm-dialog-card {
+   position: relative;
+   z-index: 1;
+   width: min(400px, 100%);
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 10px;
+   padding: 28px 26px 22px;
+   text-align: center;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-lg);
+   background: var(--surface);
+   box-shadow: var(--shadow-md);
+   transform: translateY(12px) scale(0.98);
+   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.confirm-dialog.is-open .confirm-dialog-card {
+   transform: translateY(0) scale(1);
+}
+.confirm-dialog-icon {
+   display: grid;
+   place-items: center;
+   width: 48px;
+   height: 48px;
+   border-radius: 50%;
+   background: color-mix(in srgb, var(--green) 14%, transparent);
+   color: var(--dark-green);
+   font-size: 22px;
+   line-height: 1;
+}
+.confirm-dialog-title {
+   margin: 4px 0 0;
+   font-size: 19px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+}
+.confirm-dialog-desc {
+   margin: 0;
+   font-size: 13.5px;
+   line-height: 1.5;
+   color: var(--muted);
+}
+.confirm-dialog-actions {
+   display: flex;
+   gap: 10px;
+   width: 100%;
+   margin-top: 14px;
+}
+.confirm-dialog-actions .button {
+   flex: 1 1 0;
+   justify-content: center;
+   min-height: 44px;
+}
+/* Destructive confirm (e.g. Sign out) reads red rather than the brand green. */
+.confirm-dialog-actions .button.is-danger {
+   background: #b42318;
+   border-color: #b42318;
+   color: #fff;
+}
+.confirm-dialog-actions .button.is-danger:hover {
+   filter: brightness(1.06);
 }
 
 /* Site footer */
@@ -1038,8 +1165,22 @@ body.is-dragging .drop-target::after {
    .topbar-actions {
       display: grid;
       width: 100%;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 6px;
+   }
+   /* Editor header on small screens: Back stays a compact button and the
+      breadcrumb takes the remaining width (it truncates rather than wraps). */
+   .topbar-nav {
+      width: 100%;
+      gap: 10px;
+   }
+   .editor-breadcrumb {
+      flex: 1 1 auto;
+      padding-left: 10px;
+   }
+   .editor-breadcrumb-title {
+      max-width: none;
+      font-size: 13px;
    }
    .topbar-actions .button,
    .topbar-actions .button-ghost,
@@ -2343,4 +2484,1424 @@ html[data-theme="dark"] .pdf-preview-scale {
       align-items: center;
       justify-content: center;
    }
+}
+
+/* ======================================================================
+   CLOUD SYNC UI — login page + My Songs gallery.
+   Reuses the theme tokens (var(--surface|ink|line|green|...)) so it tracks
+   light/dark automatically. Centered-modal mechanics mirror .device-hint.
+   ====================================================================== */
+
+/* ---- Auth gate ----
+   Before the first auth-state result is known we hide the app chrome to avoid a
+   flash of the editor. `data-auth-gate` is set to "pending" inline in <head>,
+   then to "login" or "app" once cloudUI routes. */
+html[data-auth-gate="pending"] body > .topbar,
+html[data-auth-gate="pending"] body > main,
+html[data-auth-gate="login"] body > .topbar,
+html[data-auth-gate="login"] body > main {
+   visibility: hidden;
+}
+html[data-auth-gate="pending"] {
+   background: var(--app-bg);
+}
+
+/* My Songs is a full-viewport screen laid over the editor, so the editor behind
+   it must not contribute a scrollbar. Locking the page (rather than hiding the
+   editor) keeps the editor's scroll position intact when we route back to it. */
+html[data-screen="home"],
+html[data-screen="home"] body {
+   overflow: hidden;
+}
+
+/* ---- Login page (full-screen auth gate) ---- */
+.login-page {
+   position: fixed;
+   inset: 0;
+   z-index: 140;
+   display: grid;
+   grid-template-columns: 1.05fr 1fr;
+   background: var(--app-bg);
+   opacity: 0;
+   transition: opacity 0.3s ease;
+   /* Login-only green: deeper than the app's --green so white text on the panel
+      and the filled buttons read with more contrast, but NOT as dark as the
+      logo/brand gradient. Scoped to the login page (overrides the tokens locally)
+      so the rest of the app is untouched. */
+   --green: #1a6742;
+   --dark-green: #145536;
+}
+.login-page[hidden] {
+   display: none;
+}
+.login-page.is-open {
+   opacity: 1;
+}
+/* Left brand panel */
+.login-aside {
+   position: relative;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   padding: 48px;
+   color: #fff;
+   background: linear-gradient(155deg, var(--green), var(--dark-green));
+   overflow: hidden;
+}
+.login-aside::after {
+   content: "";
+   position: absolute;
+   inset: 0;
+   background:
+      radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.16), transparent 42%),
+      radial-gradient(circle at 82% 78%, rgba(255, 255, 255, 0.12), transparent 46%);
+   pointer-events: none;
+}
+.login-aside-inner {
+   position: relative;
+   max-width: 400px;
+}
+/* Reuse the My Songs brand lockup. The logo shows on its own — no tinted tile
+   behind it — so it reads as a clean mark on the green panel. */
+.login-aside-brand {
+   margin-bottom: 30px;
+}
+/* Logo shows bare on the green panel — no tinted tile / blur behind it. */
+.login-aside-brand .home-brand-icon {
+   width: 46px;
+   height: 46px;
+   border-radius: 0;
+   background: none;
+   -webkit-backdrop-filter: none;
+   backdrop-filter: none;
+}
+.login-aside-brand .home-brand-icon img {
+   width: 46px;
+   height: 46px;
+}
+.login-aside-brand .home-brand-text {
+   color: #fff;
+   font-size: 16px;
+}
+.login-aside-brand .home-brand-text small {
+   color: rgba(255, 255, 255, 0.78);
+}
+.login-brand-icon {
+   display: inline-grid;
+   place-items: center;
+   width: 60px;
+   height: 60px;
+   border-radius: 18px;
+   background: rgba(255, 255, 255, 0.16);
+   backdrop-filter: blur(4px);
+   margin-bottom: 22px;
+}
+.login-brand-icon img {
+   width: 34px;
+   height: 34px;
+}
+.login-aside-title {
+   margin: 0;
+   font-size: clamp(26px, 2.6vw, 33px);
+   font-weight: 800;
+   letter-spacing: -0.02em;
+   line-height: 1.16;
+}
+.login-aside-tag {
+   margin: 14px 0 30px;
+   font-size: 14.5px;
+   line-height: 1.5;
+   opacity: 0.88;
+}
+.login-aside-points {
+   list-style: none;
+   margin: 0;
+   padding: 0;
+   display: flex;
+   flex-direction: column;
+   gap: 14px;
+}
+.login-aside-points li {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   font-size: 14.5px;
+   font-weight: 500;
+   opacity: 0.95;
+}
+.login-aside-points li span {
+   display: grid;
+   place-items: center;
+   width: 30px;
+   height: 30px;
+   border-radius: 9px;
+   background: rgba(255, 255, 255, 0.16);
+   font-size: 15px;
+}
+/* Right form panel */
+.login-main {
+   display: grid;
+   place-items: center;
+   padding: 40px 28px;
+   overflow-y: auto;
+}
+.login-card {
+   width: min(392px, 100%);
+   display: flex;
+   flex-direction: column;
+   gap: 16px;
+}
+.login-card-head {
+   text-align: center;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 6px;
+   margin-bottom: 4px;
+}
+/* Compact brand lockup at the top of the form. Only shows on narrow screens
+   where the green brand panel is hidden — on wide layouts the panel already
+   carries the brand, so we hide this to avoid repeating it. (Scoped under
+   .login-card so it outranks the shared .home-brand display rule.) */
+.login-card .login-card-brand {
+   display: none;
+   margin-bottom: 10px;
+}
+.login-card-brand .home-brand-icon {
+   width: 40px;
+   height: 40px;
+}
+.login-card-brand .home-brand-text {
+   font-size: 15px;
+}
+.login-card-title {
+   margin: 4px 0 0;
+   font-size: 24px;
+   font-weight: 800;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+}
+.login-card-sub {
+   margin: 0;
+   font-size: 14px;
+   color: var(--muted);
+}
+
+/* Shared modal backdrop (login + gallery). */
+.cloud-modal {
+   position: fixed;
+   inset: 0;
+   z-index: 130;
+   display: grid;
+   place-items: center;
+   padding: 24px;
+   background: rgba(12, 28, 20, 0.46);
+   -webkit-backdrop-filter: blur(9px);
+   backdrop-filter: blur(9px);
+   opacity: 0;
+   transition: opacity 0.28s ease;
+}
+.cloud-modal[hidden] {
+   display: none;
+}
+.cloud-modal.is-open {
+   opacity: 1;
+}
+.cloud-modal-card {
+   position: relative;
+   width: min(400px, 100%);
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 14px;
+   padding: 34px 30px 30px;
+   text-align: center;
+   border: 1px solid var(--line);
+   border-radius: var(--radius-lg);
+   background: var(--surface);
+   box-shadow: var(--shadow-md);
+   transform: translateY(14px) scale(0.98);
+   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cloud-modal.is-open .cloud-modal-card {
+   transform: translateY(0) scale(1);
+}
+.cloud-modal-close {
+   position: absolute;
+   top: 12px;
+   right: 12px;
+   width: 34px;
+   height: 34px;
+   display: grid;
+   place-items: center;
+   border: 1px solid transparent;
+   border-radius: 50%;
+   background: transparent;
+   color: var(--muted);
+   font-size: 15px;
+   cursor: pointer;
+   transition:
+      background 0.16s ease,
+      color 0.16s ease,
+      border-color 0.16s ease;
+}
+.cloud-modal-close:hover {
+   background: var(--soft);
+   color: var(--ink);
+   border-color: var(--line);
+}
+.cloud-modal-title {
+   margin: 0;
+   font-size: 20px;
+   font-weight: 800;
+   color: var(--ink);
+   letter-spacing: -0.01em;
+}
+.cloud-modal-sub {
+   margin: 0;
+   font-size: 13px;
+   color: var(--muted);
+   max-width: 30ch;
+}
+
+/* ---- Login modal ---- */
+.cloud-login-icon {
+   width: 58px;
+   height: 58px;
+   display: grid;
+   place-items: center;
+   font-size: 30px;
+   color: #fff;
+   background: linear-gradient(140deg, var(--green), var(--dark-green));
+   border-radius: 18px;
+   box-shadow: 0 10px 24px rgba(35, 122, 80, 0.28);
+}
+.cloud-google-btn {
+   width: 100%;
+   min-height: 46px;
+   margin-top: 4px;
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   gap: 10px;
+   border: 1px solid var(--line);
+   border-radius: 12px;
+   background: var(--surface);
+   color: var(--ink);
+   font: 700 14px inherit;
+   cursor: pointer;
+   transition:
+      transform 0.16s ease,
+      box-shadow 0.16s ease,
+      background 0.16s ease,
+      border-color 0.16s ease;
+}
+.cloud-google-btn:hover {
+   transform: translateY(-1px);
+   border-color: #bfd7c6;
+   box-shadow: var(--shadow-sm);
+}
+.cloud-google-mark {
+   display: grid;
+   place-items: center;
+   width: 18px;
+   height: 18px;
+}
+.cloud-divider {
+   width: 100%;
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   color: var(--muted);
+   font-size: 11px;
+   text-transform: uppercase;
+   letter-spacing: 0.08em;
+}
+.cloud-divider::before,
+.cloud-divider::after {
+   content: "";
+   flex: 1;
+   height: 1px;
+   background: var(--line);
+}
+.cloud-email-form {
+   width: 100%;
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+}
+.cloud-field {
+   display: flex;
+   flex-direction: column;
+   gap: 5px;
+   text-align: left;
+}
+.cloud-field span {
+   font-size: 12px;
+   font-weight: 700;
+   color: var(--muted);
+}
+.cloud-field input {
+   min-height: 42px;
+   padding: 9px 12px;
+   border: 1px solid var(--line);
+   border-radius: 10px;
+   background: var(--app-bg);
+   color: var(--ink);
+   font-size: 14px;
+   transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease;
+}
+.cloud-field input:focus-visible {
+   outline: none;
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.16);
+}
+.cloud-auth-error {
+   margin: 0;
+   padding: 8px 10px;
+   font-size: 12.5px;
+   text-align: left;
+   color: #b42318;
+   background: rgba(180, 35, 24, 0.08);
+   border: 1px solid rgba(180, 35, 24, 0.22);
+   border-radius: 9px;
+}
+.cloud-auth-error[hidden] {
+   display: none;
+}
+.cloud-auth-actions {
+   display: flex;
+   gap: 10px;
+   margin-top: 2px;
+}
+.cloud-auth-actions .button {
+   flex: 1;
+   min-height: 44px;
+   justify-content: center;
+}
+/* The "Sign in" button is a filled green button on the login page. Force white
+   text in BOTH themes: the dark-theme `.button-primary{color:#08130d}` rule
+   (near-black, for the app's lighter green) would otherwise win by specificity
+   and leave near-black text on the login page's deep green — unreadable. */
+.cloud-auth-primary,
+html[data-theme="dark"] .cloud-auth-primary {
+   color: #fff;
+}
+
+/* ---- Account button (topbar) ---- */
+.account-button {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+}
+.account-avatar {
+   width: 20px;
+   height: 20px;
+   display: grid;
+   place-items: center;
+   border-radius: 50%;
+   background: var(--soft);
+   font-size: 12px;
+   overflow: hidden;
+}
+.account-avatar img {
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+}
+.account-button.is-authed .account-avatar {
+   background: var(--green);
+   color: #fff;
+}
+
+/* ---- Profile card (popover anchored under the account button) ---- */
+.account-menu {
+   position: relative;
+}
+.account-popover {
+   position: absolute;
+   top: calc(100% + 10px);
+   right: 0;
+   z-index: 40;
+   width: 244px;
+   padding: 8px;
+   border: 1px solid var(--line);
+   border-radius: 16px;
+   background: var(--surface);
+   box-shadow:
+      0 2px 6px rgba(16, 40, 28, 0.06),
+      0 22px 48px -18px rgba(16, 40, 28, 0.34);
+   opacity: 0;
+   transform: translateY(-6px) scale(0.98);
+   transform-origin: top right;
+   transition:
+      opacity 0.16s ease,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.account-popover[hidden] {
+   display: none;
+}
+.account-popover.is-open {
+   opacity: 1;
+   transform: translateY(0) scale(1);
+}
+.account-popover-id {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   padding: 8px 8px 10px;
+   min-width: 0;
+}
+.account-popover-avatar {
+   flex: 0 0 auto;
+   width: 34px;
+   height: 34px;
+   display: grid;
+   place-items: center;
+   border-radius: 50%;
+   background: var(--green);
+   color: #fff;
+   font-size: 15px;
+   font-weight: 700;
+   overflow: hidden;
+}
+.account-popover-avatar img {
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+}
+.account-popover-who {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+}
+.account-popover-who strong {
+   font-size: 13.5px;
+   font-weight: 700;
+   color: var(--ink);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.account-popover-who small {
+   font-size: 11.5px;
+   color: var(--muted);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.account-popover-sep {
+   height: 1px;
+   margin: 2px 4px 6px;
+   background: var(--line);
+}
+.account-popover-item {
+   width: 100%;
+   display: flex;
+   align-items: center;
+   gap: 9px;
+   padding: 9px 10px;
+   border: none;
+   border-radius: 10px;
+   background: transparent;
+   color: var(--ink);
+   font: inherit;
+   font-size: 13px;
+   font-weight: 600;
+   text-align: left;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.account-popover-item:hover,
+.account-popover-item:focus-visible {
+   background: var(--soft);
+   outline: none;
+}
+.account-popover-item.is-signout {
+   color: #b42318;
+}
+.account-popover-item.is-signout:hover,
+.account-popover-item.is-signout:focus-visible {
+   background: rgba(180, 35, 24, 0.1);
+}
+.account-popover-item[hidden] {
+   display: none;
+}
+
+/* ---- Editor header: Back affordance + document breadcrumb ---- */
+.topbar-nav {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   min-width: 0;
+}
+.editor-back {
+   flex: 0 0 auto;
+}
+.editor-breadcrumb {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   padding-left: 12px;
+   border-left: 1px solid var(--line);
+   line-height: 1.25;
+}
+.editor-breadcrumb-label {
+   font-size: 10px;
+   font-weight: 600;
+   text-transform: uppercase;
+   letter-spacing: 0.07em;
+   color: var(--muted);
+}
+.editor-breadcrumb-title {
+   font-size: 14px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   max-width: 34vw;
+}
+/* Contextual "Back to editor": only rendered when a document is already open. */
+.gallery-resume[hidden] {
+   display: none;
+}
+
+/* Keep cloud topbar buttons usable on phones (styles.css hides .button-ghost
+   at <=560px). We re-show the ghost ones (Back, account) — Save to Cloud and
+   Export .pdf are filled buttons now, so they're never hidden. */
+@media (max-width: 560px) {
+   #backToSongsBtn.button-ghost,
+   #accountBtn.button-ghost {
+      display: inline-flex !important;
+      align-items: center;
+      padding: 8px 10px;
+   }
+   /* Login page: collapse to a single column, hide the brand panel. */
+   .login-page {
+      grid-template-columns: 1fr;
+   }
+   .login-aside {
+      display: none;
+   }
+   /* With the brand panel gone, surface a compact lockup above the form. */
+   .login-card .login-card-brand {
+      display: inline-flex;
+   }
+   .login-main {
+      padding: 28px 20px;
+   }
+}
+
+/* ======================= My Songs gallery ========================= */
+.cloud-gallery {
+   place-items: stretch;
+   padding: 0;
+   /* Pin the single grid cell to the viewport so a wide scrolling card grid
+      inside can never stretch the shell (and header) past the screen. */
+   grid-template-columns: minmax(0, 1fr);
+   grid-template-rows: minmax(0, 1fr);
+}
+.cloud-gallery-shell {
+   position: relative;
+   width: 100%;
+   max-width: 100%;
+   min-width: 0;
+   height: 100%;
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
+   background: var(--app-bg);
+   transform: translateY(14px);
+   opacity: 0;
+   transition:
+      transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.28s ease;
+}
+.cloud-gallery.is-open .cloud-gallery-shell {
+   transform: translateY(0);
+   opacity: 1;
+}
+.cloud-gallery-head {
+   flex: 0 0 auto;
+   /* 3-column header: brand (left) · compact page title (center) · actions (right).
+      The side columns share equal width (1fr) so the centered title stays
+      optically centered in the header regardless of how wide each side is. */
+   display: grid;
+   grid-template-columns: 1fr auto 1fr;
+   align-items: center;
+   gap: 18px;
+   padding: 18px clamp(20px, 4vw, 56px);
+   border-bottom: 1px solid var(--line);
+   background: var(--surface);
+}
+.cloud-gallery-heading {
+   min-width: 0;
+   justify-self: start;
+}
+.cloud-gallery-heading .cloud-modal-title {
+   text-align: left;
+}
+.cloud-gallery-heading .cloud-modal-sub {
+   text-align: left;
+   max-width: none;
+}
+/* Brand lockup. This lives on My Songs because My Songs is the home screen;
+   the editor is a sub-page and leads with a Back affordance instead. */
+.home-brand {
+   display: inline-flex;
+   align-items: center;
+   gap: 11px;
+   min-width: 0;
+}
+.home-brand-icon {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 36px;
+   height: 36px;
+   border-radius: 11px;
+   background: var(--soft);
+}
+.home-brand-icon img {
+   width: 22px;
+   height: 22px;
+}
+.home-brand-text {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   font-size: 15.5px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+   line-height: 1.2;
+}
+.home-brand-text small {
+   font-size: 11px;
+   font-weight: 500;
+   color: var(--muted);
+   letter-spacing: 0;
+}
+.cloud-gallery-actions {
+   display: flex;
+   align-items: center;
+   justify-content: flex-end;
+   justify-self: end;
+   gap: 10px;
+   flex-wrap: wrap;
+}
+/* Hero + search stack. The hero moved here from the editor: only the home
+   screen gets to state what the product does. */
+/* Compact, centered page title in the header's middle column (Option B). Short
+   and functional — the user is already signed in, so no marketing tagline. */
+.home-intro {
+   margin: 0;
+   padding: 0;
+   text-align: center;
+   justify-self: center;
+   min-width: 0;
+}
+.home-intro h1 {
+   margin: 0;
+   font-size: clamp(15px, 1.6vw, 18px);
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   line-height: 1.2;
+   color: var(--ink);
+}
+.home-intro p {
+   margin: 3px 0 0;
+   font-size: 12px;
+   color: var(--muted);
+}
+/* Search bar stands on its own row between the hero and the list. */
+.cloud-gallery-searchbar {
+   flex: 0 0 auto;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   padding: 14px clamp(20px, 4vw, 56px) 6px;
+}
+/* Live library count — now the standalone subtitle under the centered title. */
+.library-count {
+   font-weight: 600;
+   color: var(--dark-green);
+}
+.cloud-search {
+   position: relative;
+   display: flex;
+   align-items: center;
+   width: min(560px, 100%);
+}
+.cloud-search-icon {
+   position: absolute;
+   left: 16px;
+   color: var(--muted);
+   font-size: 17px;
+   pointer-events: none;
+}
+.cloud-search input {
+   min-height: 48px;
+   width: 100%;
+   padding: 10px 16px 10px 42px;
+   border: 1px solid var(--line);
+   border-radius: 999px;
+   background: var(--surface);
+   color: var(--ink);
+   font-size: 14.5px;
+   box-shadow: var(--shadow-sm);
+   transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease;
+}
+.cloud-search input::placeholder {
+   color: var(--muted);
+}
+.cloud-search input:focus-visible {
+   outline: none;
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.16);
+}
+.cloud-gallery-close {
+   position: static;
+}
+
+.cloud-gallery-body {
+   position: relative;
+   flex: 1 1 auto;
+   min-height: 0;
+   width: 100%;
+   max-width: 100%;
+   overflow: hidden; /* the scrolling grid lives INSIDE here, so it never pushes the shell wider than the viewport */
+   display: flex;
+   align-items: flex-start; /* pin the grid to the top so the gap below the search bar stays constant */
+   justify-content: center;
+}
+/* Two-row grid that scrolls horizontally. Cards flow column-by-column (top card
+   then bottom card of each column), and columns alternate a small vertical
+   offset to create a zigzag wave. The grid is the scroll container, so it never
+   pushes the shell (or header) wider than the viewport — fixing the drift bug. */
+.cloud-cards {
+   flex: 1 1 auto;
+   min-width: 0; /* let the flex item shrink so overflow-x can scroll instead of stretching the shell */
+   width: 100%;
+   max-width: 100%;
+   height: 100%;
+   display: grid;
+   grid-template-rows: repeat(2, min-content);
+   grid-auto-flow: column;
+   grid-auto-columns: max-content;
+   gap: 14px 8px;
+   align-content: center;
+   justify-content: start;
+   overflow-x: auto;
+   overflow-y: hidden;
+   /* Side padding = half the viewport minus half a card, so the FIRST and LAST
+      columns can scroll all the way to the horizontal center (where they become
+      sharp/active). Few cards still sit centered because the padding fills the
+      sides evenly. `align-content:center` centers the card rows VERTICALLY in
+      the body so they line up with the left/right nudge icons (which sit at the
+      body's vertical midpoint); the symmetric top/bottom padding keeps a minimum
+      inset from the search bar and shell edge on shorter windows. */
+   padding: 28px max(16px, calc(50% - 105px));
+   scrollbar-width: none; /* hide native scrollbar; nudge buttons + swipe drive it */
+   -webkit-overflow-scrolling: touch;
+   touch-action: pan-x pan-y;
+   list-style: none;
+   margin: 0;
+}
+.cloud-cards::-webkit-scrollbar {
+   display: none;
+}
+.cloud-cards:focus-visible {
+   outline: 2px solid var(--green);
+   outline-offset: -4px;
+   border-radius: var(--radius-lg);
+}
+
+/* Card. Cards sit in the grid; each column is nudged up or down (zigzag) via
+   --shift, and cards near the scroll edges get blurred via --blur (set by JS).
+   Hovering/focusing a card lifts it (via --lift) and reveals its actions +
+   detail. Visual language: soft elevation + hairline instead of a hard frame. */
+.song-card {
+   --shift: 0px;
+   --lift: 0px;
+   position: relative;
+   width: 214px;
+   height: 252px;
+   display: flex;
+   flex-direction: column;
+   padding: 20px 20px 16px;
+   border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+   border-radius: 22px;
+   background: var(--surface);
+   box-shadow:
+      0 1px 2px rgba(16, 40, 28, 0.04),
+      0 8px 24px -12px rgba(16, 40, 28, 0.16);
+   cursor: pointer;
+   transform: translateY(calc(var(--shift) + var(--lift))) scale(var(--scale, 1));
+   filter: blur(var(--blur, 0px));
+   transition:
+      transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.3s ease,
+      box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.3s ease;
+   overflow: hidden;
+}
+/* Zigzag: columns alternate up / down. With 2 rows and column flow the cards
+   come in pairs (col1 = cards 1&2, col2 = cards 3&4 …), so a period-4 pattern
+   raises odd columns and lowers even columns. */
+.song-card:nth-child(4n + 1),
+.song-card:nth-child(4n + 2) {
+   --shift: -20px;
+}
+.song-card:nth-child(4n + 3),
+.song-card:nth-child(4n + 4) {
+   --shift: 20px;
+}
+.song-card:hover,
+.song-card:focus-visible {
+   --lift: -6px;
+   border-color: color-mix(in srgb, var(--green) 30%, transparent);
+   box-shadow:
+      0 2px 6px rgba(16, 40, 28, 0.06),
+      0 20px 42px -18px rgba(16, 40, 28, 0.3);
+   outline: none;
+   z-index: 3;
+}
+/* Dimmed (blurred, off-center) cards are not interactive: they can't be
+   clicked, hovered, or focused. Scroll them to the middle to activate them. */
+.song-card.is-dim {
+   pointer-events: none;
+   cursor: default;
+}
+/* Subtle, minimalist accent: a soft tinted glow in the top-left corner instead
+   of a loud full-width gradient bar. */
+.song-card::before {
+   content: "";
+   position: absolute;
+   top: -40%;
+   left: -30%;
+   width: 150px;
+   height: 150px;
+   border-radius: 50%;
+   background: radial-gradient(circle, color-mix(in srgb, var(--lime) 30%, transparent), transparent 70%);
+   opacity: 0.55;
+   pointer-events: none;
+}
+/* Legacy hook kept harmless: JS no longer sets .is-active on this grid. */
+.song-card.is-active {
+   box-shadow: var(--shadow-md);
+   border-color: var(--green);
+   outline: none;
+}
+.song-card-title {
+   margin: 4px 0 3px;
+   font-size: 16.5px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   line-height: 1.3;
+   color: var(--ink);
+   display: -webkit-box;
+   -webkit-line-clamp: 2;
+   line-clamp: 2;
+   -webkit-box-orient: vertical;
+   overflow: hidden;
+}
+.song-card-creator {
+   font-size: 12.5px;
+   color: var(--muted);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+/* Bottom dock: the Key/Time chips sit at the lower-left, with the action row
+   parked directly underneath them (invisible, so it costs no visual space).
+   On hover the whole dock glides up by --dock-shift, which slides the chips
+   upward and "opens" room for the actions that fade in below them. One
+   transform on one element = GPU-composited and perfectly in sync. */
+.song-card-dock {
+   --dock-shift: 42px;
+   margin-top: auto;
+   /* Layout only reserves the chip row; the action row hangs below it. */
+   margin-bottom: calc(-1 * var(--dock-shift));
+   display: flex;
+   flex-direction: column;
+   align-items: flex-start;
+   transform: translateY(0);
+   transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+   will-change: transform;
+}
+.song-card:hover .song-card-dock,
+.song-card:focus-visible .song-card-dock,
+.song-card:focus-within .song-card-dock {
+   transform: translateY(calc(-1 * var(--dock-shift)));
+}
+.song-card-meta {
+   display: flex;
+   gap: 16px;
+   flex-wrap: wrap;
+}
+/* Key / Time are the most scanned values on the card, so they carry weight
+   through typography alone - no pill, no fill. The value is large, bold and
+   full-contrast; the label above it stays small, quiet and uppercase. */
+.song-card-chip {
+   display: inline-flex;
+   align-items: baseline;
+   gap: 6px;
+   font-size: 15px;
+   font-weight: 700;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+}
+.song-card-chip small {
+   font-weight: 600;
+   color: var(--muted);
+   font-size: 9px;
+   text-transform: uppercase;
+   letter-spacing: 0.06em;
+}
+/* Section count + last-updated: hidden until the card is hovered/focused. It
+   stays in the flow the whole time (only opacity/transform animate), so
+   revealing it never reflows the card. */
+.song-card-detail {
+   margin-top: 6px;
+   font-size: 11.5px;
+   line-height: 1.4;
+   color: var(--muted);
+   opacity: 0;
+   transform: translateY(-4px);
+   overflow: hidden;
+   display: -webkit-box;
+   -webkit-line-clamp: 2;
+   line-clamp: 2;
+   -webkit-box-orient: vertical;
+   transition:
+      opacity 0.26s ease 0.06s,
+      transform 0.34s cubic-bezier(0.22, 1, 0.36, 1) 0.06s;
+}
+.song-card:hover .song-card-detail,
+.song-card:focus-visible .song-card-detail,
+.song-card:focus-within .song-card-detail {
+   opacity: 1;
+   transform: translateY(0);
+}
+/* Actions (export / duplicate / delete) are parked below the chips inside the
+   dock, so they can never cover the song title. They fade in as the dock
+   rises; the small stagger makes the two motions feel like one gesture. */
+.song-card-actions {
+   margin-top: 10px;
+   display: flex;
+   gap: 8px;
+   opacity: 0;
+   transition: opacity 0.22s ease;
+}
+.song-card:hover .song-card-actions,
+.song-card:focus-visible .song-card-actions,
+.song-card:focus-within .song-card-actions {
+   opacity: 1;
+   transition-delay: 0.08s;
+}
+.song-card-action {
+   position: relative;
+   width: 32px;
+   height: 32px;
+   display: grid;
+   place-items: center;
+   border: none;
+   border-radius: 50%;
+   background: color-mix(in srgb, var(--soft) 55%, transparent);
+   box-shadow: none;
+   color: var(--muted);
+   font-size: 14px;
+   cursor: pointer;
+   transition:
+      background 0.18s ease,
+      color 0.18s ease,
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
+}
+.song-card-action:hover,
+.song-card-action:focus-visible {
+   transform: translateY(-2px);
+   box-shadow: 0 6px 14px -5px rgba(16, 40, 28, 0.3);
+   color: var(--ink);
+   outline: none;
+}
+/* Tooltip naming the button, so the icons are never a guessing game. Sits
+   above the button (there is always room: the dock is at the card bottom). */
+.song-card-action::after {
+   content: attr(data-label);
+   position: absolute;
+   bottom: calc(100% + 7px);
+   left: 50%;
+   z-index: 4;
+   padding: 4px 8px;
+   border-radius: 7px;
+   background: color-mix(in srgb, var(--ink) 92%, transparent);
+   color: var(--surface);
+   font-size: 10.5px;
+   font-weight: 600;
+   letter-spacing: 0.01em;
+   line-height: 1.2;
+   white-space: nowrap;
+   opacity: 0;
+   transform: translate(-50%, 4px);
+   pointer-events: none;
+   transition:
+      opacity 0.16s ease,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.song-card-action:hover::after,
+.song-card-action:focus-visible::after {
+   opacity: 1;
+   transform: translate(-50%, 0);
+}
+.song-card-action.is-delete:hover {
+   background: rgba(180, 35, 24, 0.12);
+   color: #b42318;
+}
+/* Export .pdf is the primary per-card action, so it carries the brand tint. */
+.song-card-action.is-pdf:hover,
+.song-card-action.is-pdf:focus-visible {
+   background: color-mix(in srgb, var(--green) 16%, transparent);
+   color: var(--dark-green);
+}
+.song-card-action.is-duplicate:hover {
+   background: var(--soft);
+   color: var(--dark-green);
+}
+.song-card-action.is-export:hover {
+   background: var(--soft);
+   color: var(--dark-green);
+}
+
+/* Left/right nudge buttons. */
+.cloud-nudge {
+   position: absolute;
+   top: 50%;
+   transform: translateY(-50%);
+   z-index: 8;
+   width: 46px;
+   height: 46px;
+   display: grid;
+   place-items: center;
+   border: 1px solid var(--line);
+   border-radius: 50%;
+   background: var(--surface);
+   color: var(--ink);
+   font-size: 24px;
+   line-height: 1;
+   cursor: pointer;
+   box-shadow: var(--shadow-sm);
+   transition:
+      background 0.16s ease,
+      transform 0.16s ease,
+      border-color 0.16s ease;
+}
+.cloud-nudge[hidden] {
+   display: none;
+}
+.cloud-nudge:hover {
+   border-color: var(--green);
+   background: var(--soft);
+}
+.cloud-nudge-left {
+   left: clamp(8px, 2vw, 22px);
+}
+.cloud-nudge-right {
+   right: clamp(8px, 2vw, 22px);
+}
+
+/* Gallery states (loading / empty / no-results) overlay the body center. */
+.cloud-gallery-state {
+   position: absolute;
+   inset: 0;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   gap: 8px;
+   text-align: center;
+   color: var(--muted);
+   pointer-events: none;
+}
+.cloud-gallery-state[hidden] {
+   display: none;
+}
+.cloud-gallery-state p {
+   margin: 4px 0 0;
+   font-size: 17px;
+   font-weight: 700;
+   color: var(--ink);
+}
+.cloud-gallery-state span {
+   font-size: 13px;
+   max-width: 34ch;
+}
+.cloud-gallery-state-icon {
+   font-size: 40px;
+   opacity: 0.5;
+}
+.cloud-spinner {
+   width: 38px;
+   height: 38px;
+   border: 3px solid var(--line);
+   border-top-color: var(--green);
+   border-radius: 50%;
+   animation: cloud-spin 0.8s linear infinite;
+}
+@keyframes cloud-spin {
+   to {
+      transform: rotate(360deg);
+   }
+}
+
+/* Phone tweaks for the gallery. */
+@media (max-width: 680px) {
+   .cloud-gallery-head {
+      /* Stack the three header columns on phones: brand, then the centered
+         title, then the full-width actions. */
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 12px;
+      padding: 16px 18px;
+   }
+   .cloud-gallery-heading {
+      justify-self: start;
+   }
+   .cloud-gallery-actions {
+      width: 100%;
+      justify-self: stretch;
+      justify-content: flex-start;
+   }
+   .home-intro {
+      justify-self: start;
+      text-align: left;
+      margin: 0;
+      padding: 0;
+   }
+   .cloud-gallery-searchbar {
+      padding: 12px 18px 4px;
+   }
+   .home-brand-text {
+      font-size: 14px;
+   }
+   .home-brand-text small {
+      font-size: 9.5px;
+   }
+   .home-brand-icon {
+      width: 32px;
+      height: 32px;
+   }
+   /* Keep the card anchored to the button but never wider than the viewport. */
+   .account-popover {
+      width: min(244px, calc(100vw - 24px));
+   }
+   .cloud-search {
+      width: 100%;
+   }
+   .cloud-search input {
+      width: 100%;
+   }
+   /* On phones the desktop 2-row HORIZONTAL carousel doesn't fit: two 228px
+      cards stacked need ~540px of height, far more than a phone's gallery body
+      (~380-410px), so the bottom row was clipped. Switch to a natural
+      vertical-scrolling grid: cards flow left-to-right and wrap onto new rows,
+      and the whole grid scrolls DOWN. Nothing is clipped — you just scroll. */
+   .cloud-gallery-body {
+      align-items: stretch;
+   }
+   .cloud-cards {
+      display: grid;
+      grid-template-rows: none;
+      grid-auto-flow: row;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      grid-auto-columns: auto;
+      gap: 14px 12px;
+      height: 100%;
+      align-content: start;
+      justify-content: stretch;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+   }
+   .song-card {
+      /* Cards fill their grid cell; no fixed width, and no zigzag shift/blur
+         (that was a horizontal-carousel affordance). A DEFINITE height (not just
+         min-height) is required so the tap-to-reveal action overlay — an absolutely
+         positioned child using height:100% — can fill the whole card. */
+      --shift: 0px;
+      --lift: 0px;
+      width: 100%;
+      height: 184px;
+      padding: 16px 16px 14px;
+      transform: none;
+      filter: none;
+      opacity: 1;
+   }
+   .song-card:nth-child(4n + 1),
+   .song-card:nth-child(4n + 2) {
+      --shift: 0px;
+   }
+   .song-card:nth-child(4n + 3),
+   .song-card:nth-child(4n + 4) {
+      --shift: 0px;
+   }
+   /* ---- Phone tap-to-reveal action overlay ----
+      On phones a card's dock (chips + tiny action row) stays tucked away. Tapping
+      a card adds .is-selected (JS), which blurs the card's own content and floats
+      a centered grid of enlarged action buttons (Edit / Export .pdf / Export
+      .file / Duplicate / Delete) over it. Tapping the card again or tapping
+      outside removes .is-selected. */
+   .song-card {
+      overflow: hidden;
+   }
+   /* Resting state: the dock is a normal quiet footer; the tiny action row is
+      hidden (the overlay is the only way to act on a card on phones). The dock
+      must NOT create a containing block (its will-change/transform would make
+      the absolutely-positioned action overlay size against the 32px dock instead
+      of the whole card), so clear both here. */
+   .song-card-dock {
+      --dock-shift: 0px;
+      transform: none;
+      will-change: auto;
+      margin-bottom: 0;
+   }
+   .song-card-actions {
+      display: none;
+   }
+   .song-card-detail {
+      opacity: 1;
+      transform: none;
+   }
+   /* Explicit resting filter so selecting a card interpolates blur(0)->blur(3px)
+      deterministically (transitioning from the `none` keyword can stick). NOTE:
+      we blur the dock's META content, never the .song-card-dock element itself —
+      the action overlay lives inside the dock in the DOM, and a filter on the
+      dock would create a containing block that shrinks the overlay to dock size. */
+   .song-card-title,
+   .song-card-creator,
+   .song-card-detail,
+   .song-card-meta,
+   .song-card::before {
+      filter: blur(0);
+      transition:
+         filter 0.24s ease,
+         opacity 0.24s ease;
+   }
+   /* Blur + fade the card's own content once selected so the actions read clearly. */
+   .song-card.is-selected .song-card-title,
+   .song-card.is-selected .song-card-creator,
+   .song-card.is-selected .song-card-detail,
+   .song-card.is-selected .song-card-meta,
+   .song-card.is-selected::before {
+      filter: blur(3px);
+      opacity: 0.35;
+      pointer-events: none;
+   }
+   .song-card.is-selected {
+      border-color: color-mix(in srgb, var(--green) 35%, transparent);
+      box-shadow:
+         0 2px 6px rgba(16, 40, 28, 0.06),
+         0 20px 42px -18px rgba(16, 40, 28, 0.3);
+   }
+   /* Floated, centered action grid. Sits above the blurred content and animates
+      in from a slight scale/offset so it reads as sliding to the card center. */
+   .song-card-actions {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 5;
+      margin: 0;
+      display: none;
+      flex-wrap: wrap;
+      align-content: center;
+      justify-content: center;
+      gap: 12px 10px;
+      padding: 16px;
+      opacity: 0;
+      transform: scale(0.9);
+      transition:
+         opacity 0.24s ease,
+         transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+   }
+   .song-card.is-selected .song-card-actions {
+      display: flex;
+      opacity: 1;
+      transform: scale(1);
+   }
+   .song-card-action {
+      flex: 0 0 auto;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 19px;
+      box-shadow: var(--shadow-sm);
+   }
+   .song-card-chip {
+      font-size: 14px;
+   }
+   .cloud-nudge {
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+   }
+}
+
+/* Touch devices have no hover, so the dock would stay closed until the card is
+   focused. On touch TABLETS (which keep the desktop horizontal carousel) keep it
+   open: the chips sit up and the actions + detail are permanently visible, which
+   is the friendlier tap target there. Phones (<=680px) use a different model —
+   tap a card to reveal a centered action overlay — so this is scoped to >680px. */
+@media (hover: none) and (min-width: 681px) {
+   .song-card-dock {
+      transform: translateY(calc(-1 * var(--dock-shift)));
+   }
+   .song-card-actions,
+   .song-card-detail {
+      opacity: 1;
+   }
+   .song-card-detail {
+      transform: translateY(0);
+   }
+   /* Tooltips are hover-only affordances; taps shouldn't leave one stuck on. */
+   .song-card-action::after {
+      display: none;
+   }
+}
+
+/* Dark-theme fine-tuning (most colors already come from tokens). */
+html[data-theme="dark"] .cloud-google-btn {
+   background: var(--surface);
+}
+html[data-theme="dark"] .cloud-google-btn:hover {
+   border-color: #465049;
+   background: var(--soft);
+}
+html[data-theme="dark"] .cloud-field input,
+html[data-theme="dark"] .cloud-search input {
+   background: #101210;
+}
+html[data-theme="dark"] .cloud-auth-error {
+   color: #ff9b8f;
+   background: rgba(255, 100, 85, 0.1);
+   border-color: rgba(255, 100, 85, 0.28);
+}
+html[data-theme="dark"] .song-card-action.is-delete:hover {
+   color: #ff9b8f;
+   background: rgba(255, 100, 85, 0.12);
+   border-color: rgba(255, 100, 85, 0.4);
 }

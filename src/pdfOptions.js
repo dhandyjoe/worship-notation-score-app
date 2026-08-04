@@ -145,7 +145,10 @@ function matchingPreset(settings) {
  * @param {()=>void} deps.onExport                             triggers the existing Export-PDF flow
  */
 export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
-   const openBtn = $("#pdfOptionsBtn");
+   // The "Export .pdf" button is the sole entry point now — the old dedicated
+   // "PDF options" button was removed, so opening the options dialog and the
+   // export flow live behind one primary action.
+   const openBtn = $("#exportBtn");
    const modal = $("#pdfOptionsModal");
    if (!openBtn || !modal) return; // feature markup absent → no-op
 
@@ -401,4 +404,8 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
 
    // Ensure saved prefs are live even before the modal is opened.
    applyPdfOptions(settings);
+
+   // Expose the dialog controls so other features can drive it (e.g. the
+   // per-card "Export .pdf" action in My Songs opens the song then this dialog).
+   return { open, close };
 }

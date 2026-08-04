@@ -17,6 +17,12 @@
                     : "light";
             document.documentElement.dataset.theme = theme;
             document.documentElement.style.colorScheme = theme;
+            // Auth gate: show a full-screen login page until we know whether a
+            // session is restored. Skipped in automated tests (?test=...) so the
+            // editor suite keeps running without a real Firebase sign-in.
+            if (!new URLSearchParams(location.search).has("test")) {
+               document.documentElement.dataset.authGate = "pending";
+            }
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
@@ -24,48 +30,29 @@
       <link rel="stylesheet" href="styles/ui.css?v=20260810-devicehint-modal" />
    </head>
    <body>
+      <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
+           so it leads with a Back affordance + the document it is editing, not
+           with the app brand lockup. Only document-scoped controls live here;
+           app-scoped ones (profile, theme, New Song, Upload) live on home. -->
       <header class="topbar">
-         <a class="brand" href="#"
-            ><span class="brand-icon" aria-hidden="true"><img src="assets/favicon.svg" alt="" /></span
-            ><span>WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span></a
-         >
+         <div class="topbar-nav">
+            <button class="button button-ghost editor-back" id="backToSongsBtn" type="button" title="Back to My Songs">
+               <span aria-hidden="true">←</span> My Songs
+            </button>
+            <span class="editor-breadcrumb">
+               <span class="editor-breadcrumb-label">Editing</span>
+               <strong class="editor-breadcrumb-title" id="editorSongName">Song Title</strong>
+            </span>
+         </div>
          <div class="topbar-actions">
             <span class="autosave-status"><i aria-hidden="true"></i> Active for this session</span>
-            <button
-               class="button button-ghost theme-toggle"
-               id="themeToggle"
-               type="button"
-               aria-pressed="false"
-               title="Switch to dark mode"
-            >
-               <span class="theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label">Dark</span>
-            </button>
-            <label class="button button-ghost upload-project" for="projectFileInput"
-               ><span aria-hidden="true">↑</span> Upload .file</label
-            ><input id="projectFileInput" type="file" accept=".chordsheet.json,application/json" /><button
-               class="button button-ghost"
-               id="saveBtn"
-            >
-               <span aria-hidden="true">↓</span> Export .file</button
-            ><button
-               class="button button-ghost"
-               id="pdfOptionsBtn"
-               type="button"
-               title="Adjust PDF font size, spacing, paper and margins"
-               aria-haspopup="dialog"
-               aria-controls="pdfOptionsModal"
-            >
-               <span aria-hidden="true">⚙</span> PDF options</button
-            ><button class="button button-primary" id="exportBtn"><span aria-hidden="true">↗</span> Export .pdf</button>
+            <button class="button button-save" id="saveCloudBtn" type="button" title="Save this score to your cloud library">
+               <span aria-hidden="true">⤒</span> Save to Cloud</button
+            ><button class="button button-dark" id="exportBtn" type="button" title="Adjust PDF layout, then export" aria-haspopup="dialog" aria-controls="pdfOptionsModal"><span aria-hidden="true">↗</span> Export .pdf</button>
          </div>
       </header>
 
       <main>
-         <section class="intro">
-            <span class="eyebrow">SONG ARRANGER</span>
-            <h1>Arrange chords and number notation, ready to play.</h1>
-            <p>Choose a chord or number notation, then tap or drag it onto a beat in the preview.</p>
-         </section>
          <div class="workspace ribbon-workspace">
             <aside class="editor-card is-collapsed">
                <div class="metadata-store" aria-hidden="true">
@@ -536,6 +523,197 @@
                </p>
             </div>
             <button class="device-hint-close" id="deviceHintClose" type="button">Got it</button>
+         </div>
+      </div>
+
+      <!-- Reusable confirm dialog. A themed replacement for window.confirm(),
+           driven by openConfirmDialog() in cloudUI.js. The title/message/labels
+           and the accent of the confirm button are all set at open time, so the
+           same markup serves Sign out today and any future confirmations. -->
+      <div class="confirm-dialog" id="confirmDialog" hidden role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogDesc">
+         <div class="confirm-dialog-backdrop" data-confirm-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" id="confirmDialogIcon" aria-hidden="true">↷</div>
+            <h2 class="confirm-dialog-title" id="confirmDialogTitle">Are you sure?</h2>
+            <p class="confirm-dialog-desc" id="confirmDialogDesc"></p>
+            <div class="confirm-dialog-actions">
+               <button class="button button-ghost" id="confirmDialogCancel" type="button" data-confirm-dismiss>Cancel</button>
+               <button class="button button-primary" id="confirmDialogConfirm" type="button">Confirm</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ============================ CLOUD: LOGIN PAGE =======================
+           Dedicated full-screen login page (not a dismissible modal). On load
+           the app checks the restored auth session: signed-in users are routed
+           straight to My Songs; everyone else lands here. Offers Google sign-in
+           + email/password. The editor is only reachable once authenticated. -->
+      <div class="login-page" id="loginPage" hidden>
+         <div class="login-aside" aria-hidden="true">
+            <div class="login-aside-inner">
+               <span class="home-brand login-aside-brand">
+                  <span class="home-brand-icon"><img src="assets/favicon.svg" alt="" /></span>
+                  <span class="home-brand-text">WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span>
+               </span>
+               <h1 class="login-aside-title">Arrange chords and number notation, ready to play.</h1>
+               <p class="login-aside-tag">Sign in to open your cloud library and pick up any song right where you left it.</p>
+               <ul class="login-aside-points">
+                  <li><span aria-hidden="true">☁</span> Your songs, synced to the cloud</li>
+                  <li><span aria-hidden="true">💻</span> Open them on laptop, tablet, or phone</li>
+                  <li><span aria-hidden="true">🎼</span> Build clean chord &amp; Nashville charts</li>
+               </ul>
+            </div>
+         </div>
+
+         <div class="login-main">
+            <div class="login-card">
+               <div class="login-card-head">
+                  <span class="home-brand login-card-brand">
+                     <span class="home-brand-icon"><img src="assets/favicon.svg" alt="" /></span>
+                     <span class="home-brand-text">WorshipNotationScore</span>
+                  </span>
+                  <h2 class="login-card-title" id="loginTitle">Welcome back</h2>
+                  <p class="login-card-sub">Sign in to open your song library.</p>
+               </div>
+
+               <button class="cloud-google-btn" id="googleSignInBtn" type="button">
+                  <span class="cloud-google-mark" aria-hidden="true">
+                     <svg viewBox="0 0 18 18" width="18" height="18">
+                        <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z"/>
+                        <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z"/>
+                        <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z"/>
+                        <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z"/>
+                     </svg>
+                  </span>
+                  Continue with Google
+               </button>
+
+               <div class="cloud-divider"><span>or</span></div>
+
+               <form class="cloud-email-form" id="emailAuthForm" novalidate>
+                  <label class="cloud-field">
+                     <span>Email</span>
+                     <input type="email" id="authEmail" autocomplete="email" placeholder="you@example.com" required />
+                  </label>
+                  <label class="cloud-field">
+                     <span>Password</span>
+                     <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••" minlength="6" required />
+                  </label>
+                  <p class="cloud-auth-error" id="authError" hidden></p>
+                  <div class="cloud-auth-actions">
+                     <button class="button button-primary cloud-auth-primary" id="emailSignInBtn" type="submit">Sign in</button>
+                     <button class="button button-ghost" id="emailSignUpBtn" type="button">Create account</button>
+                  </div>
+               </form>
+            </div>
+         </div>
+      </div>
+
+
+      <!-- ========================= CLOUD: MY SONGS ==========================
+           Full-screen library overlay. Cards are scattered (non-uniform offsets),
+           scroll horizontally with left/right nudge buttons. Search filters by
+           title; upload imports a .json; hovering a card expands it and reveals
+           delete + duplicate actions; clicking opens the song in the editor. -->
+      <div class="cloud-modal cloud-gallery is-home" id="mySongsModal" hidden role="region" aria-label="My Songs — your cloud library">
+         <div class="cloud-gallery-shell">
+            <header class="cloud-gallery-head">
+               <div class="cloud-gallery-heading">
+                  <span class="home-brand">
+                     <span class="home-brand-icon" aria-hidden="true"><img src="assets/favicon.svg" alt="" /></span>
+                     <span class="home-brand-text">WorshipNotationScore<small>Chord &amp; Number Score Builder</small></span>
+                  </span>
+               </div>
+               <!-- Compact, centered page title in the header's middle column. A short
+                    functional label (not the marketing tagline) — the user is already
+                    signed in here, and the New Song button supplies the action. -->
+               <div class="home-intro">
+                  <h1 id="mySongsTitle">Your song library</h1>
+                  <p id="mySongsSub"><span class="library-count" id="libraryCount"></span></p>
+               </div>
+               <div class="cloud-gallery-actions">
+                  <button class="button button-primary" id="newSongBtn" type="button"><span aria-hidden="true">＋</span> New Song</button>
+                  <label class="button button-ghost" for="galleryUploadInput" title="Upload a .chordsheet.json into your library"><span aria-hidden="true">⤓</span> Upload</label>
+                  <input type="file" id="galleryUploadInput" accept="application/json,.json" hidden />
+                  <!-- Profile menu: the account button opens a card with the
+                       signed-in identity, a theme switch and Sign out. -->
+                  <div class="account-menu">
+                     <button
+                        class="button button-ghost account-button"
+                        id="accountBtn"
+                        type="button"
+                        title="Sign in to sync your songs"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        aria-controls="accountPopover"
+                     >
+                        <span class="account-avatar" id="accountAvatar" aria-hidden="true">◔</span
+                        ><span class="account-label" id="accountLabel">Sign in</span>
+                     </button>
+                     <div class="account-popover" id="accountPopover" hidden role="menu" aria-labelledby="accountBtn">
+                        <div class="account-popover-id">
+                           <span class="account-popover-avatar" id="accountPopoverAvatar" aria-hidden="true">◔</span>
+                           <span class="account-popover-who">
+                              <strong id="accountPopoverName">Signed in</strong>
+                              <small id="accountPopoverEmail"></small>
+                           </span>
+                        </div>
+                        <div class="account-popover-sep" role="separator"></div>
+                        <button
+                           class="account-popover-item theme-toggle"
+                           id="themeToggle"
+                           type="button"
+                           role="menuitem"
+                           aria-pressed="false"
+                           title="Switch to dark mode"
+                        >
+                           <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+                           <span class="theme-toggle-label">Dark mode</span>
+                        </button>
+                        <button class="account-popover-item is-signout" id="signOutBtn" type="button" role="menuitem">
+                           <span aria-hidden="true">⇤</span> Sign out
+                        </button>
+                     </div>
+                  </div>
+                  <!-- Home cannot be "closed"; this only appears when a song is
+                       already open in the editor, so there is never a dead end. -->
+                  <button class="button button-ghost gallery-resume" id="backToEditorBtn" type="button" hidden>
+                     Back to editor <span aria-hidden="true">→</span>
+                  </button>
+               </div>
+            </header>
+
+            <!-- Hero copy sits directly under the brand header so it reads as a
+                 page title, leaving the search bar visually on its own with room
+                 to breathe before the song list. -->
+            <div class="cloud-gallery-searchbar">
+               <div class="cloud-search">
+                  <span class="cloud-search-icon" aria-hidden="true">⌕</span>
+                  <input type="search" id="songSearch" placeholder="Search your songs by title…" aria-label="Search songs by title" />
+               </div>
+            </div>
+
+            <div class="cloud-gallery-body">
+               <button class="cloud-nudge cloud-nudge-left" id="galleryPrev" type="button" aria-label="Scroll left" hidden>‹</button>
+               <div class="cloud-cards" id="songCards" role="list" tabindex="0" aria-label="Song cards"></div>
+               <button class="cloud-nudge cloud-nudge-right" id="galleryNext" type="button" aria-label="Scroll right" hidden>›</button>
+
+               <!-- States overlaid inside the body; JS toggles which is visible -->
+               <div class="cloud-gallery-state" id="galleryLoading" hidden>
+                  <div class="cloud-spinner" aria-hidden="true"></div>
+                  <p>Loading your songs…</p>
+               </div>
+               <div class="cloud-gallery-state" id="galleryEmpty" hidden>
+                  <div class="cloud-gallery-state-icon" aria-hidden="true">♪</div>
+                  <p>No songs yet</p>
+                  <span>Save your current score or upload a file to start your library.</span>
+               </div>
+               <div class="cloud-gallery-state" id="galleryNoResults" hidden>
+                  <div class="cloud-gallery-state-icon" aria-hidden="true">⌕</div>
+                  <p>No matches</p>
+                  <span>No songs match your search.</span>
+               </div>
+            </div>
          </div>
       </div>
 
