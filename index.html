@@ -6,6 +6,14 @@
       <title>WorshipNotationScore — Chord &amp; Number Score Builder</title>
       <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
       <meta name="theme-color" content="#1f704a" />
+      <!-- PWA: installable + offline. Manifest + icons use RELATIVE paths so they
+           resolve under the GitHub Pages /worship-notation-score-app/ subpath. -->
+      <link rel="manifest" href="manifest.webmanifest" />
+      <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      <meta name="apple-mobile-web-app-title" content="NotationScore" />
       <script>
          (() => {
             const saved = localStorage.getItem("chordSheetTheme");
@@ -718,5 +726,16 @@
       </div>
 
       <script type="module" src="src/app.js?v=20260805-dock-containing-block-fix"></script>
+      <script>
+         // Register the PWA service worker for offline support. Skipped in the
+         // automated test harness (?test=...) so caching never interferes with
+         // the regression suite. Registered relative to this page so the scope
+         // covers the GitHub Pages /worship-notation-score-app/ subpath.
+         if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("test")) {
+            addEventListener("load", () => {
+               navigator.serviceWorker.register("sw.js").catch(() => {});
+            });
+         }
+      </script>
    </body>
 </html>
