@@ -17,8 +17,8 @@
 //    "Save as PDF" dialog proposes a meaningful default filename, then restore
 //    the original title afterward.
 
-import { $ } from "./dom.js?v=20260810-devicehint-modal";
-import { safeFileName } from "./notation.js?v=20260810-devicehint-modal";
+import { $ } from "./dom.js?v=20260805-dock-containing-block-fix";
+import { safeFileName } from "./notation.js?v=20260805-dock-containing-block-fix";
 
 // Whether WE added the is-print-layout class for the current print job. We only
 // strip it in afterprint if we added it — this preserves a manual "PDF layout"

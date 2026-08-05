@@ -3534,6 +3534,12 @@ html[data-theme="dark"] .cloud-auth-primary {
    color: var(--ink);
    outline: none;
 }
+/* The Edit shortcut is a PHONE-ONLY affordance (the tap-to-reveal overlay). On
+   desktop/tablet a card click already opens the editor, so the button would be
+   redundant — hide it here and re-enable it inside the phone media query. */
+.song-card-action.is-edit {
+   display: none;
+}
 /* Tooltip naming the button, so the icons are never a guessing game. Sits
    above the button (there is always room: the dock is at the card bottom). */
 .song-card-action::after {
@@ -3776,6 +3782,21 @@ html[data-theme="dark"] .cloud-auth-primary {
       will-change: auto;
       margin-bottom: 0;
    }
+   /* CRITICAL: the desktop base applies `transform: translateY(...)` to the dock
+      on hover/focus/focus-within (line ~3441). Tapping a card moves focus INTO it
+      (:focus-within), which re-applies that transform here and — even as an
+      identity translate — establishes a containing block, so the absolutely
+      positioned .song-card-actions overlay would size against the ~17px dock
+      instead of the whole card (buttons overflow/clip, e.g. multi-line titles
+      pushed Delete off the bottom). Force `transform: none` for every dock state
+      on phones so the overlay always fills the card and centres vertically
+      regardless of how many rows the title wraps to. */
+   .song-card:hover .song-card-dock,
+   .song-card:focus-visible .song-card-dock,
+   .song-card:focus-within .song-card-dock,
+   .song-card.is-selected .song-card-dock {
+      transform: none;
+   }
    .song-card-actions {
       display: none;
    }
@@ -3828,8 +3849,8 @@ html[data-theme="dark"] .cloud-auth-primary {
       flex-wrap: wrap;
       align-content: center;
       justify-content: center;
-      gap: 12px 10px;
-      padding: 16px;
+      gap: 8px 6px;
+      padding: 10px;
       opacity: 0;
       transform: scale(0.9);
       transition:
@@ -3841,14 +3862,23 @@ html[data-theme="dark"] .cloud-auth-primary {
       opacity: 1;
       transform: scale(1);
    }
+   /* Edit is phone-only — restore it here (hidden on desktop/tablet above). */
+   .song-card-action.is-edit {
+      display: grid;
+   }
+   /* 40px buttons + tight gap/padding so all THREE fit per row even on the
+      narrowest phone card (~158px wide at 360px vp): 3×40 + 2×6 gap = 132px fits
+      inside the ~138px content box. Five actions then always wrap as a centered
+      3+2 grid (justify/align-content:center centre both the rows and the short
+      last row), so Delete is never orphaned on its own row or clipped. */
    .song-card-action {
       flex: 0 0 auto;
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
       border: 1px solid var(--line);
       background: var(--surface);
       color: var(--ink);
-      font-size: 19px;
+      font-size: 17px;
       box-shadow: var(--shadow-sm);
    }
    .song-card-chip {

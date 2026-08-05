@@ -1,6 +1,6 @@
 // store.js — single source of truth for app state + palette selection.
 // State is reassigned wholesale on import/reset, so consumers must read via getState().
-import { newSection } from "./notation.js?v=20260810-devicehint-modal";
+import { newSection } from "./notation.js?v=20260805-dock-containing-block-fix";
 
 function defaultState() {
    const first = newSection("Intro");

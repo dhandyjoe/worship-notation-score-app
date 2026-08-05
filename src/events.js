@@ -21,8 +21,8 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260810-devicehint-modal";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260810-devicehint-modal";
+} from "./notation.js?v=20260805-dock-containing-block-fix";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260805-dock-containing-block-fix";
 import {
    getState,
    setState,
@@ -30,17 +30,17 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260810-devicehint-modal";
+} from "./store.js?v=20260805-dock-containing-block-fix";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260810-devicehint-modal";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260810-devicehint-modal";
-import { initPdfOptions } from "./pdfOptions.js?v=20260810-devicehint-modal";
-import { initCloudUI } from "./cloudUI.js?v=20260810-devicehint-modal";
+} from "./render.js?v=20260805-dock-containing-block-fix";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260805-dock-containing-block-fix";
+import { initPdfOptions } from "./pdfOptions.js?v=20260805-dock-containing-block-fix";
+import { initCloudUI } from "./cloudUI.js?v=20260805-dock-containing-block-fix";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Firestore doc id of the currently-open cloud song (null = unsaved / local only).

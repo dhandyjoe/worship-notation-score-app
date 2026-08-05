@@ -14,9 +14,9 @@ import {
    escapeHTML,
    beatValue,
    lyricValue,
-} from "./notation.js?v=20260810-devicehint-modal";
-import { $, prefersTap } from "./dom.js?v=20260810-devicehint-modal";
-import { getState } from "./store.js?v=20260810-devicehint-modal";
+} from "./notation.js?v=20260805-dock-containing-block-fix";
+import { $, prefersTap } from "./dom.js?v=20260805-dock-containing-block-fix";
+import { getState } from "./store.js?v=20260805-dock-containing-block-fix";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
