@@ -21,7 +21,7 @@ const CACHE_VERSION = "wns-shell-v20260805-1";
 // exactly what index.html / the ES modules request, or those fetches would miss
 // the precache and hit the network. We ALSO match with ignoreSearch as a
 // fallback, so a version bump degrades gracefully to a network refresh.
-const ASSET_VERSION = "20260805-dock-containing-block-fix";
+const ASSET_VERSION = "20260808-hide-dot-active";
 const CORE_ASSETS = [
    "./",
    "./index.html",
@@ -35,6 +35,9 @@ const CORE_ASSETS = [
    `./src/dom.js?v=${ASSET_VERSION}`,
    `./src/store.js?v=${ASSET_VERSION}`,
    `./src/render.js?v=${ASSET_VERSION}`,
+   `./src/chordBank.js?v=${ASSET_VERSION}`,
+   `./src/chordEditor.js?v=${ASSET_VERSION}`,
+   `./src/beatMenu.js?v=${ASSET_VERSION}`,
    `./src/pdf.js?v=${ASSET_VERSION}`,
    `./src/pdfOptions.js?v=${ASSET_VERSION}`,
    `./src/cloud.js?v=${ASSET_VERSION}`,
@@ -52,11 +55,7 @@ self.addEventListener("install", (event) => {
       (async () => {
          const cache = await caches.open(CACHE_VERSION);
          // Best-effort: add individually so one 404 can't abort the whole install.
-         await Promise.all(
-            CORE_ASSETS.map((url) =>
-               cache.add(new Request(url, { cache: "reload" })).catch(() => {}),
-            ),
-         );
+         await Promise.all(CORE_ASSETS.map((url) => cache.add(new Request(url, { cache: "reload" })).catch(() => {})));
          await self.skipWaiting();
       })(),
    );
@@ -66,9 +65,7 @@ self.addEventListener("activate", (event) => {
    event.waitUntil(
       (async () => {
          const keys = await caches.keys();
-         await Promise.all(
-            keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)),
-         );
+         await Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)));
          await self.clients.claim();
       })(),
    );
@@ -98,11 +95,7 @@ self.addEventListener("fetch", (event) => {
                return fresh;
             } catch {
                const cache = await caches.open(CACHE_VERSION);
-               return (
-                  (await cache.match("./index.html")) ||
-                  (await cache.match("./")) ||
-                  Response.error()
-               );
+               return (await cache.match("./index.html")) || (await cache.match("./")) || Response.error();
             }
          })(),
       );
@@ -113,9 +106,7 @@ self.addEventListener("fetch", (event) => {
    event.respondWith(
       (async () => {
          const cache = await caches.open(CACHE_VERSION);
-         const cached =
-            (await cache.match(request)) ||
-            (await cache.match(request, { ignoreSearch: true }));
+         const cached = (await cache.match(request)) || (await cache.match(request, { ignoreSearch: true }));
          const network = fetch(request)
             .then((response) => {
                if (response && response.ok && response.type === "basic") {

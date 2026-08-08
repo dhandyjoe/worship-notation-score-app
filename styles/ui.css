@@ -154,6 +154,41 @@ label,
    opacity: 0.75;
    pointer-events: none;
 }
+/* Unsaved-changes indicator (#4). A small amber dot rides the top-right corner
+   of Save to Cloud whenever the open document has edits not yet persisted to
+   the cloud. A soft pulse draws the eye without being noisy. */
+.button-save.is-unsaved {
+   position: relative;
+}
+.button-save.is-unsaved::after {
+   content: "";
+   position: absolute;
+   top: -3px;
+   right: -3px;
+   width: 11px;
+   height: 11px;
+   border-radius: 50%;
+   background: #f5a623;
+   border: 2px solid var(--surface, #fff);
+   box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.5);
+   animation: saveUnsavedPulse 2s ease-out infinite;
+}
+@keyframes saveUnsavedPulse {
+   0% {
+      box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.5);
+   }
+   70% {
+      box-shadow: 0 0 0 6px rgba(245, 166, 35, 0);
+   }
+   100% {
+      box-shadow: 0 0 0 0 rgba(245, 166, 35, 0);
+   }
+}
+@media (prefers-reduced-motion: reduce) {
+   .button-save.is-unsaved::after {
+      animation: none;
+   }
+}
 .button-dark {
    background: #223029;
    color: #fff;
@@ -237,6 +272,17 @@ main {
    border-radius: 15px;
    box-shadow: 0 12px 35px rgba(20, 58, 41, 0.13);
 }
+/* Arrangement-tools ribbon is hidden: chord entry now happens inline on each
+   beat (click → popover) and rhythm via the right-click / long-press menu. The
+   aside stays in the DOM (JS still references its inputs for meta + lyrics
+   state); we only remove it visually and from layout. */
+.ribbon-workspace .editor-card {
+   display: none;
+}
+/* Topbar global lyrics toggle (replaces the ribbon Lyrics panel switch). */
+.topbar-lyrics-toggle {
+   margin-right: 4px;
+}
 .ribbon-heading {
    display: flex;
    align-items: center;
@@ -261,8 +307,7 @@ main {
    font-size: 11px;
    font-weight: 650;
 }
-.icon-button,
-.fit-button {
+.icon-button {
    display: inline-grid;
    place-items: center;
    border: 1px solid #d5e3d8;
@@ -275,17 +320,14 @@ main {
       border-color 0.15s ease,
       transform 0.15s ease;
 }
-.icon-button:hover,
-.fit-button:hover {
+.icon-button:hover {
    border-color: #a9c9b3;
    background: var(--soft);
 }
-.icon-button:active,
-.fit-button:active {
+.icon-button:active {
    transform: translateY(1px);
 }
-.icon-button:disabled,
-.fit-button:disabled {
+.icon-button:disabled {
    border-color: #e0e8e2;
    background: #f5f7f5;
    color: #9ba8a0;
@@ -417,53 +459,10 @@ main {
    position: relative;
    width: 100%;
    overflow: hidden;
-   border: 1px solid #dbe6de;
-   border-radius: 24px;
-   background: #e9eeea;
-   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-}
-.canvas-toolbar {
-   position: relative;
-   z-index: 3;
-   min-height: 54px;
-   display: flex;
-   align-items: center;
-   justify-content: space-between;
-   gap: 16px;
-   padding: 9px 14px 9px 18px;
-   border-bottom: 1px solid #d8e3db;
-   background: rgba(248, 251, 249, 0.94);
-   backdrop-filter: blur(12px);
-}
-.canvas-title {
-   display: grid;
-   grid-template-columns: auto auto;
-   align-items: center;
-   column-gap: 8px;
-}
-.canvas-title strong {
-   color: var(--ink);
-   font-size: 12px;
-}
-.canvas-title small {
-   grid-column: 2;
-   margin-top: 1px;
-   color: var(--muted);
-   font-size: 9px;
-}
-.canvas-status {
-   grid-row: 1 / 3;
-   width: 8px;
-   height: 8px;
-   border-radius: 50%;
-   background: #55a976;
-   box-shadow: 0 0 0 4px rgba(85, 169, 118, 0.1);
-}
-.print-preview-toggle[aria-pressed="true"] {
-   border-color: #7eb892;
-   background: #e7f5eb;
-   color: var(--dark-green);
-   box-shadow: inset 0 0 0 1px rgba(35, 122, 80, 0.08);
+   border: 0;
+   border-radius: 0;
+   background: transparent;
+   box-shadow: none;
 }
 html.is-print-layout body {
    background: #dfe6e1;
@@ -479,9 +478,6 @@ html.is-print-layout .preview-stage {
    border-color: #c9d5cc;
    background: #edf1ee;
    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-}
-html.is-print-layout .canvas-toolbar {
-   background: rgba(255, 255, 255, 0.96);
 }
 html.is-print-layout .preview-viewport {
    padding: 18px 16px 28px;
@@ -500,34 +496,11 @@ html.is-print-layout .ribbon-workspace .preview-card {
 html.is-print-layout .scroll-affordance {
    display: none;
 }
-.zoom-controls {
-   display: inline-flex;
-   align-items: center;
-   gap: 5px;
-}
-.zoom-controls .icon-button {
-   width: 29px;
-   height: 29px;
-   font-size: 16px;
-}
-.zoom-controls output {
-   min-width: 44px;
-   color: var(--muted);
-   font-size: 10px;
-   font-weight: 750;
-   text-align: center;
-}
-.fit-button {
-   min-height: 29px;
-   padding: 0 10px;
-   font-size: 10px;
-   font-weight: 750;
-}
 .preview-viewport {
    position: relative;
    overflow: auto;
    max-width: 100%;
-   padding: clamp(18px, 3vw, 38px);
+   padding: 0;
    outline: none;
    scrollbar-color: #a8beb0 transparent;
    scrollbar-width: thin;
@@ -540,9 +513,10 @@ html.is-print-layout .scroll-affordance {
    background: transparent;
 }
 .preview-viewport::-webkit-scrollbar-thumb {
-   border: 2px solid #e9eeea;
+   border: 2px solid transparent;
    border-radius: 10px;
    background: #a8beb0;
+   background-clip: padding-box;
 }
 .preview-viewport:focus-visible {
    box-shadow: inset 0 0 0 3px rgba(35, 122, 80, 0.18);
@@ -833,6 +807,114 @@ body.is-dragging .drop-target::after {
    color: #7a8a80;
 }
 
+/* "How to edit this score" pill in the preview footer — replaces the old
+   free-text hint. Reads as a friendly, clickable help affordance. */
+.preview-help-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 7px;
+   padding: 6px 12px 6px 8px;
+   border: 1px solid var(--line);
+   border-radius: 999px;
+   background: color-mix(in srgb, var(--green) 6%, var(--surface));
+   color: var(--dark-green);
+   font-size: 13px;
+   font-weight: 600;
+   line-height: 1;
+   cursor: pointer;
+   transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.12s ease;
+}
+.preview-help-btn:hover {
+   background: color-mix(in srgb, var(--green) 12%, var(--surface));
+   border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+}
+.preview-help-btn:active {
+   transform: translateY(1px);
+}
+.preview-help-icon {
+   display: grid;
+   place-items: center;
+   width: 18px;
+   height: 18px;
+   border-radius: 50%;
+   background: var(--green);
+   color: #fff;
+   font-size: 12px;
+   font-weight: 800;
+   line-height: 1;
+}
+html[data-theme="dark"] .preview-help-btn {
+   color: #cdeede;
+}
+
+/* How-to dialog: reuses .confirm-dialog chrome but is wider and left-aligns a
+   scrollable list of editing tips. Selectors are scoped under #howToDialog to
+   win over the base .confirm-dialog-card rules regardless of source order. */
+#howToDialog .howto-dialog-card {
+   width: min(480px, 100%);
+   max-height: min(80vh, 640px);
+   text-align: left;
+   align-items: stretch;
+}
+#howToDialog .confirm-dialog-icon {
+   align-self: center;
+}
+#howToDialog .confirm-dialog-title,
+#howToDialog .confirm-dialog-desc {
+   text-align: center;
+}
+.howto-list {
+   list-style: none;
+   margin: 6px 0 4px;
+   padding: 0;
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+   overflow-y: auto;
+   width: 100%;
+}
+.howto-item {
+   display: flex;
+   align-items: flex-start;
+   gap: 12px;
+   font-size: 14px;
+   line-height: 1.45;
+   color: var(--ink);
+}
+.howto-item-icon {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 30px;
+   height: 30px;
+   border-radius: 9px;
+   background: color-mix(in srgb, var(--green) 12%, transparent);
+   font-size: 15px;
+   line-height: 1;
+}
+.howto-item-text {
+   flex: 1 1 auto;
+   padding-top: 3px;
+}
+.howto-item-text strong {
+   font-weight: 700;
+   color: var(--ink);
+}
+.howto-item-text code {
+   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+   font-size: 12.5px;
+   padding: 1px 5px;
+   border-radius: 5px;
+   background: color-mix(in srgb, var(--green) 10%, var(--surface));
+   color: var(--dark-green);
+}
+html[data-theme="dark"] .howto-item-text code {
+   color: #cdeede;
+}
+
 /* Accessible focus treatment */
 :where(button, input, select, [tabindex]):focus-visible {
    outline: 3px solid rgba(184, 232, 92, 0.7);
@@ -1023,6 +1105,17 @@ body.is-dragging .drop-target::after {
 }
 .confirm-dialog-actions .button.is-danger:hover {
    filter: brightness(1.06);
+}
+/* Three-choice dialogs (e.g. unsaved changes) stack full-width buttons so the
+   labels never truncate and the recommended primary action reads first. */
+.confirm-dialog-actions.confirm-dialog-actions-stacked {
+   flex-direction: column;
+   width: 100%;
+   gap: 8px;
+}
+.confirm-dialog-actions.confirm-dialog-actions-stacked .button {
+   flex: none;
+   width: 100%;
 }
 
 /* Site footer */
@@ -1388,30 +1481,6 @@ body.is-dragging .drop-target::after {
       width: 100%;
       min-height: 44px;
    }
-   .canvas-toolbar {
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px 10px;
-      padding: 8px 10px;
-   }
-   .canvas-title small {
-      display: none;
-   }
-   .zoom-controls {
-      flex-wrap: wrap;
-      gap: 4px;
-   }
-   .zoom-controls .icon-button,
-   .fit-button {
-      min-width: 40px;
-      min-height: 40px;
-   }
-   .zoom-controls output {
-      min-width: 38px;
-   }
-   .fit-button {
-      padding: 0 7px;
-   }
    .preview-stage {
       border-radius: 16px;
    }
@@ -1664,7 +1733,6 @@ body.is-dragging .drop-target::after {
    body {
       background: #fff !important;
    }
-   .canvas-toolbar,
    .scroll-affordance,
    .site-footer,
    .pdf-options-modal,
@@ -1744,20 +1812,17 @@ html[data-theme="dark"] .preview-footer {
    color: var(--muted);
 }
 html[data-theme="dark"] .button-ghost,
-html[data-theme="dark"] .icon-button,
-html[data-theme="dark"] .fit-button {
+html[data-theme="dark"] .icon-button {
    border-color: var(--line);
    background: var(--surface);
    color: var(--ink);
 }
 html[data-theme="dark"] .button-ghost:hover,
-html[data-theme="dark"] .icon-button:hover,
-html[data-theme="dark"] .fit-button:hover {
+html[data-theme="dark"] .icon-button:hover {
    border-color: #465049;
    background: var(--soft);
 }
-html[data-theme="dark"] .icon-button:disabled,
-html[data-theme="dark"] .fit-button:disabled {
+html[data-theme="dark"] .icon-button:disabled {
    border-color: #292d2a;
    background: #131513;
    color: #666d68;
@@ -1849,13 +1914,9 @@ html[data-theme="dark"] .duration-option.palette-selected {
    box-shadow: 0 0 0 3px rgba(85, 185, 130, 0.16);
 }
 html[data-theme="dark"] .preview-stage {
-   border-color: #292e2a;
-   background: #0d0e0d;
-   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
-}
-html[data-theme="dark"] .canvas-toolbar {
-   border-color: var(--line);
-   background: rgba(16, 17, 16, 0.96);
+   border: 0;
+   background: transparent;
+   box-shadow: none;
 }
 html[data-theme="dark"] .preview-viewport {
    scrollbar-color: #454b46 transparent;
@@ -3934,4 +3995,229 @@ html[data-theme="dark"] .song-card-action.is-delete:hover {
    color: #ff9b8f;
    background: rgba(255, 100, 85, 0.12);
    border-color: rgba(255, 100, 85, 0.4);
+}
+
+/* ============================================================
+   Inline chord editor (type → pick a suggestion) + the matching
+   beat-hover field preview. A single width token keeps the hover
+   affordance and the popover input pixel-identical.
+   ============================================================ */
+:root {
+   --chord-field-w: 84px; /* shared: hover preview footprint == popover input */
+   --chord-field-h: 30px;
+}
+
+/* Floating popover, positioned by JS (fixed to the viewport). */
+.chord-popover {
+   position: fixed;
+   z-index: 1400;
+   width: max-content;
+   min-width: calc(var(--chord-field-w) + 20px);
+   max-width: min(92vw, 260px);
+   padding: 8px;
+   background: var(--surface);
+   border: 1px solid var(--line);
+   border-radius: var(--radius-md);
+   box-shadow: var(--shadow-md);
+   animation: chord-pop-in 0.13s ease-out both;
+}
+@keyframes chord-pop-in {
+   from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+   }
+}
+/* Little arrow pointing at the anchored beat. */
+.chord-popover::after {
+   content: "";
+   position: absolute;
+   left: var(--arrow-x, 50%);
+   bottom: -6px;
+   width: 12px;
+   height: 12px;
+   background: var(--surface);
+   border-right: 1px solid var(--line);
+   border-bottom: 1px solid var(--line);
+   transform: translateX(-50%) rotate(45deg);
+}
+.chord-popover.is-below::after {
+   bottom: auto;
+   top: -6px;
+   border: 0;
+   border-left: 1px solid var(--line);
+   border-top: 1px solid var(--line);
+}
+.chord-popover-input {
+   width: var(--chord-field-w);
+   height: var(--chord-field-h);
+   box-sizing: border-box;
+   border: 1.5px solid var(--green);
+   border-radius: var(--radius-sm);
+   padding: 0 10px;
+   background: var(--surface);
+   color: var(--ink);
+   font:
+      700 14px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: center;
+   letter-spacing: 0.02em;
+   outline: 0;
+   transition: box-shadow 0.15s;
+}
+.chord-popover-input:focus {
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.18);
+}
+.chord-popover-input::placeholder {
+   color: var(--muted);
+   font-weight: 500;
+}
+.chord-popover-list {
+   list-style: none;
+   margin: 8px 0 0;
+   padding: 0;
+   max-height: 232px;
+   overflow-y: auto;
+   display: grid;
+   gap: 2px;
+}
+.chord-popover-list[hidden] {
+   display: none;
+}
+.chord-suggestion {
+   display: flex;
+   align-items: center;
+   min-height: 34px;
+   padding: 5px 10px;
+   border-radius: var(--radius-sm);
+   cursor: pointer;
+   color: var(--ink);
+   transition: background 0.1s;
+}
+.chord-suggestion:hover,
+.chord-suggestion.is-active {
+   background: var(--soft);
+}
+.chord-suggestion.is-active {
+   box-shadow: inset 0 0 0 1.5px rgba(35, 122, 80, 0.35);
+}
+.chord-suggestion-label {
+   font:
+      700 15px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   color: var(--dark-green);
+}
+.chord-popover-msg {
+   margin: 8px 2px 2px;
+   padding: 6px 8px;
+   border-radius: var(--radius-sm);
+   background: rgba(200, 90, 70, 0.08);
+   color: #b25542;
+   font:
+      600 12.5px/1.3 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: center;
+}
+.chord-popover-msg[hidden] {
+   display: none;
+}
+/* Anchor beat highlight while its editor is open. Uses the SAME inset box as the
+   hover affordance (preview.css) so the hover preview and the active/clicked
+   target are pixel-identical — a solid ring drawn a few px inside the cell. */
+html:not(.is-print-layout) .drop-target.chord-editing {
+   position: relative;
+}
+html:not(.is-print-layout) .drop-target.chord-editing::after {
+   content: "";
+   position: absolute;
+   z-index: 5;
+   inset: 21px 16px 3px;
+   border: 1.5px solid rgba(35, 122, 80, 0.6);
+   border-radius: 5px;
+   background: rgba(35, 122, 80, 0.06);
+   pointer-events: none;
+}
+/* Hide the placeholder dot inside the beat that's currently being edited. */
+html:not(.is-print-layout) .drop-target.chord-editing .beat-dot {
+   opacity: 0;
+}
+
+html[data-theme="dark"] .chord-popover-msg {
+   background: rgba(255, 100, 85, 0.12);
+   color: #ff9b8f;
+}
+html[data-theme="dark"] .chord-suggestion.is-active {
+   box-shadow: inset 0 0 0 1.5px rgba(120, 220, 160, 0.4);
+}
+
+/* ============================================================
+   Beat rhythm context menu (right-click / long-press).
+   ============================================================ */
+.beat-menu {
+   position: fixed;
+   z-index: 1450;
+   min-width: 200px;
+   padding: 6px;
+   background: var(--surface);
+   border: 1px solid var(--line);
+   border-radius: var(--radius-md);
+   box-shadow: var(--shadow-md);
+   animation: chord-pop-in 0.12s ease-out both;
+}
+.beat-menu-item {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   width: 100%;
+   padding: 9px 11px;
+   border: 0;
+   border-radius: var(--radius-sm);
+   background: transparent;
+   color: var(--ink);
+   font:
+      600 14px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: left;
+   cursor: pointer;
+   transition: background 0.1s;
+}
+.beat-menu-item:hover {
+   background: var(--soft);
+}
+.beat-menu-item[aria-disabled="true"] {
+   opacity: 0.4;
+   cursor: not-allowed;
+}
+.beat-menu-item[aria-disabled="true"]:hover {
+   background: transparent;
+}
+.beat-menu-item.is-danger {
+   color: #b25542;
+}
+.beat-menu-item.is-danger:hover {
+   background: rgba(200, 90, 70, 0.08);
+}
+.beat-menu-hint {
+   display: grid;
+   place-items: center;
+   min-width: 20px;
+   height: 20px;
+   padding: 0 5px;
+   border-radius: 6px;
+   background: var(--soft);
+   color: var(--muted);
+   font:
+      700 11px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+}
+html[data-theme="dark"] .beat-menu-item.is-danger {
+   color: #ff9b8f;
+}
+html[data-theme="dark"] .beat-menu-item.is-danger:hover {
+   background: rgba(255, 100, 85, 0.12);
 }

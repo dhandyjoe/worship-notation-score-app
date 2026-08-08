@@ -14,9 +14,9 @@ import {
    escapeHTML,
    beatValue,
    lyricValue,
-} from "./notation.js?v=20260805-dock-containing-block-fix";
-import { $, prefersTap } from "./dom.js?v=20260805-dock-containing-block-fix";
-import { getState } from "./store.js?v=20260805-dock-containing-block-fix";
+} from "./notation.js?v=20260808-hide-dot-active";
+import { $, prefersTap } from "./dom.js?v=20260808-hide-dot-active";
+import { getState } from "./store.js?v=20260808-hide-dot-active";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
@@ -124,6 +124,13 @@ export function renderControls() {
       .join("");
    $("#lyricsEnabled").checked = state.lyricsEnabled;
    $("#lyricsEnabledLabel").textContent = state.lyricsEnabled ? "Lyrics on" : "Lyrics off";
+   // Mirror the global lyrics state onto the topbar toggle (ribbon is hidden).
+   const topToggle = $("#lyricsEnabledTop");
+   if (topToggle) {
+      topToggle.checked = state.lyricsEnabled;
+      const topLabel = $("#lyricsEnabledTopLabel");
+      if (topLabel) topLabel.textContent = state.lyricsEnabled ? "Lyrics on" : "Lyrics off";
+   }
    hooks.bindDraggableChords();
    renderCustomChord();
    document
@@ -251,11 +258,54 @@ export function renderPreview() {
       `<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;
    $("#previewKey").textContent = state.key;
    $("#previewMeter").textContent = state.meter;
-   $("#previewHint").textContent =
-      lyricsFeatureAvailable && state.lyricsEnabled
-         ? `${prefersTap() ? "Select and tap" : "Drag"} chords onto beats, then enter lyrics in the row below.`
-         : `${prefersTap() ? "Select an item above, then tap" : "Drag a chord from the toolbar onto"} a beat.`;
+   // The old free-text hint ("Drag a chord…") was replaced by the "How to edit
+   // this score" button + dialog (see index.html / events.js). Guard in case the
+   // element is absent so older markup doesn't throw.
+   const legacyHint = $("#previewHint");
+   if (legacyHint) {
+      legacyHint.textContent =
+         lyricsFeatureAvailable && state.lyricsEnabled
+            ? `${prefersTap() ? "Select and tap" : "Drag"} chords onto beats, then enter lyrics in the row below.`
+            : `${prefersTap() ? "Select an item above, then tap" : "Drag a chord from the toolbar onto"} a beat.`;
+   }
+   // Re-rendering replaces innerHTML, which resets scroll offsets to 0 on every
+   // rebuilt element. We re-render on every edit (e.g. committing a chord), so
+   // without restoring scroll the view would jump when editing beats near the
+   // right edge of a wide score. TWO scroll containers matter:
+   //   • #previewViewport — vertical/whole-page scroll.
+   //   • each .bar-grid    — the per-section horizontal scroll of the beat lines
+   //     (this is where a wide bar of ¼-beats actually scrolls sideways).
+   // Snapshot both, keyed by section id for the grids, then restore after the
+   // swap. Bar widths (--leaf) are only applied by distributeLeafWidth() inside
+   // updateViewportOverflow() (the rAF below), so a restore before that would be
+   // clamped (scrollWidth still small) — hence we restore again after the width
+   // pass. Project load/reset resets scroll explicitly elsewhere.
+   const viewport = $("#previewViewport");
+   const scrollLeft = viewport ? viewport.scrollLeft : 0;
+   const scrollTop = viewport ? viewport.scrollTop : 0;
+   const gridScroll = new Map();
+   document.querySelectorAll("#sectionsPreview .preview-section").forEach((section) => {
+      const grid = section.querySelector(".bar-grid");
+      if (grid && grid.scrollLeft) gridScroll.set(section.dataset.section, grid.scrollLeft);
+   });
+   const restoreScroll = () => {
+      if (viewport) {
+         viewport.scrollLeft = scrollLeft;
+         viewport.scrollTop = scrollTop;
+      }
+      gridScroll.forEach((left, sectionId) => {
+         const section = document.querySelector(`#sectionsPreview .preview-section[data-section="${sectionId}"]`);
+         const grid = section?.querySelector(".bar-grid");
+         if (grid) grid.scrollLeft = left;
+      });
+   };
    $("#sectionsPreview").innerHTML = state.sections.map(sectionHTML).join("");
+   restoreScroll();
    hooks.bindPreview();
-   requestAnimationFrame(hooks.updateViewportOverflow);
+   requestAnimationFrame(() => {
+      hooks.updateViewportOverflow();
+      // Re-apply after bar widths are finalised so a far-right scroll position
+      // survives the relayout instead of being clamped back toward zero.
+      restoreScroll();
+   });
 }

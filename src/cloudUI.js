@@ -4,7 +4,7 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudId / setCloudId). This keeps
 // the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260805-dock-containing-block-fix";
+import { $, toast } from "./dom.js?v=20260808-hide-dot-active";
 import {
    isConfigured,
    onAuth,
@@ -20,7 +20,7 @@ import {
    loadSong,
    deleteSong,
    duplicateSong,
-} from "./cloud.js?v=20260805-dock-containing-block-fix";
+} from "./cloud.js?v=20260808-hide-dot-active";
 
 // Injected editor bridge (set in init).
 let bridge = {
@@ -29,6 +29,8 @@ let bridge = {
    getCloudId: () => null,
    setCloudId: () => {},
    openPdfOptions: () => {},
+   hasUnsavedChanges: () => false,
+   markSaved: () => {},
 };
 
 let cachedSongs = []; // last-fetched list (for client-side search filtering)
@@ -129,6 +131,105 @@ function openConfirmDialog({
    });
 }
 
+// Three-choice "unsaved changes" dialog, shown when leaving the editor with
+// edits that haven't reached the cloud. Resolves to one of:
+//   "save"    → user wants to save then leave  (recommended primary action)
+//   "discard" → leave without saving
+//   "cancel"  → stay in the editor (backdrop / Cancel / Escape)
+let activeUnsavedCleanup = null;
+function openUnsavedChangesDialog() {
+   const dialog = $("#unsavedDialog");
+   // No markup (e.g. old tests) → degrade to the native confirm: OK = save.
+   if (!dialog) {
+      return Promise.resolve(
+         window.confirm("You have unsaved changes. Save to cloud before leaving?") ? "save" : "discard",
+      );
+   }
+   if (activeUnsavedCleanup) activeUnsavedCleanup("cancel");
+
+   const saveBtn = $("#unsavedSaveBtn");
+   const discardBtn = $("#unsavedDiscardBtn");
+   const cancelBtn = $("#unsavedCancelBtn");
+   const previouslyFocused = document.activeElement;
+
+   return new Promise((resolve) => {
+      const finish = (result) => {
+         if (activeUnsavedCleanup !== cleanup) return;
+         cleanup(result);
+      };
+      const onSave = () => finish("save");
+      const onDiscard = () => finish("discard");
+      const onCancel = () => finish("cancel");
+      const onKey = (e) => {
+         if (e.key === "Escape") finish("cancel");
+      };
+      const onBackdrop = (e) => {
+         if (e.target.closest("[data-unsaved-dismiss]")) finish("cancel");
+      };
+
+      function cleanup(result) {
+         activeUnsavedCleanup = null;
+         saveBtn.removeEventListener("click", onSave);
+         discardBtn.removeEventListener("click", onDiscard);
+         cancelBtn.removeEventListener("click", onCancel);
+         dialog.removeEventListener("click", onBackdrop);
+         document.removeEventListener("keydown", onKey);
+         closeModal(dialog);
+         if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+            previouslyFocused.focus();
+         }
+         resolve(result);
+      }
+
+      activeUnsavedCleanup = cleanup;
+      saveBtn.addEventListener("click", onSave);
+      discardBtn.addEventListener("click", onDiscard);
+      cancelBtn.addEventListener("click", onCancel);
+      dialog.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+      openModal(dialog);
+      // Focus the recommended (Save) action so Enter keeps the user's work.
+      setTimeout(() => saveBtn.focus(), 40);
+   });
+}
+
+// Guarded navigation back to My Songs. If the open document has unsaved cloud
+// changes, ask first; otherwise leave immediately.
+async function leaveEditorToHome() {
+   await guardUnsavedThen(() => navigate(HOME_ROUTE));
+}
+
+// Central unsaved-changes gate. Runs `proceed` immediately when there is nothing
+// to lose; otherwise shows the 3-choice dialog and only proceeds on save-success
+// or explicit discard. Returns true if `proceed` ran, false if the user cancelled.
+// A single gate means EVERY way of leaving the editor (Back button, New song,
+// opening another song, browser Back) prompts consistently — no silent data loss.
+//
+// #2 fix: the dialog is a *cloud* save prompt, so it only makes sense when cloud
+// is usable. When cloud isn't configured or the user isn't signed in, there is
+// no "Save to cloud" action to offer — we skip the dialog and proceed (the
+// in-session autosave note in the topbar already sets expectations, and Export
+// .file remains the persistence path).
+async function guardUnsavedThen(proceed) {
+   if (!bridge.hasUnsavedChanges() || !cloudSaveAvailable()) {
+      proceed();
+      return true;
+   }
+   const choice = await openUnsavedChangesDialog();
+   if (choice === "cancel") return false;
+   if (choice === "save") {
+      const saved = await saveToCloud();
+      // If the save failed (offline, transient error) keep the user where they
+      // are so their work isn't lost behind a silent navigation.
+      if (!saved) return false;
+   }
+   // "discard" (or a successful save) → proceed. Clear the flag either way so we
+   // don't re-prompt if nothing else changes.
+   bridge.markSaved();
+   proceed();
+   return true;
+}
+
 // ======================================================================
 // Hash routing
 // ----------------------------------------------------------------------
@@ -141,6 +242,10 @@ function openConfirmDialog({
 const HOME_ROUTE = "#/songs";
 // Guards the hashchange handler while navigate() is writing the hash itself.
 let suppressHashHandling = false;
+// Snapshot of the last route we applied, so the hashchange handler can detect a
+// browser Back that leaves the editor while there are unsaved changes.
+let lastRoute = { name: "home" };
+let lastHash = "";
 
 function editorRoute() {
    const id = bridge.getCloudId();
@@ -186,12 +291,35 @@ function applyRoute() {
    // actually open, otherwise home would offer a dead end.
    const resume = $("#backToEditorBtn");
    if (resume) resume.hidden = route.name !== "home" || !bridge.getCloudId();
+   // Remember where we are so the hashchange guard can detect an editor→home
+   // transition triggered by the browser Back button (see the init listener).
+   lastRoute = route;
+   lastHash = location.hash;
 }
 const escapeHtml = (s) =>
    String(s ?? "").replace(
       /[&<>"']/g,
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
    );
+
+// Whether a "Save to cloud" action can actually complete right now. The unsaved
+// guard and the dirty badge both hinge on this: there's no point prompting to
+// save (or nagging with a badge) when Firebase isn't configured or nobody is
+// signed in. TEST_MODE stands in for an authenticated session in the harness.
+function cloudSaveAvailable() {
+   return isConfigured() && (!!getCurrentUser() || TEST_MODE);
+}
+
+// #4 dirty indicator: toggle the "unsaved changes" state on the Save to Cloud
+// button. Only surface it when cloud save is actually available, otherwise the
+// badge would nag about an action the user can't complete.
+function updateSaveButtonDirty(dirty) {
+   const btn = $("#saveCloudBtn");
+   if (!btn) return;
+   const show = !!dirty && cloudSaveAvailable();
+   btn.classList.toggle("is-unsaved", show);
+   btn.setAttribute("aria-label", show ? "Save to Cloud (unsaved changes)" : "Save to Cloud");
+}
 
 // ======================================================================
 // Auth state → topbar reflection
@@ -231,6 +359,10 @@ function reflectAuth(user) {
       const signOut = $("#signOutBtn");
       if (signOut) signOut.hidden = !user;
    }
+
+   // Cloud availability just changed (sign in/out): re-evaluate the unsaved
+   // badge so it only shows when the user can actually save to the cloud.
+   updateSaveButtonDirty(bridge?.hasUnsavedChanges?.() ?? false);
 
    // Route on auth changes that happen AFTER the initial load routing (e.g. the
    // user signs in from the login page, or signs out from the topbar). The very
@@ -559,15 +691,19 @@ function openGallery() {
 }
 
 async function openSongInEditor(cloudId) {
-   try {
-      const song = await loadSong(cloudId);
-      bridge.applyProject(song);
-      bridge.setCloudId(cloudId);
-      navigate(`#/song/${encodeURIComponent(cloudId)}`);
-      toast(`Opened "${song.title || "Untitled"}"`);
-   } catch (error) {
-      toast("Could not open that song");
-   }
+   // Guarded so replacing the open document (e.g. opening another song while
+   // one is already loaded with edits) can't silently discard unsaved work.
+   await guardUnsavedThen(async () => {
+      try {
+         const song = await loadSong(cloudId);
+         bridge.applyProject(song);
+         bridge.setCloudId(cloudId);
+         navigate(`#/song/${encodeURIComponent(cloudId)}`);
+         toast(`Opened "${song.title || "Untitled"}"`);
+      } catch (error) {
+         toast("Could not open that song");
+      }
+   });
 }
 
 async function handleCardAction(act, cloudId, card) {
@@ -747,20 +883,23 @@ function initGallery() {
    );
 
    // New song: reset to a blank project (clears cloud link so Save creates new).
+   // Guarded so starting fresh doesn't silently discard unsaved edits.
    $("#newSongBtn")?.addEventListener("click", () => {
-      bridge.applyProject({
-         format: "chord-sheet",
-         version: 2,
-         title: "New Song",
-         artist: "Artist / Composer",
-         key: "C",
-         meter: "4/4",
-         sections: [{ name: "Intro", bars: [] }],
-         slashChords: [],
+      guardUnsavedThen(() => {
+         bridge.applyProject({
+            format: "chord-sheet",
+            version: 2,
+            title: "New Song",
+            artist: "Artist / Composer",
+            key: "C",
+            meter: "4/4",
+            sections: [{ name: "Intro", bars: [] }],
+            slashChords: [],
+         });
+         bridge.setCloudId(null);
+         navigate("#/song/new");
+         toast("Started a new song");
       });
-      bridge.setCloudId(null);
-      navigate("#/song/new");
-      toast("Started a new song");
    });
 
    // Upload a .json straight into the editor (does not auto-save to cloud).
@@ -787,21 +926,24 @@ function initGallery() {
 async function saveToCloud() {
    if (!isConfigured()) {
       toast("Cloud is not configured yet");
-      return;
+      return false;
    }
    if (!getCurrentUser()) {
       showLoginPage();
       toast("Sign in to save to the cloud");
-      return;
+      return false;
    }
    try {
       const project = bridge.getProject();
       project.cloudId = bridge.getCloudId() || undefined;
       const id = await saveSong(project);
       bridge.setCloudId(id);
+      bridge.markSaved();
       toast("Saved to cloud");
+      return true;
    } catch (error) {
       toast("Could not save to cloud");
+      return false;
    }
 }
 
@@ -914,12 +1056,52 @@ export function initCloudUI(editorBridge) {
       };
    }
    $("#saveCloudBtn")?.addEventListener("click", saveToCloud);
-   // Editor header: Back returns to home (the library).
-   $("#backToSongsBtn")?.addEventListener("click", () => navigate(HOME_ROUTE));
+   // #4 unsaved-changes indicator: the editor broadcasts a dirty-state change
+   // whenever the document is edited (or saved/loaded). Reflect it as a badge on
+   // the Save to Cloud button so the user can see at a glance that there is work
+   // to persist. The badge is only meaningful when cloud save is possible.
+   window.addEventListener("chordsheet:dirtychange", (e) => {
+      updateSaveButtonDirty(!!e.detail?.dirty);
+   });
+   // Editor header: Back returns to home (the library). Guarded so unsaved cloud
+   // changes prompt a Save & leave / Leave without saving / Cancel choice first.
+   $("#backToSongsBtn")?.addEventListener("click", () => leaveEditorToHome());
    // Browser Back/Forward and manual hash edits re-render the matching screen.
    window.addEventListener("hashchange", () => {
       if (suppressHashHandling) return;
+      // Detect a browser Back/Forward (or manual hash edit) that leaves an open
+      // editor for home while there are unsaved cloud changes. The hash has
+      // already changed by the time this fires, so we re-assert the editor route
+      // (without pushing history) and run the same guard used by every other
+      // exit. If the user chooses to stay, they remain in the editor; if they
+      // save or discard, we complete the navigation home.
+      const from = lastRoute;
+      const to = parseRoute(location.hash);
+      const leavingEditor = from.name === "editor" && to.name === "home";
+      if (leavingEditor && bridge.hasUnsavedChanges() && cloudSaveAvailable()) {
+         const editorHash = editorRoute();
+         // Re-pin the URL to the editor without a new history entry, then prompt.
+         suppressHashHandling = true;
+         history.replaceState(null, "", editorHash);
+         suppressHashHandling = false;
+         lastHash = editorHash;
+         guardUnsavedThen(() => navigate(HOME_ROUTE));
+         return;
+      }
       applyRoute();
+   });
+   // Reload / tab close protection. Custom dialogs can't run here — the browser
+   // shows its own native "Leave site?" prompt when we cancel the event. Only
+   // arm it when there is genuinely unsaved cloud work to lose. NEVER arm it in
+   // TEST_MODE: the regression harness drives navigation via CDP Page.navigate,
+   // and a native beforeunload prompt is unanswerable headless — it deadlocks
+   // the harness.
+   window.addEventListener("beforeunload", (e) => {
+      if (TEST_MODE) return;
+      if (bridge.hasUnsavedChanges() && cloudSaveAvailable()) {
+         e.preventDefault();
+         e.returnValue = "";
+      }
    });
    // Reflect auth state in the topbar (and route on sign-in/out) as it changes.
    onAuth(reflectAuth);

@@ -21,8 +21,8 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260805-dock-containing-block-fix";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260805-dock-containing-block-fix";
+} from "./notation.js?v=20260808-hide-dot-active";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260808-hide-dot-active";
 import {
    getState,
    setState,
@@ -30,22 +30,38 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260805-dock-containing-block-fix";
+} from "./store.js?v=20260808-hide-dot-active";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260805-dock-containing-block-fix";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260805-dock-containing-block-fix";
-import { initPdfOptions } from "./pdfOptions.js?v=20260805-dock-containing-block-fix";
-import { initCloudUI } from "./cloudUI.js?v=20260805-dock-containing-block-fix";
+} from "./render.js?v=20260808-hide-dot-active";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260808-hide-dot-active";
+import { initPdfOptions } from "./pdfOptions.js?v=20260808-hide-dot-active";
+import { initCloudUI } from "./cloudUI.js?v=20260808-hide-dot-active";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260808-hide-dot-active";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260808-hide-dot-active";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Firestore doc id of the currently-open cloud song (null = unsaved / local only).
 let currentCloudId = null;
-let previewZoom = Math.min(1.35, Math.max(0.65, Number(localStorage.getItem("chordSheetZoom")) || 1));
+// Tracks whether the document has been edited since it was last loaded from — or
+// saved to — the cloud. Powers the "unsaved changes" guard on Back to My Songs.
+// Set true by save() (fired on every edit), cleared on fresh load / cloud save.
+let dirtySinceSave = false;
+// Single writer for the dirty flag. Also broadcasts the change so the topbar
+// "Save to Cloud" button can show/hide its unsaved-changes badge (see cloudUI).
+function setDirty(next) {
+   const value = !!next;
+   if (value === dirtySinceSave) return;
+   dirtySinceSave = value;
+   window.dispatchEvent(new CustomEvent("chordsheet:dirtychange", { detail: { dirty: value } }));
+}
+// The live preview is locked to a fixed "fit width" scale (no zoom controls).
+// 0.95 keeps the page comfortably inside the canvas with a small breathing gap.
+const FIXED_PREVIEW_ZOOM = 0.95;
 const storedTheme = localStorage.getItem("chordSheetTheme");
 let activeTheme =
    storedTheme === "light" || storedTheme === "dark"
@@ -59,7 +75,11 @@ let printLayoutPreview = false;
 let pdfOptionsControl = null;
 
 // Project content intentionally lives in memory only. Use Export .file for persistence.
-function save() {}
+// save() is the single chokepoint fired after every edit, so it's also where we
+// flag the document as having unsaved changes (see dirtySinceSave / the Back guard).
+function save() {
+   setDirty(true);
+}
 function syncEditor() {}
 
 // ---- Palette selection ----
@@ -222,6 +242,129 @@ function flashDropTarget(sectionId, slot) {
    });
 }
 
+// ---- Inline chord editor (type → pick a suggestion) ----
+// Resolve a beat element by section+slot after a re-render (elements are rebuilt
+// on every renderPreview, so we can't hold references across commits).
+function findBeatEl(sectionId, slot) {
+   return [...document.querySelectorAll(".drop-target")].find(
+      (el) => el.dataset.section === sectionId && el.dataset.slot === slot,
+   );
+}
+// Ordered list of beat elements for Tab navigation (document order = musical order).
+function beatOrder() {
+   return [...document.querySelectorAll(".drop-target")];
+}
+function neighbourBeat(anchor, dir) {
+   const beats = beatOrder();
+   const index = beats.indexOf(anchor);
+   if (index < 0) return null;
+   return beats[index + dir] || null;
+}
+// Write a chosen (already-normalized) chord value into state and re-render.
+function commitChordToBeat(sectionId, slot, value) {
+   const section = findSection(sectionId);
+   if (!section) return;
+   const beatEl = findBeatEl(sectionId, slot);
+   const current = beatValue(section, slot);
+   current.chord = value;
+   section.beats[slot] = current;
+   getState().activeId = sectionId;
+   renderPreview();
+   save();
+   flashDropTarget(sectionId, slot);
+}
+// Open the editor on a beat element, wiring commit + Tab navigation callbacks.
+function openBeatEditor(beat, { selectQuery = true } = {}) {
+   const sectionId = beat.dataset.section;
+   const slot = beat.dataset.slot;
+   const section = findSection(sectionId);
+   const initialValue = selectQuery ? beatValue(section, slot).chord || "" : "";
+   openChordEditor({
+      anchor: beat,
+      initialValue,
+      onCommit: (value) => commitChordToBeat(sectionId, slot, value),
+      advanceTo: (currentAnchor, dir) => neighbourBeat(currentAnchor, dir),
+      reopen: (nextAnchor) => openBeatEditor(nextAnchor),
+   });
+}
+
+// ---- Rhythm context menu (right-click / long-press) ----
+// Apply a subdivision by reusing the existing placePaletteItem duration path, so
+// the (well-tested) split/merge + lyric-preservation logic stays single-sourced.
+function applyDuration(beat, durationValue) {
+   const section = findSection(beat.dataset.section);
+   if (!section) return;
+   if (!placePaletteItem(section, beat, { type: "duration", value: durationValue })) return;
+   renderPreview();
+   save();
+   flashDropTarget(section.id, beat.dataset.slot);
+}
+// Remove a subdivision from a base-level beat, keeping the first child chord and
+// merging child lyrics (mirrors the duration-line click handler below).
+function removeDurationAt(beat) {
+   const section = findSection(beat.dataset.section);
+   if (!section) return;
+   const baseSlot = beat.dataset.baseSlot || beat.dataset.slot;
+   if (!beatValue(section, baseSlot).duration) return;
+   const descendantSlots = Object.keys(section.beats)
+      .filter((slot) => slot === baseSlot || slot.startsWith(`${baseSlot}.`) || slot.startsWith(`${baseSlot}:`))
+      .sort();
+   const firstChord = descendantSlots.map((slot) => beatValue(section, slot).chord).find(Boolean) || null;
+   const lyricSlots = Object.keys(section.lyricBeats || {})
+      .filter((slot) => slot.startsWith(`${baseSlot}.`) || slot.startsWith(`${baseSlot}:`))
+      .sort();
+   const mergedLyrics = lyricSlots
+      .map((slot) => lyricValue(section, slot))
+      .filter(Boolean)
+      .join(" ");
+   descendantSlots.forEach((slot) => delete section.beats[slot]);
+   lyricSlots.forEach((slot) => delete section.lyricBeats[slot]);
+   if (firstChord) section.beats[baseSlot] = { chord: firstChord, duration: null };
+   else delete section.beats[baseSlot];
+   setLyric(section, baseSlot, mergedLyrics);
+   getState().activeId = section.id;
+   renderPreview();
+   save();
+   toast("Rhythm marker removed");
+}
+// Open the rhythm menu for a beat at the given viewport point.
+function openRhythmMenu(beat, x, y) {
+   closeChordEditor();
+   const section = findSection(beat.dataset.section);
+   if (!section) return;
+   const level = Number(beat.dataset.level || 0);
+   const baseSlot = beat.dataset.baseSlot || beat.dataset.slot;
+   const hasDuration = !!beatValue(section, baseSlot).duration;
+   const nested = level >= 1;
+   const items = [
+      {
+         label: "½ — Half beat",
+         hint: "2",
+         disabled: level >= 2,
+         action: () => applyDuration(beat, "half"),
+      },
+      {
+         label: "⅓ — Triplet",
+         hint: "3",
+         disabled: nested,
+         action: () => applyDuration(beat, "triplet"),
+      },
+      {
+         label: "¼ — Quarter beat",
+         hint: "4",
+         disabled: nested,
+         action: () => applyDuration(beat, "quarter"),
+      },
+      {
+         label: "Remove subdivision",
+         danger: true,
+         disabled: !hasDuration || nested,
+         action: () => removeDurationAt(beat),
+      },
+   ];
+   openBeatMenu({ x, y, items });
+}
+
 // ---- Preview binding (re-run after every renderPreview) ----
 function bindPreview() {
    const state = getState();
@@ -249,20 +392,81 @@ function bindPreview() {
          save();
          flashDropTarget(section.id, slot);
       });
+      // Long-press bookkeeping (declared before the click handler so it can honor
+      // the suppression window a just-fired long-press sets up).
+      let pressTimer = null;
+      let pressPoint = null;
+      let suppressClickUntil = 0;
+      const cancelPress = () => {
+         if (pressTimer) clearTimeout(pressTimer);
+         pressTimer = null;
+      };
       beat.addEventListener("click", (event) => {
-         const selectedItem = getSelectedPaletteItem();
-         if (!selectedItem || event.target.closest(".placed-chord,.duration-line,.nested-duration-line,.lyric-input"))
+         if (event.target.closest(".placed-chord,.duration-line,.nested-duration-line,.lyric-input")) return;
+         // On touch, lifting the finger after a long-press emits a synthetic
+         // click on the beat. Without this guard it would open the chord editor
+         // right on top of the rhythm menu the long-press just opened.
+         if (Date.now() < suppressClickUntil) {
+            suppressClickUntil = 0;
+            event.stopPropagation();
             return;
+         }
+         const selectedItem = getSelectedPaletteItem();
+         // Legacy palette flow (arrangement tools) still works when an item is
+         // selected. Otherwise, clicking an empty beat opens the inline editor.
+         if (selectedItem) {
+            event.stopPropagation();
+            const section = findSection(beat.dataset.section),
+               slot = beat.dataset.slot;
+            if (!placePaletteItem(section, beat, selectedItem)) return;
+            if (prefersTap()) clearPaletteSelection();
+            syncEditor();
+            renderPreview();
+            save();
+            flashDropTarget(section.id, slot);
+            return;
+         }
          event.stopPropagation();
-         const section = findSection(beat.dataset.section),
-            slot = beat.dataset.slot;
-         if (!placePaletteItem(section, beat, selectedItem)) return;
-         if (prefersTap()) clearPaletteSelection();
-         syncEditor();
-         renderPreview();
-         save();
-         flashDropTarget(section.id, slot);
+         openBeatEditor(beat, { selectQuery: false });
       });
+
+      // Rhythm context menu: right-click (desktop) + long-press (touch).
+      beat.addEventListener("contextmenu", (event) => {
+         event.preventDefault();
+         event.stopPropagation();
+         openRhythmMenu(beat, event.clientX, event.clientY);
+      });
+      beat.addEventListener(
+         "touchstart",
+         (event) => {
+            if (event.touches.length !== 1) return;
+            const touch = event.touches[0];
+            pressPoint = { x: touch.clientX, y: touch.clientY };
+            cancelPress();
+            pressTimer = setTimeout(() => {
+               pressTimer = null;
+               // Arm the guard so the trailing synthetic click (on finger lift)
+               // is swallowed and doesn't open the chord editor over the menu.
+               suppressClickUntil = Date.now() + 900;
+               openRhythmMenu(beat, pressPoint.x, pressPoint.y);
+            }, 500);
+         },
+         { passive: true },
+      );
+      beat.addEventListener(
+         "touchmove",
+         (event) => {
+            if (!pressPoint || !event.touches.length) return;
+            const touch = event.touches[0];
+            if (Math.hypot(touch.clientX - pressPoint.x, touch.clientY - pressPoint.y) > 10) cancelPress();
+         },
+         { passive: true },
+      );
+      // If the long-press already fired, keep the click-suppression window alive
+      // (touchend arrives right before the synthetic click). A normal short tap
+      // clears nothing — its click proceeds and opens the chord editor.
+      beat.addEventListener("touchend", cancelPress, { passive: true });
+      beat.addEventListener("touchcancel", cancelPress, { passive: true });
    });
    document.querySelectorAll(".placed-chord").forEach((chord) => {
       const removeOrReplace = (event) => {
@@ -278,6 +482,12 @@ function bindPreview() {
             renderPreview();
             save();
             flashDropTarget(section.id, beat.dataset.slot);
+            return;
+         }
+         // Clicking the chord body (not the × badge) re-opens the editor so the
+         // user can change it; the × badge removes the chord.
+         if (!viaRemoveBadge) {
+            openBeatEditor(beat, { selectQuery: true });
             return;
          }
          // Animate the chord out before removing
@@ -587,45 +797,21 @@ function updateViewportOverflow() {
    stage.classList.toggle("is-overflowing", overflowing);
    stage.classList.toggle("at-scroll-end", atEnd);
 }
-function setPreviewZoom(value, { persist = true } = {}) {
-   const minimum = prefersTap() ? 1 : 0.65;
-   previewZoom = Math.min(1.35, Math.max(minimum, Math.round(value * 20) / 20));
-   // PDF layout preview uses the print unit grid at 100% paper scale.
-   $("#previewCard").style.zoom = printLayoutPreview ? 1 : previewZoom;
-   $("#zoomValue").textContent = `${Math.round((printLayoutPreview ? 1 : previewZoom) * 100)}%`;
-   $("#zoomOut").disabled = printLayoutPreview || previewZoom <= minimum;
-   $("#zoomIn").disabled = printLayoutPreview || previewZoom >= 1.35;
-   if (persist && !printLayoutPreview) localStorage.setItem("chordSheetZoom", String(previewZoom));
+// Apply the fixed preview scale. The PDF layout preview always renders at paper
+// scale (zoom 1). The live editor is locked to FIXED_PREVIEW_ZOOM on desktop,
+// but stays at 1 on touch devices so tap targets keep their accessible size
+// (on phones the bars stack vertically, so no shrink-to-fit is needed).
+function applyPreviewZoom() {
+   const card = $("#previewCard");
+   if (!card) return;
+   const liveZoom = prefersTap() ? 1 : FIXED_PREVIEW_ZOOM;
+   card.style.zoom = printLayoutPreview ? 1 : liveZoom;
    requestAnimationFrame(updateViewportOverflow);
-}
-function fitPreview() {
-   if (printLayoutPreview) {
-      const viewport = $("#previewViewport");
-      if (viewport) viewport.scrollLeft = 0;
-      requestAnimationFrame(updateViewportOverflow);
-      return;
-   }
-   const viewport = $("#previewViewport"),
-      card = $("#previewCard");
-   if (!viewport || !card) return;
-   card.style.zoom = 1;
-   const available = Math.max(320, viewport.clientWidth - 48),
-      ratio = Math.min(1, available / card.offsetWidth);
-   setPreviewZoom(ratio);
-   viewport.scrollLeft = 0;
 }
 function setPrintLayoutPreview(enabled, { announce = true } = {}) {
    printLayoutPreview = Boolean(enabled);
    document.documentElement.classList.toggle("is-print-layout", printLayoutPreview);
-   const toggle = $("#printPreviewToggle");
-   if (toggle) {
-      toggle.setAttribute("aria-pressed", String(printLayoutPreview));
-      toggle.textContent = printLayoutPreview ? "Exit PDF layout" : "PDF layout";
-      toggle.title = printLayoutPreview ? "Return to the editable live preview" : "Preview the printable PDF layout";
-   }
-   const fit = $("#fitPreview");
-   if (fit) fit.disabled = printLayoutPreview;
-   setPreviewZoom(previewZoom, { persist: false });
+   applyPreviewZoom();
    if (announce)
       toast(printLayoutPreview ? "PDF layout preview on · export will use this geometry" : "Back to live preview");
    requestAnimationFrame(() => {
@@ -734,7 +920,12 @@ function applyProject(project) {
    syncEditor();
    renderControls();
    renderPreview();
+   // Loading a different project should start at the top-left, not inherit the
+   // scroll position from whatever was previously being edited.
+   $("#previewViewport")?.scrollTo(0, 0);
    save();
+   // A freshly-loaded document matches its source (cloud/file) — not dirty yet.
+   setDirty(false);
 }
 
 // ---- Inline meta editing (title/artist/key/meter) ----
@@ -890,6 +1081,13 @@ function bindControlListeners() {
       save();
       toast(getState().lyricsEnabled ? "Lyrics mode enabled" : "Lyrics hidden from score");
    });
+   // Global lyrics toggle in the topbar (mirrors the hidden ribbon switch, which
+   // remains the source of truth so renderControls keeps both in sync).
+   $("#lyricsEnabledTop")?.addEventListener("change", (event) => {
+      const ribbonToggle = $("#lyricsEnabled");
+      ribbonToggle.checked = event.target.checked;
+      ribbonToggle.dispatchEvent(new Event("change"));
+   });
    bindAutoSyllable();
    document.querySelectorAll(".ribbon-tab").forEach((tab) => {
       tab.addEventListener("click", () => activateRibbon(tab));
@@ -911,10 +1109,6 @@ function bindControlListeners() {
    $("#themeToggle").addEventListener("click", () =>
       applyTheme(activeTheme === "dark" ? "light" : "dark", { announce: true }),
    );
-   $("#zoomOut").addEventListener("click", () => setPreviewZoom(previewZoom - 0.1));
-   $("#zoomIn").addEventListener("click", () => setPreviewZoom(previewZoom + 0.1));
-   $("#fitPreview").addEventListener("click", fitPreview);
-   $("#printPreviewToggle")?.addEventListener("click", () => setPrintLayoutPreview(!printLayoutPreview));
    $("#previewViewport").addEventListener("scroll", updateViewportOverflow, { passive: true });
    $("#previewTitle").addEventListener("click", (event) => {
       if (!event.target.matches("input")) beginMetaEdit("title");
@@ -970,9 +1164,43 @@ function bindControlListeners() {
       syncEditor();
       renderControls();
       renderPreview();
+      $("#previewViewport")?.scrollTo(0, 0);
       save();
       toast("Score reset to default");
    });
+   // "How to edit this score" help dialog (replaces the old drag-and-drop hint).
+   // Explains the click-to-type / right-click-for-rhythm live-editing model.
+   {
+      const howToDialog = $("#howToDialog");
+      const openBtn = $("#howToUseBtn");
+      let lastFocused = null;
+      const openHowTo = () => {
+         if (!howToDialog) return;
+         lastFocused = document.activeElement;
+         howToDialog.hidden = false;
+         void howToDialog.offsetHeight; // commit start state before fade-in
+         setTimeout(() => howToDialog.classList.add("is-open"), 20);
+         setTimeout(() => $("#howToCloseBtn")?.focus(), 60);
+         document.addEventListener("keydown", onKey);
+      };
+      const closeHowTo = () => {
+         if (!howToDialog) return;
+         howToDialog.classList.remove("is-open");
+         document.removeEventListener("keydown", onKey);
+         setTimeout(() => {
+            howToDialog.hidden = true;
+         }, 260);
+         if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
+      };
+      function onKey(event) {
+         if (event.key === "Escape") closeHowTo();
+      }
+      openBtn?.addEventListener("click", openHowTo);
+      // Backdrop and any element flagged data-howto-dismiss (Got it button) close.
+      howToDialog?.addEventListener("click", (event) => {
+         if (event.target.closest("[data-howto-dismiss]")) closeHowTo();
+      });
+   }
    $("#saveBtn")?.addEventListener("click", downloadProject);
    $("#projectFileInput")?.addEventListener("change", async (event) => {
       const file = event.target.files[0];
@@ -1019,13 +1247,6 @@ function bindControlListeners() {
 
    document.addEventListener("keydown", (event) => {
       const editing = event.target?.matches?.('input,textarea,select,[contenteditable="true"]') ?? false;
-      if ((event.ctrlKey || event.metaKey) && ["+", "=", "-", "0"].includes(event.key)) {
-         event.preventDefault();
-         if (event.key === "-") setPreviewZoom(previewZoom - 0.1);
-         else if (event.key === "0") fitPreview();
-         else setPreviewZoom(previewZoom + 0.1);
-         return;
-      }
       if (event.altKey && !editing && /^[1-5]$/.test(event.key)) {
          event.preventDefault();
          const tab = document.querySelectorAll(".ribbon-tab:not([hidden])")[Number(event.key) - 1];
@@ -1169,7 +1390,7 @@ export function initEvents() {
    renderControls();
    renderPreview();
    activateRibbon(document.querySelector(".ribbon-tab.active"), { expand: false });
-   setPreviewZoom(previewZoom, { persist: false });
+   applyPreviewZoom();
    if ("ResizeObserver" in window) new ResizeObserver(updateViewportOverflow).observe($("#previewViewport"));
    // Distribute beat widths right away (don't wait only on rAF, which is
    // throttled in hidden tabs) and again once web fonts finish loading, since
@@ -1186,6 +1407,13 @@ export function initEvents() {
       getCloudId: () => currentCloudId,
       setCloudId: (id) => {
          currentCloudId = id || null;
+      },
+      // Unsaved-changes guard: cloudUI asks whether the open document has edits
+      // that haven't been persisted to the cloud, and clears the flag once a
+      // save succeeds (or when leaving without saving is confirmed).
+      hasUnsavedChanges: () => dirtySinceSave,
+      markSaved: () => {
+         setDirty(false);
       },
       // Used by the per-card "Export .pdf" action: the song is applied to the
       // editor first, so the dialog's live preview shows that song's score.

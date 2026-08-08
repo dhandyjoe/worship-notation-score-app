@@ -228,6 +228,38 @@
    bottom: auto;
    transform: translate(-50%, -100%);
 }
+/* --- Live editor / preview only: neat, precisely-centered octave dots ---------
+   Print & PDF keep the original bold "●" glyph rendering above (frozen baseline).
+   On screen we (1) shrink-wrap the octave box to the degree so the dot centers
+   exactly over the number, and (2) replace the fuzzy text glyph + text-shadow
+   hack with a crisp CSS-drawn circle. Scoped html:not(.is-print-layout) so it
+   never touches the print octave-dot weight. */
+html:not(.is-print-layout) .nashville-octave {
+   min-width: 0;
+   text-align: center;
+}
+html:not(.is-print-layout) .nashville-octave-high .nashville-octave-dot,
+html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
+   width: 0.3em;
+   height: 0.3em;
+   font-size: inherit; /* size the circle in em relative to the degree, not the glyph */
+   line-height: 0;
+   background: currentColor;
+   border-radius: 50%;
+   text-shadow: none; /* drop the glyph-fattening hack */
+   text-indent: -9999px; /* push the "●" text glyph out; the CSS circle stands in */
+   overflow: hidden;
+}
+html:not(.is-print-layout) .nashville-octave-high .nashville-octave-dot {
+   top: 0;
+   bottom: auto;
+   transform: translate(-50%, -140%);
+}
+html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
+   top: 100%;
+   bottom: auto;
+   transform: translate(-50%, 40%);
+}
 .nashville-accidentals {
    display: flex;
    gap: 6px;
@@ -1642,37 +1674,64 @@ html[data-theme="dark"] .preview-section.is-active::before {
 @media (hover: hover) {
    html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover,
    html:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover {
-      background: rgba(35, 122, 80, 0.06);
-      box-shadow: inset 0 0 0 1px rgba(35, 122, 80, 0.22);
-      cursor: pointer;
+      cursor: text;
    }
    html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover .beat-dot,
    html:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover .beat-dot {
       opacity: 0;
    }
-   html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover::before,
-   html:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover::before {
+   /* Hover affordance + open-editor highlight share ONE inset box so the hover
+      preview and the clicked/active target are exactly the same size. The box
+      sits a few px inside the beat cell (slightly smaller than the full cell)
+      and scales with every beat width — normal, ½, ⅓, ¼ — instead of the old
+      fixed 84px chip that overflowed narrow cells. */
+   html:not(.is-print-layout)
+      body:not(.is-dragging)
+      .beat.drop-target:not(.has-chord):not(.chord-editing):hover::before,
+   html:not(.is-print-layout)
+      body:not(.is-dragging)
+      .sub-beat.drop-target:not(.has-chord):not(.chord-editing):hover::before {
+      content: "";
+      position: absolute;
+      z-index: 5;
+      inset: 21px 16px 3px;
+      border: 1.5px dashed rgba(35, 122, 80, 0.5);
+      border-radius: 5px;
+      background: rgba(35, 122, 80, 0.06);
+      pointer-events: none;
+   }
+   html:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):not(.chord-editing):hover::after,
+   html:not(.is-print-layout)
+      body:not(.is-dragging)
+      .sub-beat.drop-target:not(.has-chord):not(.chord-editing):hover::after {
       content: "+";
       position: absolute;
-      inset: 0;
+      z-index: 6;
+      inset: 21px 16px 3px;
       display: grid;
       place-items: center;
       font:
-         700 14px/1 Inter,
+         700 15px/1 Inter,
          ui-sans-serif,
          sans-serif;
       color: var(--green);
       pointer-events: none;
    }
-   html[data-theme="dark"]:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover,
-   html[data-theme="dark"]:not(.is-print-layout) body:not(.is-dragging) .sub-beat.drop-target:not(.has-chord):hover {
-      background: rgba(120, 220, 160, 0.07);
-      box-shadow: inset 0 0 0 1px rgba(120, 220, 160, 0.25);
-   }
-   html[data-theme="dark"]:not(.is-print-layout) body:not(.is-dragging) .beat.drop-target:not(.has-chord):hover::before,
    html[data-theme="dark"]:not(.is-print-layout)
       body:not(.is-dragging)
-      .sub-beat.drop-target:not(.has-chord):hover::before {
+      .beat.drop-target:not(.has-chord):not(.chord-editing):hover::before,
+   html[data-theme="dark"]:not(.is-print-layout)
+      body:not(.is-dragging)
+      .sub-beat.drop-target:not(.has-chord):not(.chord-editing):hover::before {
+      border-color: rgba(120, 220, 160, 0.5);
+      background: rgba(120, 220, 160, 0.08);
+   }
+   html[data-theme="dark"]:not(.is-print-layout)
+      body:not(.is-dragging)
+      .beat.drop-target:not(.has-chord):not(.chord-editing):hover::after,
+   html[data-theme="dark"]:not(.is-print-layout)
+      body:not(.is-dragging)
+      .sub-beat.drop-target:not(.has-chord):not(.chord-editing):hover::after {
       color: #8fd4a8;
    }
 

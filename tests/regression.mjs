@@ -137,12 +137,12 @@ record(
    await evaluate("document.documentElement.scrollWidth<=document.documentElement.clientWidth+1"),
 );
 const desktopSticky = await evaluate(
-   "(async()=>{const editor=document.querySelector('.editor-card'),card=document.querySelector('#previewCard'),minimum=card.style.minHeight,smooth=document.documentElement.style.scrollBehavior;card.style.minHeight='1800px';document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:editor.offsetTop+160,behavior:'instant'});await new Promise(resolve=>setTimeout(resolve,80));const header=document.querySelector('.topbar').getBoundingClientRect(),ribbon=editor.getBoundingClientRect();const result={headerBottom:header.bottom,ribbonTop:ribbon.top,scrollY,scrollHeight:document.documentElement.scrollHeight};window.scrollTo(0,0);card.style.minHeight=minimum;document.documentElement.style.scrollBehavior=smooth;return result})()",
+   "(async()=>{const card=document.querySelector('#previewCard'),minimum=card.style.minHeight,smooth=document.documentElement.style.scrollBehavior;card.style.minHeight='1800px';document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:400,behavior:'instant'});await new Promise(resolve=>setTimeout(resolve,80));const header=document.querySelector('.topbar').getBoundingClientRect(),editor=document.querySelector('.editor-card'),ribbonHidden=getComputedStyle(editor).display==='none';const result={headerBottom:header.bottom,ribbonHidden,scrollY,scrollHeight:document.documentElement.scrollHeight};window.scrollTo(0,0);card.style.minHeight=minimum;document.documentElement.style.scrollBehavior=smooth;return result})()",
 );
 record("Desktop header scrolls away", desktopSticky.headerBottom <= 0, JSON.stringify(desktopSticky));
 record(
-   "Desktop Arrangement Tools remains pinned to the top",
-   Math.abs(desktopSticky.ribbonTop) <= 1,
+   "Desktop arrangement ribbon is hidden (preview-focused editing)",
+   desktopSticky.ribbonHidden,
    JSON.stringify(desktopSticky),
 );
 
@@ -211,6 +211,174 @@ await click(".duration-quarter .duration-line");
 record(
    "Rhythm marker deletion restores a beat",
    (await evaluate("document.querySelectorAll('.duration-quarter').length")) === 0,
+);
+
+// ---------------------------------------------------------------------------
+// Inline chord editor (the "type → pick a suggestion" popover that replaces the
+// hidden arrangement palette). Drives the real popover DOM (.chord-popover):
+// click a beat to open it, type a query, then commit via Enter / suggestion.
+// ---------------------------------------------------------------------------
+await navigate();
+const openEditor = (index) =>
+   evaluate(
+      `(()=>{const beat=document.querySelectorAll('.drop-target')[${index}];if(!beat)return false;beat.click();const pop=document.querySelector('.chord-popover');return !!pop&&!pop.hidden})()`,
+   );
+const typeQuery = (value) =>
+   evaluate(
+      `(()=>{const input=document.querySelector('.chord-popover-input');if(!input)return 0;input.value=${js(value)};input.dispatchEvent(new Event('input',{bubbles:true}));return document.querySelectorAll('.chord-suggestion').length})()`,
+   );
+const pressKey = (key) =>
+   evaluate(
+      `(()=>{const input=document.querySelector('.chord-popover-input');if(!input)return false;input.dispatchEvent(new KeyboardEvent('keydown',{key:${js(key)},bubbles:true}));return true})()`,
+   );
+const firstSuggestion = () => text(".chord-suggestion", 0);
+// The suggestion list commits on mousedown (so it beats the input's blur), so
+// a plain .click() won't fire it — dispatch mousedown explicitly.
+const clickSuggestion = (index = 0) =>
+   evaluate(
+      `(()=>{const item=document.querySelectorAll('.chord-suggestion')[${index}];if(!item)return false;item.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}));return true})()`,
+   );
+
+record("Clicking an empty beat opens the inline chord editor", await openEditor(0));
+await typeQuery("cma");
+record(
+   "Typing filters suggestions to matching chords",
+   (await firstSuggestion()).replaceAll("●", "").startsWith("Cmaj"),
+   await firstSuggestion(),
+);
+await pressKey("Enter");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+record("Enter commits the highlighted suggestion", (await chordText(0)) === "Cmaj7");
+
+// Suggestion click path + slash chords.
+await openEditor(1);
+await typeQuery("g/b");
+record("Slash query yields a slash suggestion", (await firstSuggestion()).includes("/"), await firstSuggestion());
+await clickSuggestion(0);
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+record("Clicking a suggestion commits it", (await chordText(1)).includes("/"));
+
+// Nashville octave variants appear as distinct suggestions.
+await openEditor(2);
+const nashvilleCount = await typeQuery("1");
+record("Nashville degree query yields octave/quality variants", nashvilleCount >= 3, String(nashvilleCount));
+await pressKey("Enter");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+record("Nashville degree commits from the suggestion list", (await chordText(2)).includes("1"));
+
+// Augmented / diminished / half-diminished words map to their music symbols.
+await openEditor(0);
+await typeQuery("Gaug");
+record(
+   "Typing 'aug' suggests the augmented symbol (G+)",
+   (await firstSuggestion()).replaceAll("●", "") === "G+",
+   await firstSuggestion(),
+);
+await pressKey("Escape");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+await openEditor(0);
+await typeQuery("Gdim");
+record(
+   "Typing 'dim' suggests the diminished symbol (G°)",
+   (await firstSuggestion()).replaceAll("●", "") === "G°",
+   await firstSuggestion(),
+);
+await pressKey("Escape");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+await openEditor(0);
+await typeQuery("Gm7b5");
+record(
+   "Typing 'm7b5' suggests the half-diminished symbol (Gø7)",
+   (await firstSuggestion()).replaceAll("●", "") === "Gø7",
+   await firstSuggestion(),
+);
+await pressKey("Escape");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+
+// Unknown input shows the inline message and never commits raw text.
+await openEditor(3);
+await typeQuery("zzz");
+record(
+   "Unknown chord shows the 'Unknown chord' message",
+   await evaluate(
+      "(()=>{const m=document.querySelector('.chord-popover-msg');return !!m&&!m.hidden&&/unknown chord/i.test(m.textContent)})()",
+   ),
+);
+record(
+   "Unknown chord hides the suggestion list",
+   (await evaluate("document.querySelectorAll('.chord-suggestion').length")) === 0,
+);
+// Scrolling *inside* the suggestion list must keep the popover open (a window
+// scroll-capture handler used to close it on any scroll, including inner ones).
+await pressKey("Escape");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+await openEditor(3);
+await typeQuery("c");
+record(
+   "Scrolling the suggestion list keeps the chord editor open",
+   await evaluate(
+      "(()=>{const list=document.querySelector('.chord-popover-list');if(!list)return false;list.scrollTop=40;list.dispatchEvent(new Event('scroll',{bubbles:true}));const pop=document.querySelector('.chord-popover');return !!pop&&!pop.hidden})()",
+   ),
+);
+await pressKey("Escape");
+await waitFor("!document.querySelector('.chord-popover')||document.querySelector('.chord-popover').hidden");
+record(
+   "Escape closes the editor without committing",
+   (await evaluate("document.querySelectorAll('.placed-chord').length")) === 3,
+);
+
+// Clicking a placed chord body re-opens the editor (removal is via the ✕ badge).
+await click(".placed-chord", 0);
+record(
+   "Clicking a placed chord re-opens the editor with its value",
+   await evaluate(
+      "(()=>{const pop=document.querySelector('.chord-popover');return !!pop&&!pop.hidden&&document.querySelector('.chord-popover-input').value.length>0})()",
+   ),
+);
+await pressKey("Escape");
+
+// ---------------------------------------------------------------------------
+// Rhythm context menu (right-click / long-press) replaces the duration chips.
+// ---------------------------------------------------------------------------
+await navigate();
+const openRhythm = (index) =>
+   evaluate(
+      `(()=>{const beat=document.querySelectorAll('.drop-target')[${index}];if(!beat)return false;beat.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:120,clientY:120}));const menu=document.querySelector('.beat-menu');return !!menu&&!menu.hidden})()`,
+   );
+record("Right-click opens the rhythm context menu", await openRhythm(4));
+record(
+   "Rhythm menu offers half / triplet / quarter / remove",
+   (await evaluate("document.querySelectorAll('.beat-menu-item').length")) === 4,
+);
+record(
+   "Remove subdivision is disabled on a plain beat",
+   await evaluate("document.querySelectorAll('.beat-menu-item')[3]?.getAttribute('aria-disabled')==='true'"),
+);
+await click(".beat-menu-item", 0); // Half beat
+record(
+   "Rhythm menu half-beat creates two subdivisions",
+   (await evaluate("document.querySelectorAll('.duration-half .sub-beats')[0]?.children.length")) === 2,
+);
+record(
+   "Rhythm menu closes after choosing an item",
+   await evaluate("!document.querySelector('.beat-menu')||document.querySelector('.beat-menu').hidden"),
+);
+// The subdivided beat now exposes level-1 sub-beats; right-clicking one offers
+// only nested-safe options (triplet/quarter disabled, Remove disabled because a
+// sub-beat is nested — removal happens via the duration marker line instead).
+await openRhythm(4);
+record(
+   "Nested sub-beat disables triplet and quarter",
+   await evaluate(
+      "(()=>{const items=document.querySelectorAll('.beat-menu-item');return items[1]?.getAttribute('aria-disabled')==='true'&&items[2]?.getAttribute('aria-disabled')==='true'})()",
+   ),
+);
+await pressKey("Escape");
+await evaluate("document.querySelector('.beat-menu')&&(document.querySelector('.beat-menu').hidden=true);true");
+await click(".duration-half .duration-line");
+record(
+   "Rhythm marker line removal restores a plain beat",
+   (await evaluate("document.querySelectorAll('.duration-half').length")) === 0,
 );
 
 await click("#tabLyrics");
@@ -321,7 +489,7 @@ record(
 
 // Exact print-state checks and a mixed PDF fixture.
 await evaluate(
-   "document.documentElement.style.scrollBehavior='auto';window.scrollTo(0,0);document.querySelector('#previewViewport').scrollTo(0,0);true",
+   "document.documentElement.style.scrollBehavior='auto';window.scrollTo(0,0);document.querySelector('#previewViewport').scrollTo(0,0);document.querySelector('#previewCard').style.zoom=1;true",
 );
 await cdp.send("Emulation.setEmulatedMedia", { media: "print" });
 const printStyles = await evaluate(
@@ -841,7 +1009,49 @@ record(
 record(
    "Nav: the Back to My Songs button routes home",
    await evaluate(
-      "(()=>{location.hash='#/song/new';document.querySelector('#backToSongsBtn').click();return location.hash==='#/songs'})()",
+      "(async()=>{location.hash='#/song/new';await new Promise(r=>setTimeout(r,60));document.querySelector('#backToSongsBtn').click();await new Promise(r=>setTimeout(r,80));const d=document.querySelector('#unsavedDialog');if(d&&!d.hidden){document.querySelector('#unsavedDiscardBtn').click();await new Promise(r=>setTimeout(r,80));}return location.hash==='#/songs'})()",
+   ),
+);
+// Unsaved-changes guard: editing then clicking Back prompts a 3-choice dialog.
+// Cancel keeps the user in the editor; Leave without saving navigates home.
+record(
+   "Nav: Back with unsaved edits opens the unsaved-changes dialog (Save & leave / Leave without saving / Cancel)",
+   await evaluate(
+      "(async()=>{location.hash='#/song/new';await new Promise(r=>setTimeout(r,80));const beat=document.querySelector('.drop-target');beat.click();await new Promise(r=>setTimeout(r,80));const inp=document.querySelector('.chord-popover-input,.chord-popover input');inp.value='C';inp.dispatchEvent(new Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,80));inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await new Promise(r=>setTimeout(r,120));document.querySelector('#backToSongsBtn').click();await new Promise(r=>setTimeout(r,120));const d=document.querySelector('#unsavedDialog');const ok=!!d&&!d.hidden&&/save & leave/i.test(document.querySelector('#unsavedSaveBtn').textContent)&&/leave without saving/i.test(document.querySelector('#unsavedDiscardBtn').textContent)&&/cancel/i.test(document.querySelector('#unsavedCancelBtn').textContent);return ok})()",
+   ),
+);
+record(
+   "Nav: unsaved dialog Cancel keeps the editor open (no navigation)",
+   await evaluate(
+      "(async()=>{document.querySelector('#unsavedCancelBtn').click();await new Promise(r=>setTimeout(r,120));const d=document.querySelector('#unsavedDialog');return d.hidden&&location.hash==='#/song/new'})()",
+   ),
+);
+record(
+   "Nav: unsaved dialog Leave without saving navigates home",
+   await evaluate(
+      "(async()=>{document.querySelector('#backToSongsBtn').click();await new Promise(r=>setTimeout(r,120));document.querySelector('#unsavedDiscardBtn').click();await new Promise(r=>setTimeout(r,200));return location.hash==='#/songs'})()",
+   ),
+);
+// Central guard also covers the browser Back button: a hashchange that leaves a
+// dirty editor for home re-pins the URL to the editor and opens the same dialog.
+record(
+   "Nav: browser Back (hashchange) with unsaved edits re-pins editor + opens dialog",
+   await evaluate(
+      "(async()=>{location.hash='#/song/new';await new Promise(r=>setTimeout(r,120));const beat=document.querySelector('.drop-target');beat.click();await new Promise(r=>setTimeout(r,80));const inp=document.querySelector('.chord-popover-input,.chord-popover input');inp.value='C';inp.dispatchEvent(new Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,80));inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await new Promise(r=>setTimeout(r,150));location.hash='#/songs';await new Promise(r=>setTimeout(r,150));const d=document.querySelector('#unsavedDialog');const ok=!!d&&!d.hidden&&location.hash==='#/song/new';document.querySelector('#unsavedDiscardBtn').click();await new Promise(r=>setTimeout(r,200));return ok&&location.hash==='#/songs'})()",
+   ),
+);
+// New song shares the guard: starting fresh while dirty prompts before wiping.
+record(
+   "Nav: New song with unsaved edits opens the guard dialog before resetting",
+   await evaluate(
+      "(async()=>{location.hash='#/song/new';await new Promise(r=>setTimeout(r,120));const beat=document.querySelector('.drop-target');beat.click();await new Promise(r=>setTimeout(r,80));const inp=document.querySelector('.chord-popover-input,.chord-popover input');inp.value='C';inp.dispatchEvent(new Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,80));inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await new Promise(r=>setTimeout(r,150));document.querySelector('#backToSongsBtn').click();await new Promise(r=>setTimeout(r,120));document.querySelector('#unsavedDiscardBtn').click();await new Promise(r=>setTimeout(r,200));const nb=document.querySelector('#newSongBtn');nb.click();await new Promise(r=>setTimeout(r,120));const beat2=document.querySelector('.drop-target');beat2.click();await new Promise(r=>setTimeout(r,80));const inp2=document.querySelector('.chord-popover-input,.chord-popover input');inp2.value='G';inp2.dispatchEvent(new Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,80));inp2.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await new Promise(r=>setTimeout(r,150));document.querySelector('#newSongBtn').click();await new Promise(r=>setTimeout(r,120));const d=document.querySelector('#unsavedDialog');const ok=!!d&&!d.hidden;document.querySelector('#unsavedDiscardBtn').click();await new Promise(r=>setTimeout(r,200));return ok})()",
+   ),
+);
+// #4 unsaved indicator: the Save to Cloud button reflects the editor dirty flag.
+record(
+   "Cloud: Save to Cloud button shows an unsaved-changes badge while dirty",
+   await evaluate(
+      "(async()=>{const btn=document.querySelector('#saveCloudBtn');window.dispatchEvent(new CustomEvent('chordsheet:dirtychange',{detail:{dirty:true}}));const on=btn.classList.contains('is-unsaved')&&/unsaved/i.test(btn.getAttribute('aria-label')||'');window.dispatchEvent(new CustomEvent('chordsheet:dirtychange',{detail:{dirty:false}}));const off=!btn.classList.contains('is-unsaved');return on&&off})()",
    ),
 );
 record(
@@ -866,13 +1076,18 @@ for (const [width, height, deviceScaleFactor = 1] of [
    await viewport(width, height, true, deviceScaleFactor);
    await navigate();
    const layout = await evaluate(
-      "(()=>{const inside=el=>{const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.width>0&&r.height>0};return {pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,actions:[...document.querySelectorAll('.topbar-actions .button,.topbar-actions .upload-project')].every(inside),tabs:[...document.querySelectorAll('.ribbon-tab')].every(inside),editorOverflow:document.querySelector('.editor-card').scrollWidth>document.querySelector('.editor-card').clientWidth+1,toolbar:[...document.querySelectorAll('.zoom-controls button')].every(inside)}})()",
+      "(()=>{const inside=el=>{const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.width>0&&r.height>0};return {pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,actions:[...document.querySelectorAll('.topbar-actions .button,.topbar-actions .upload-project')].every(inside),ribbonHidden:getComputedStyle(document.querySelector('.editor-card')).display==='none',lyricsToggle:inside(document.querySelector('.topbar-lyrics-toggle')),toolbarGone:!document.querySelector('.canvas-toolbar'),cardZoom:getComputedStyle(document.querySelector('#previewCard')).zoom}})()",
    );
    record(`${width}px no page-level horizontal overflow`, !layout.pageOverflow, JSON.stringify(layout));
    record(`${width}px header actions remain visible`, layout.actions, JSON.stringify(layout));
-   record(`${width}px all arrangement tabs remain visible`, layout.tabs, JSON.stringify(layout));
-   record(`${width}px arrangement panel does not collide`, !layout.editorOverflow, JSON.stringify(layout));
-   record(`${width}px canvas controls remain visible`, layout.toolbar, JSON.stringify(layout));
+   record(`${width}px arrangement ribbon is hidden (preview-focused)`, layout.ribbonHidden, JSON.stringify(layout));
+   record(`${width}px topbar lyrics toggle remains visible`, layout.lyricsToggle, JSON.stringify(layout));
+   record(`${width}px canvas toolbar is removed`, layout.toolbarGone, JSON.stringify(layout));
+   record(
+      `${width}px preview stays at 1x on touch (accessible tap targets)`,
+      Math.abs(parseFloat(layout.cardZoom) - 1) < 0.001,
+      JSON.stringify(layout),
+   );
    // Cloud UI on mobile: topbar cloud buttons stay visible (styles.css hides
    // .button-ghost <=560px; ui.css re-shows the cloud ones), and modals fit.
    record(
@@ -911,12 +1126,12 @@ for (const [width, height, deviceScaleFactor = 1] of [
       "(()=>{const m=document.querySelector('#mySongsModal');m.classList.remove('is-open');m.hidden=true;return true})()",
    );
    const mobileSticky = await evaluate(
-      "(async()=>{const editor=document.querySelector('.editor-card'),smooth=document.documentElement.style.scrollBehavior;document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:editor.offsetTop+120,behavior:'instant'});await new Promise(resolve=>setTimeout(resolve,80));const header=document.querySelector('.topbar').getBoundingClientRect(),ribbon=editor.getBoundingClientRect();const result={headerBottom:header.bottom,ribbonTop:ribbon.top};window.scrollTo(0,0);document.documentElement.style.scrollBehavior=smooth;return result})()",
+      "(async()=>{const card=document.querySelector('#previewCard'),minimum=card.style.minHeight,smooth=document.documentElement.style.scrollBehavior;card.style.minHeight='1800px';document.documentElement.style.scrollBehavior='auto';window.scrollTo({top:400,behavior:'instant'});await new Promise(resolve=>setTimeout(resolve,80));const header=document.querySelector('.topbar').getBoundingClientRect(),editor=document.querySelector('.editor-card'),ribbonHidden=getComputedStyle(editor).display==='none';const result={headerBottom:header.bottom,ribbonHidden};window.scrollTo(0,0);card.style.minHeight=minimum;document.documentElement.style.scrollBehavior=smooth;return result})()",
    );
    record(`${width}px header scrolls away`, mobileSticky.headerBottom <= 0, JSON.stringify(mobileSticky));
    record(
-      `${width}px Arrangement Tools remains pinned to the top`,
-      Math.abs(mobileSticky.ribbonTop) <= 1,
+      `${width}px arrangement ribbon is hidden (preview-focused)`,
+      mobileSticky.ribbonHidden,
       JSON.stringify(mobileSticky),
    );
    const scoreLayout = await evaluate(
@@ -935,12 +1150,13 @@ for (const [width, height, deviceScaleFactor = 1] of [
    await click(".chord-family .chord", 0);
    await click(".drop-target", 0);
    record(`${width}px tap-to-place chord works`, (await chordText(0)) === "C");
-   await click(".placed-chord", 0);
-   // Removal is animated (chord-leaving → transitionend / 200ms fallback), so
-   // wait for the element to actually leave the DOM before asserting.
+   // Removal now happens via the ✕ badge (clicking the chord body re-opens the
+   // inline editor instead of deleting). Removal is animated (chord-leaving →
+   // transitionend / 200ms fallback), so wait for the element to leave the DOM.
+   await click(".placed-chord .chord-remove", 0);
    await waitFor("document.querySelectorAll('.placed-chord').length===0");
    record(
-      `${width}px tapping a placed chord removes it`,
+      `${width}px tapping the ✕ badge removes a placed chord`,
       (await evaluate("document.querySelectorAll('.placed-chord').length")) === 0,
    );
    await click("#tabNashville");

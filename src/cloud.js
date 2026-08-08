@@ -11,7 +11,7 @@
 //
 // Public API is promise-based and always returns plain data (never SDK objects)
 // so callers in events.js stay decoupled from Firebase internals.
-import { firebaseConfig } from "./firebase-config.js?v=20260805-dock-containing-block-fix";
+import { firebaseConfig } from "./firebase-config.js?v=20260808-hide-dot-active";
 
 const SDK_VERSION = "11.6.1";
 const CDN = (name) => `https://www.gstatic.com/firebasejs/${SDK_VERSION}/${name}`;

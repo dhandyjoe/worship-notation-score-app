@@ -34,8 +34,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260805-dock-containing-block-fix" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260805-dock-containing-block-fix" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260808-hide-dot-active" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260808-hide-dot-active" />
    </head>
    <body>
       <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
@@ -54,6 +54,11 @@
          </div>
          <div class="topbar-actions">
             <span class="autosave-status"><i aria-hidden="true"></i> Active for this session</span>
+            <label class="switch-control topbar-lyrics-toggle" for="lyricsEnabledTop" title="Show a lyric field under each beat">
+               <input id="lyricsEnabledTop" type="checkbox" />
+               <span class="switch-track" aria-hidden="true"><span></span></span>
+               <b id="lyricsEnabledTopLabel">Lyrics off</b>
+            </label>
             <button class="button button-save" id="saveCloudBtn" type="button" title="Save this score to your cloud library">
                <span aria-hidden="true">⤒</span> Save to Cloud</button
             ><button class="button button-dark" id="exportBtn" type="button" title="Adjust PDF layout, then export" aria-haspopup="dialog" aria-controls="pdfOptionsModal"><span aria-hidden="true">↗</span> Export .pdf</button>
@@ -286,32 +291,6 @@
             </aside>
 
             <div class="preview-stage">
-               <div class="canvas-toolbar" aria-label="Preview controls">
-                  <div class="canvas-title">
-                     <span class="canvas-status" aria-hidden="true"></span><strong>Document canvas</strong
-                     ><small>Refreshing resets the score</small>
-                  </div>
-                  <div class="zoom-controls">
-                     <button class="icon-button" id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out">
-                        −
-                     </button>
-                     <output id="zoomValue" aria-live="polite">100%</output>
-                     <button class="icon-button" id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in">
-                        +
-                     </button>
-                     <button class="fit-button" id="fitPreview" type="button">Fit width</button>
-                     <button
-                        class="fit-button print-preview-toggle"
-                        id="printPreviewToggle"
-                        type="button"
-                        aria-pressed="false"
-                        disabled
-                        title="PDF layout preview is temporarily disabled"
-                     >
-                        PDF layout
-                     </button>
-                  </div>
-               </div>
                <div id="placingBanner" class="placing-banner" hidden role="status" aria-live="polite">
                   <span class="placing-banner-text">Placing: <b></b> — tap a beat to drop</span>
                   <button class="placing-cancel" type="button" id="placingCancel">Cancel</button>
@@ -364,7 +343,10 @@
                      <div class="preview-rule"></div>
                      <div id="sectionsPreview" aria-label="Chord drag-and-drop area"></div>
                      <div class="preview-footer">
-                        <span id="previewHint">Drag a chord from the toolbar onto a beat.</span>
+                        <button class="preview-help-btn" id="howToUseBtn" type="button" aria-haspopup="dialog" aria-label="How to edit this score">
+                           <span class="preview-help-icon" aria-hidden="true">?</span>
+                           Help
+                        </button>
                         <div class="preview-actions">
                            <button class="button button-reset button-small" id="resetSheetBtn">Reset Sheet</button
                            ><button class="button button-ghost button-small" id="addSectionBtn">+ Add section</button>
@@ -551,6 +533,70 @@
          </div>
       </div>
 
+      <!-- Unsaved-changes dialog. Shown when the user clicks Back to My Songs
+           while the open project has edits that haven't been saved to the cloud.
+           Three choices: Save & leave (recommended), Leave without saving, and
+           Cancel (stay). Driven by openUnsavedChangesDialog() in cloudUI.js. -->
+      <div class="confirm-dialog" id="unsavedDialog" hidden role="dialog" aria-modal="true" aria-labelledby="unsavedDialogTitle" aria-describedby="unsavedDialogDesc">
+         <div class="confirm-dialog-backdrop" data-unsaved-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">☁</div>
+            <h2 class="confirm-dialog-title" id="unsavedDialogTitle">Unsaved changes</h2>
+            <p class="confirm-dialog-desc" id="unsavedDialogDesc">You have changes that haven't been saved to your cloud library. What would you like to do?</p>
+            <div class="confirm-dialog-actions confirm-dialog-actions-stacked">
+               <button class="button button-primary" id="unsavedSaveBtn" type="button">Save &amp; leave</button>
+               <button class="button button-ghost" id="unsavedDiscardBtn" type="button">Leave without saving</button>
+               <button class="button button-ghost" id="unsavedCancelBtn" type="button" data-unsaved-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- "How to edit this score" help dialog. Opened by #howToUseBtn in the
+           preview footer. Explains the live-editing model (click a beat to type
+           a chord, right-click / long-press for rhythm splits, etc.) — replacing
+           the old drag-and-drop hint text. Driven by events.js. -->
+      <div class="confirm-dialog howto-dialog" id="howToDialog" hidden role="dialog" aria-modal="true" aria-labelledby="howToDialogTitle" aria-describedby="howToDialogDesc">
+         <div class="confirm-dialog-backdrop" data-howto-dismiss></div>
+         <div class="confirm-dialog-card howto-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">🎹</div>
+            <h2 class="confirm-dialog-title" id="howToDialogTitle">How to edit this score</h2>
+            <p class="confirm-dialog-desc" id="howToDialogDesc">Editing happens right on the score — no dragging needed. Here's everything you can do:</p>
+            <ul class="howto-list">
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">＋</span>
+                  <span class="howto-item-text"><strong>Add a chord</strong> — click any empty beat, then type a chord (e.g. <code>C</code>, <code>Am7</code>, <code>G/B</code>). Pick from the live suggestions or press Enter.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">✏️</span>
+                  <span class="howto-item-text"><strong>Edit or replace</strong> — click a beat that already has a chord to retype it. Clear the field and confirm to remove it.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🖱️</span>
+                  <span class="howto-item-text"><strong>Split the rhythm</strong> — right-click a beat (or long-press on touch) to split it into <code>½</code>, <code>⅓</code> or <code>¼</code> beats for faster chord changes.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎵</span>
+                  <span class="howto-item-text"><strong>Slash chords</strong> — type the bass after a slash, like <code>D/F#</code>, and it's placed as one chord.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🔤</span>
+                  <span class="howto-item-text"><strong>Rename titles &amp; sections</strong> — click the song title, artist, key or a section name to edit it inline.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">➕</span>
+                  <span class="howto-item-text"><strong>Add sections</strong> — use <em>+ Add section</em> below the score to append a new part (Verse, Chorus, Bridge…).</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎚️</span>
+                  <span class="howto-item-text"><strong>Transpose</strong> — use the key ▲ / ▼ controls to shift every chord up or down a semitone.</span>
+               </li>
+            </ul>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="howToCloseBtn" type="button" data-howto-dismiss>Got it</button>
+            </div>
+         </div>
+      </div>
+
       <!-- ============================ CLOUD: LOGIN PAGE =======================
            Dedicated full-screen login page (not a dismissible modal). On load
            the app checks the restored auth session: signed-in users are routed
@@ -725,7 +771,7 @@
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260805-dock-containing-block-fix"></script>
+      <script type="module" src="src/app.js?v=20260808-hide-dot-active"></script>
       <script>
          // Register the PWA service worker for offline support. Skipped in the
          // automated test harness (?test=...) so caching never interferes with

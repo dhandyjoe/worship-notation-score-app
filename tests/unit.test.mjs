@@ -136,3 +136,103 @@ test("syllabifyLyrics returns hymnal-style tokens with trailing hyphens", () => 
    assert.deepEqual(syllabifyLyrics("  God   is  "), ["God", "is"]);
    assert.deepEqual(syllabifyLyrics(""), []);
 });
+
+// ---- chordBank suggestion engine ----------------------------------------
+import {
+   suggestChords,
+   hasSuggestions,
+   detectMode,
+   foldChordKey,
+   foldNashvilleKey,
+   BANK_QUALITIES,
+} from "../src/chordBank.js";
+
+test("detectMode distinguishes letter chords from Nashville degrees", () => {
+   assert.equal(detectMode("Cmaj7"), "chord");
+   assert.equal(detectMode("g/b"), "chord");
+   assert.equal(detectMode("1"), "nashville");
+   assert.equal(detectMode("♭3"), "nashville");
+   assert.equal(detectMode("#4m"), "nashville");
+   assert.equal(detectMode(""), "chord");
+});
+
+test("foldChordKey normalizes unicode accidentals and casing", () => {
+   assert.equal(foldChordKey("C♯m7"), "c#m7");
+   assert.equal(foldChordKey("E♭maj7"), "ebmaj7");
+   assert.equal(foldChordKey("  g / b "), "g/b");
+});
+
+test("suggestChords returns normalized letter chords, exact-first", () => {
+   const out = suggestChords("cm7");
+   assert.equal(out[0], "Cm7"); // exact match wins even from lowercase input
+   assert.ok(out.every((value) => value.startsWith("C")));
+});
+
+test("suggestChords normalizes ascii accidentals to unicode", () => {
+   const out = suggestChords("bb");
+   assert.ok(out.includes("B♭")); // 'bb' → B♭ root
+});
+
+test("suggestChords generates slash chords on demand after '/'", () => {
+   const out = suggestChords("g/b");
+   assert.ok(out.includes("G/B"));
+   assert.ok(out.every((value) => value.startsWith("G/")));
+});
+
+test("suggestChords offers Nashville octave variants for a bare degree", () => {
+   const out = suggestChords("1");
+   assert.equal(out[0], "1"); // base degree first
+   assert.ok(out.includes("1\u0307")); // octave-high 1̇
+   assert.ok(out.includes("1\u0323")); // octave-low 1̣
+   assert.ok(out.some((value) => value === "1°" || value === "1m")); // quality colours present
+});
+
+test("suggestChords keeps Nashville accidental in results", () => {
+   const out = suggestChords("♭3");
+   assert.ok(out.every((value) => value.startsWith("♭3")));
+});
+
+test("foldNashvilleKey drops combining octave dots for matching", () => {
+   assert.equal(foldNashvilleKey("1\u0307"), "1");
+   assert.equal(foldNashvilleKey("1\u0323"), "1");
+});
+
+test("suggestChords returns empty for blank input and unknown text", () => {
+   assert.deepEqual(suggestChords(""), []);
+   assert.deepEqual(suggestChords("   "), []);
+   assert.equal(hasSuggestions("Xyz123"), false);
+});
+
+test("suggestChords respects the limit option", () => {
+   assert.ok(suggestChords("C", { limit: 3 }).length <= 3);
+});
+
+test("BANK_QUALITIES is the agreed Option-1 practical set", () => {
+   assert.equal(BANK_QUALITIES[0], ""); // major first
+   assert.ok(BANK_QUALITIES.includes("maj7"));
+   assert.ok(BANK_QUALITIES.includes("ø7")); // half-diminished (music symbol)
+   assert.ok(BANK_QUALITIES.includes("°")); // diminished (music symbol)
+   assert.ok(BANK_QUALITIES.includes("+")); // augmented (music symbol)
+   assert.ok(!BANK_QUALITIES.includes("aug")); // spelled words are aliases, not stored values
+   assert.ok(!BANK_QUALITIES.includes("dim"));
+   assert.ok(!BANK_QUALITIES.includes("alt")); // jazz-only qualities excluded
+});
+
+test("suggestChords maps augmented/diminished/half-diminished words to music symbols", () => {
+   // Augmented → "+"
+   assert.equal(suggestChords("Gaug")[0], "G+");
+   assert.equal(suggestChords("Gau")[0], "G+"); // partial word
+   assert.equal(suggestChords("G+")[0], "G+"); // symbol itself still matches
+   // Diminished → "°"
+   assert.equal(suggestChords("Gdim")[0], "G°");
+   assert.equal(suggestChords("Gdiminished")[0], "G°");
+   // Half-diminished → "ø7"
+   assert.equal(suggestChords("Gm7b5")[0], "Gø7");
+   assert.equal(suggestChords("Ghalfdim")[0], "Gø7");
+});
+
+test("suggestChords maps quality aliases in Nashville mode too", () => {
+   assert.equal(suggestChords("1aug")[0], "1+");
+   assert.equal(suggestChords("1dim")[0], "1°");
+   assert.equal(suggestChords("1m7b5")[0], "1ø7");
+});
