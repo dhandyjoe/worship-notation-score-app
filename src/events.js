@@ -14,6 +14,12 @@ import {
    normalizeSection,
    safeFileName,
    removeBar,
+   extractBar,
+   replaceBarContent,
+   cloneSection,
+   extractBars,
+   insertBars,
+   overwriteBars,
    beatValue,
    lyricValue,
    setLyric,
@@ -21,8 +27,10 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260808-hide-dot-active";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260808-hide-dot-active";
+} from "./notation.js?v=20260821-import24";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260821-import24";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260821-import24";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260821-import24";
 import {
    getState,
    setState,
@@ -30,19 +38,19 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260808-hide-dot-active";
+} from "./store.js?v=20260821-import24";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260808-hide-dot-active";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260808-hide-dot-active";
-import { initPdfOptions } from "./pdfOptions.js?v=20260808-hide-dot-active";
-import { initCloudUI } from "./cloudUI.js?v=20260808-hide-dot-active";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260808-hide-dot-active";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260808-hide-dot-active";
+} from "./render.js?v=20260821-import24";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260821-import24";
+import { initPdfOptions } from "./pdfOptions.js?v=20260821-import24";
+import { initCloudUI } from "./cloudUI.js?v=20260821-import24";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260821-import24";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260821-import24";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Firestore doc id of the currently-open cloud song (null = unsaved / local only).
@@ -78,6 +86,13 @@ let pdfOptionsControl = null;
 // save() is the single chokepoint fired after every edit, so it's also where we
 // flag the document as having unsaved changes (see dirtySinceSave / the Back guard).
 function save() {
+   // While undo/redo is restoring a snapshot we must NOT record it again,
+   // otherwise the future (redo) buffer gets cleared and the stack corrupts.
+   if (!isRestoring) {
+      const snapshot = projectData();
+      saveState(snapshot);
+      updateUndoRedoButtons();
+   }
    setDirty(true);
 }
 function syncEditor() {}
@@ -282,6 +297,7 @@ function openBeatEditor(beat, { selectQuery = true } = {}) {
    openChordEditor({
       anchor: beat,
       initialValue,
+      mode: getState().editorMode === "numbers" ? "numbers" : "chords",
       onCommit: (value) => commitChordToBeat(sectionId, slot, value),
       advanceTo: (currentAnchor, dir) => neighbourBeat(currentAnchor, dir),
       reopen: (nextAnchor) => openBeatEditor(nextAnchor),
@@ -302,6 +318,8 @@ function applyDuration(beat, durationValue) {
 // Remove a subdivision from a base-level beat, keeping the first child chord and
 // merging child lyrics (mirrors the duration-line click handler below).
 function removeDurationAt(beat) {
+   // Block all editing while in bar-selection mode.
+   if (isSelectionActiveFor(beat.dataset.section)) return;
    const section = findSection(beat.dataset.section);
    if (!section) return;
    const baseSlot = beat.dataset.baseSlot || beat.dataset.slot;
@@ -329,6 +347,8 @@ function removeDurationAt(beat) {
 }
 // Open the rhythm menu for a beat at the given viewport point.
 function openRhythmMenu(beat, x, y) {
+   // Block the rhythm menu entirely while in bar-selection mode.
+   if (isSelectionActiveFor(beat.dataset.section)) return;
    closeChordEditor();
    const section = findSection(beat.dataset.section);
    if (!section) return;
@@ -411,6 +431,17 @@ function bindPreview() {
             event.stopPropagation();
             return;
          }
+         // ---- Multi-bar selection mode intercept ----
+         if (isSelectionActiveFor(beat.dataset.section)) {
+            const barEl = beat.closest(".bar");
+            const bar = Number(barEl?.dataset.bar);
+            if (!Number.isNaN(bar)) {
+               handleBarSelectionClick(beat.dataset.section, bar, event.shiftKey);
+            }
+            event.stopPropagation();
+            return;
+         }
+         // ---- Normal beat click flow below ----
          const selectedItem = getSelectedPaletteItem();
          // Legacy palette flow (arrangement tools) still works when an item is
          // selected. Otherwise, clicking an empty beat opens the inline editor.
@@ -471,6 +502,8 @@ function bindPreview() {
    document.querySelectorAll(".placed-chord").forEach((chord) => {
       const removeOrReplace = (event) => {
          event.stopPropagation();
+         // Block all editing while in bar-selection mode.
+         if (isSelectionActiveFor(chord.closest(".drop-target")?.dataset.section)) return;
          const beat = chord.closest(".drop-target"),
             section = findSection(beat.dataset.section);
          const viaRemoveBadge = event.target?.closest?.(".chord-remove");
@@ -522,6 +555,8 @@ function bindPreview() {
    document.querySelectorAll(".nested-duration-line").forEach((line) =>
       line.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Block all editing while in bar-selection mode.
+         if (isSelectionActiveFor(line.dataset.section)) return;
          const section = findSection(line.dataset.section),
             splitSlots = (line.dataset.splitSlots || "").split("|").filter(Boolean);
          if (!section) return;
@@ -556,6 +591,8 @@ function bindPreview() {
             section = findSection(group.dataset.section),
             baseSlot = group.dataset.baseSlot;
          if (!section) return;
+         // Block all editing while in bar-selection mode.
+         if (isSelectionActiveFor(group.dataset.section)) return;
          const descendantSlots = Object.keys(section.beats)
             .filter((slot) => slot.startsWith(`${baseSlot}:`))
             .sort();
@@ -583,6 +620,11 @@ function bindPreview() {
       input.addEventListener("input", () => {
          const section = findSection(input.dataset.section);
          if (!section) return;
+         // Block lyric edits while in bar-selection mode.
+         if (isSelectionActiveFor(input.dataset.section)) {
+            renderPreview();
+            return;
+         }
          setLyric(section, input.dataset.slot, input.value);
          state.activeId = section.id;
          save();
@@ -684,6 +726,24 @@ function bindPreview() {
          if (event.target.closest(".lyric-input,.section-title-input,input,textarea,select")) return;
          event.preventDefault();
       });
+      // While bar-selection mode is active, the ENTIRE bar becomes one big clickable target.
+      // A capture-phase listener runs before any inner editing handler (chords, rhythm lines,
+      // lyric inputs, tool buttons), so it both (a) widens the hit area to the whole bar and
+      // (b) blocks all content edits — clicking anywhere inside the bar only (de)selects it.
+      bar.addEventListener(
+         "click",
+         (event) => {
+            const sel = getBarSelection();
+            const sectionId = bar.closest(".preview-section")?.dataset.section;
+            if (!sel || !sel.active || sel.sectionId !== sectionId) return;
+            event.stopPropagation();
+            event.preventDefault();
+            const barIndex = Number(bar.dataset.bar);
+            if (Number.isNaN(barIndex)) return;
+            handleBarSelectionClick(sel.sectionId, barIndex, event.shiftKey);
+         },
+         true, // capture phase: intercept before inner beat/chord/lyric handlers
+      );
    });
    document.querySelectorAll(".delete-section").forEach((button) =>
       button.addEventListener("click", (event) => {
@@ -707,6 +767,52 @@ function bindPreview() {
          renderPreview();
          save();
          toast(`Section “${section.name}” deleted`);
+      }),
+   );
+   document.querySelectorAll(".copy-section").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         copySection(button.dataset.section);
+      }),
+   );
+   document.querySelectorAll(".paste-section").forEach((button) => {
+      button.disabled = !hasClipboard("section");
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         pasteSection(button.dataset.section);
+      });
+   });
+   document.querySelectorAll(".copy-bar").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         copyBar(button.dataset.section, Number(button.dataset.bar));
+      }),
+   );
+   document.querySelectorAll(".paste-bar").forEach((button) => {
+      button.disabled = !hasClipboard("bar") && !hasClipboard("bars");
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         pasteBar(button.dataset.section, Number(button.dataset.bar));
+      });
+   });
+   document.querySelectorAll(".select-bars").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         // Close the ••• menu, then enter selection mode for this section.
+         button.closest(".section-menu")?.removeAttribute("open");
+         beginBarSelection(button.dataset.section);
+      }),
+   );
+   document.querySelectorAll(".bar-selection-copy").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         copySelectedBars();
+      }),
+   );
+   document.querySelectorAll(".bar-selection-cancel").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         cancelBarSelection();
       }),
    );
    document
@@ -848,7 +954,207 @@ function transposeSheet(semitones) {
    );
 }
 
-// ---- Import / export ----
+// ---- Undo/Redo ----
+// Guard flag: true while applyProject() is replaying a history snapshot, so the
+// save() call inside applyProject doesn't record the restore as a fresh edit.
+let isRestoring = false;
+
+function updateUndoRedoButtons() {
+   const undoBtn = $("#undoBtn");
+   const redoBtn = $("#redoBtn");
+   if (undoBtn) undoBtn.disabled = !canUndo();
+   if (redoBtn) redoBtn.disabled = !canRedo();
+}
+
+function undoSheet() {
+   if (!canUndo()) return;
+   isRestoring = true;
+   undo((snapshot) => {
+      applyProject(snapshot);
+      toast("Undo");
+   });
+   isRestoring = false;
+   updateUndoRedoButtons();
+}
+
+function redoSheet() {
+   if (!canRedo()) return;
+   isRestoring = true;
+   redo((snapshot) => {
+      applyProject(snapshot);
+      toast("Redo");
+   });
+   isRestoring = false;
+   updateUndoRedoButtons();
+}
+
+// ---- Copy / paste (sections & bars) ----
+// Copy an entire section (deep-cloned) into the in-memory clipboard.
+function copySection(sectionId) {
+   const section = findSection(sectionId);
+   if (!section) return;
+   setClipboard("section", section, { name: section.name });
+   updatePasteButtons();
+   toast(`Section "${section.name}" copied`);
+}
+// Paste the clipboard's section content INTO the given section (overwrites all bars/lyrics).
+// When pasting to the same section that was copied, it replaces its content with the copy.
+// Uses the clipboard's original name to preserve identity (no " (copy)" suffix).
+function pasteSection(afterSectionId) {
+   const clip = getClipboard();
+   if (!clip || clip.kind !== "section") {
+      toast("Nothing to paste");
+      return;
+   }
+   const state = getState();
+   const targetIndex = state.sections.findIndex((s) => s.id === afterSectionId);
+   if (targetIndex === -1) {
+      toast("Target section not found");
+      return;
+   }
+   const targetSection = state.sections[targetIndex];
+   // Overwrite bars: clear everything in target, then write the copied bars exactly as-is.
+   Object.keys(targetSection.beats).forEach((slot) => delete targetSection.beats[slot]);
+   Object.keys(targetSection.lyricBeats).forEach((slot) => delete targetSection.lyricBeats[slot]);
+   targetSection.bars = clip.payload.bars;
+   Object.entries(clip.payload.beats).forEach(([slot, value]) => {
+      targetSection.beats[slot] = typeof value === "string" ? value : { ...value };
+   });
+   Object.entries(clip.payload.lyricBeats).forEach(([slot, text]) => {
+      targetSection.lyricBeats[slot] = typeof text === "string" ? text : text;
+   });
+   targetSection.name = clip.payload.name || "Section";
+   state.activeId = targetSection.id;
+   renderPreview();
+   save();
+   toast(`Replaced ${targetSection.name}`);
+}
+
+// Copy a single bar's content (chords + lyrics) into the clipboard.
+function copyBar(sectionId, bar) {
+   const section = findSection(sectionId);
+   if (!section) return;
+   const payload = extractBar(section, bar);
+   setClipboard("bar", payload, { sourceBar: bar });
+   updatePasteButtons();
+   toast(`Bar ${bar + 1} copied`);
+}
+
+// Paste the clipboard's bar content over the target bar (overwrites it).
+function pasteBar(sectionId, bar) {
+   const clip = getClipboard();
+   // A multi-bar range takes precedence: insert it before the target bar.
+   if (clip && clip.kind === "bars") {
+      pasteBars(sectionId, bar);
+      return;
+   }
+   if (!clip || clip.kind !== "bar") {
+      toast("No bar copied");
+      return;
+   }
+   const section = findSection(sectionId);
+   if (!section) return;
+   replaceBarContent(section, bar, clip.payload);
+   getState().activeId = section.id;
+   renderPreview();
+   save();
+   toast(`Pasted into bar ${bar + 1}`);
+}
+
+// ---- Multi-bar selection (transient UI state; NOT part of undo history) ----
+// { active, sectionId, anchor, focus } — anchor is the first-clicked bar, focus
+// the most recent (shift+)clicked bar. The inclusive range [min,max] is copied.
+let barSelection = null;
+
+export function getBarSelection() {
+   return barSelection;
+}
+
+// True when bar-selection mode is active AND targeting the given section.
+// Used as a guard by every content-mutation handler so that, while selecting,
+// clicks inside a bar only (de)select it — they never edit or remove content.
+// (The capture-phase bar click handler is the primary gate; these per-handler
+// guards are defense-in-depth in case an event path bypasses it.)
+function isSelectionActiveFor(sectionId) {
+   return !!(barSelection && barSelection.active && barSelection.sectionId === sectionId);
+}
+
+// Enter selection mode for a section. The first bar click sets the anchor.
+function beginBarSelection(sectionId) {
+   barSelection = { active: true, sectionId, anchor: null, focus: null };
+   renderPreview();
+   toast("Copy bars: click a bar, Shift+click another to extend");
+}
+
+function cancelBarSelection() {
+   if (!barSelection) return;
+   barSelection = null;
+   renderPreview();
+}
+
+// Handle a bar click while in selection mode. Plain click = set/reset anchor;
+// Shift+click = extend the range to that bar.
+function handleBarSelectionClick(sectionId, bar, extend) {
+   if (!barSelection || !barSelection.active) return;
+   // Selection is confined to the section it was started in.
+   if (sectionId !== barSelection.sectionId) return;
+   if (extend && barSelection.anchor !== null) {
+      barSelection.focus = bar;
+   } else {
+      barSelection.anchor = bar;
+      barSelection.focus = bar;
+   }
+   renderPreview();
+}
+
+// Copy the currently-selected bar range into the clipboard as a "bars" payload.
+function copySelectedBars() {
+   if (!barSelection || barSelection.anchor === null) {
+      toast("Click a bar first");
+      return;
+   }
+   const section = findSection(barSelection.sectionId);
+   if (!section) return;
+   const payload = extractBars(section, barSelection.anchor, barSelection.focus);
+   setClipboard("bars", payload, { count: payload.count });
+   cancelBarSelection();
+   updatePasteButtons();
+   toast(`${payload.count} bar${payload.count === 1 ? "" : "s"} copied`);
+}
+
+// Works across sections since the clipboard is global.
+// PASTE NOW OVERWRITES instead of inserting: existing bars at target are replaced,
+// not shifted. Bars after the paste stay put; only the overwritten range changes.
+function pasteBars(sectionId, bar) {
+   const clip = getClipboard();
+   if (!clip || clip.kind !== "bars") {
+      toast("No bars copied");
+      return;
+   }
+   const section = findSection(sectionId);
+   if (!section) return;
+   const ok = overwriteBars(section, bar, clip.payload);
+   if (!ok) {
+      toast("Not enough room — bar limit reached");
+      return;
+   }
+   getState().activeId = section.id;
+   renderPreview();
+   save();
+   toast(`${clip.payload.count} bar${clip.payload.count === 1 ? "" : "s"} pasted`);
+}
+
+// Enable/disable any paste affordances based on clipboard contents.
+function updatePasteButtons() {
+   document.querySelectorAll(".paste-section").forEach((btn) => {
+      btn.disabled = !hasClipboard("section");
+   });
+   document.querySelectorAll(".paste-bar").forEach((btn) => {
+      // Single-bar paste-bar buttons accept both a single copied bar and a
+      // multi-bar range (range = insert; single = overwrite).
+      btn.disabled = !hasClipboard("bar") && !hasClipboard("bars");
+   });
+}
 function projectData() {
    const state = getState();
    return {
@@ -865,6 +1171,7 @@ function projectData() {
       slashChords: state.slashChords,
       nashvilleNumber: state.nashvilleNumber,
       nashvilleAccidental: state.nashvilleAccidental,
+      editorMode: state.editorMode,
    };
 }
 function downloadProject() {
@@ -912,6 +1219,7 @@ function applyProject(project) {
          : "",
       activeId: sections[0].id,
       editingId: null,
+      editorMode: project.editorMode === "numbers" ? "numbers" : "chords",
    });
    clearPaletteSelection();
    $("#songTitle").value = String(project.title || "Song Title");
@@ -923,6 +1231,14 @@ function applyProject(project) {
    // Loading a different project should start at the top-left, not inherit the
    // scroll position from whatever was previously being edited.
    $("#previewViewport")?.scrollTo(0, 0);
+   // When loading a fresh document (file/cloud), reset undo history so the user
+   // can't undo across songs. During an undo/redo replay (isRestoring) we skip
+   // this so the stack stays intact.
+   if (!isRestoring) {
+      clearHistory();
+      saveState(projectData());
+      updateUndoRedoButtons();
+   }
    save();
    // A freshly-loaded document matches its source (cloud/file) — not dirty yet.
    setDirty(false);
@@ -1074,6 +1390,8 @@ function bindControlListeners() {
    });
    $("#transposeDown").addEventListener("click", () => transposeSheet(-1));
    $("#transposeUp").addEventListener("click", () => transposeSheet(1));
+   $("#undoBtn")?.addEventListener("click", () => undoSheet());
+   $("#redoBtn")?.addEventListener("click", () => redoSheet());
    $("#lyricsEnabled").addEventListener("change", (event) => {
       getState().lyricsEnabled = event.target.checked;
       renderControls();
@@ -1247,6 +1565,21 @@ function bindControlListeners() {
 
    document.addEventListener("keydown", (event) => {
       const editing = event.target?.matches?.('input,textarea,select,[contenteditable="true"]') ?? false;
+
+      // Undo/Redo shortcuts: Ctrl+Z / Ctrl+Shift+Z (standard modern shortcut for redo)
+      if (!editing && (event.ctrlKey || event.metaKey)) {
+         if (event.key.toLowerCase() === "z" && !event.shiftKey) {
+            event.preventDefault();
+            undoSheet();
+            return;
+         }
+         if (event.key.toLowerCase() === "z" && event.shiftKey) {
+            event.preventDefault();
+            redoSheet();
+            return;
+         }
+      }
+
       if (event.altKey && !editing && /^[1-5]$/.test(event.key)) {
          event.preventDefault();
          const tab = document.querySelectorAll(".ribbon-tab:not([hidden])")[Number(event.key) - 1];
@@ -1382,13 +1715,18 @@ function initDeviceHint() {
 
 export function initEvents() {
    // Inject rendering hooks so render.js never needs to import this module (keeps graph acyclic).
-   initRender({ bindDraggableChords, bindPaletteItem, bindPreview, updateViewportOverflow });
+   initRender({ bindDraggableChords, bindPaletteItem, bindPreview, updateViewportOverflow, getBarSelection });
    bindControlListeners();
    localStorage.removeItem("chordSheetPreview");
    applyTheme(activeTheme, { persist: false });
    syncEditor();
    renderControls();
    renderPreview();
+   // Seed the undo history with the initial (default) document so the first edit
+   // has a baseline to undo back to.
+   clearHistory();
+   saveState(projectData());
+   updateUndoRedoButtons();
    activateRibbon(document.querySelector(".ribbon-tab.active"), { expand: false });
    applyPreviewZoom();
    if ("ResizeObserver" in window) new ResizeObserver(updateViewportOverflow).observe($("#previewViewport"));

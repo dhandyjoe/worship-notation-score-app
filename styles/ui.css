@@ -554,6 +554,66 @@ html.is-print-layout .scroll-affordance {
       background 0.14s ease,
       border-color 0.14s ease;
 }
+/* History toolbar (undo/redo) — sits on its own row below the song meta
+   (key / time signature / transpose), aligned to the right so it lines up
+   under the transpose control. Wrapped with .song-meta in .preview-meta-col
+   so .preview-header keeps exactly two flex children (transpose stays right). */
+.preview-meta-col {
+   display: flex;
+   flex-direction: column;
+   align-items: flex-end;
+   gap: 12px;
+}
+.history-toolbar {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+}
+.history-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 7px;
+   padding: 9px 16px;
+   border: 1.5px solid var(--accent, #2f7d4f);
+   border-radius: 8px;
+   background: var(--surface, #fff);
+   color: var(--accent, #2f7d4f);
+   font-size: 13px;
+   font-weight: 600;
+   letter-spacing: 0.01em;
+   cursor: pointer;
+   transition: all 0.18s ease;
+   line-height: 1;
+   white-space: nowrap;
+   box-shadow: 0 1px 3px rgba(47, 125, 79, 0.12);
+}
+.history-btn svg {
+   width: 18px;
+   height: 18px;
+   flex-shrink: 0;
+   stroke-width: 2.4;
+}
+.history-btn:not(:disabled):hover {
+   background: var(--accent, #2f7d4f);
+   color: #fff;
+   transform: translateY(-1px);
+   box-shadow: 0 4px 12px rgba(47, 125, 79, 0.32);
+}
+.history-btn:not(:disabled):active {
+   transform: translateY(0);
+   box-shadow: 0 1px 3px rgba(47, 125, 79, 0.2);
+}
+.history-btn:disabled {
+   opacity: 0.32;
+   cursor: not-allowed;
+   border-color: rgba(0, 0, 0, 0.15);
+   color: var(--muted, #8a9a90);
+   transform: none !important;
+   box-shadow: none;
+}
+.btn-label {
+   font-weight: 600;
+}
 .scroll-affordance {
    position: absolute;
    right: 18px;
@@ -688,6 +748,27 @@ html.is-print-layout .scroll-affordance {
    color: #acb7b0;
    cursor: not-allowed;
 }
+/* Copy / paste entries share the section menu layout but read as neutral. */
+.copy-section,
+.paste-section {
+   width: 100%;
+   border: 0;
+   border-radius: 6px;
+   padding: 8px 9px;
+   background: transparent;
+   color: var(--dark-green, #1f704a);
+   font: 750 11px inherit;
+   text-align: left;
+   cursor: pointer;
+}
+.copy-section:hover,
+.paste-section:hover {
+   background: #e5f4e8;
+}
+.paste-section:disabled {
+   color: #acb7b0;
+   cursor: not-allowed;
+}
 .bar {
    position: relative;
    -webkit-user-select: none;
@@ -736,6 +817,213 @@ html.is-print-layout .scroll-affordance {
 }
 .delete-bar:hover {
    background: #fff0ef;
+}
+/* Per-bar copy/paste tools, revealed on hover next to the delete affordance. */
+.bar-tools {
+   position: absolute;
+   top: 3px;
+   right: 30px;
+   z-index: 5;
+   display: inline-flex;
+   gap: 3px;
+   opacity: 0;
+   transform: translateY(-2px);
+   transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
+}
+.bar:hover .bar-tools,
+.bar:focus-within .bar-tools {
+   opacity: 1;
+   transform: none;
+}
+.copy-bar,
+.paste-bar {
+   width: 22px;
+   height: 22px;
+   display: grid;
+   place-items: center;
+   border: 1px solid #cfe0d3;
+   border-radius: 6px;
+   padding: 0;
+   background: rgba(255, 255, 255, 0.94);
+   color: var(--dark-green, #1f704a);
+   font:
+      800 13px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   cursor: pointer;
+   -webkit-user-select: none;
+   user-select: none;
+   -webkit-touch-callout: none;
+   touch-action: manipulation;
+}
+.copy-bar:hover:not(:disabled),
+.paste-bar:hover:not(:disabled) {
+   background: #e5f4e8;
+   border-color: #8eb99a;
+}
+.paste-bar:disabled {
+   opacity: 0.4;
+   cursor: default;
+}
+/* Multi-bar selection mode highlights */
+.bar.is-selectable {
+   cursor: pointer;
+   position: relative;
+}
+/* The whole bar is one big click target while selecting: block pointer events
+   on inner controls so hovering a chord/beat/lyric never shows edit affordances
+   and every click lands on the bar itself. */
+.preview-section.is-selecting .bar.is-selectable * {
+   pointer-events: none;
+}
+/* Keep the bar number readable but non-interactive. */
+.preview-section.is-selecting .bar .bar-num {
+   pointer-events: none;
+}
+/* Hide ALL hover/edit affordances while selecting: copy/paste/delete tools,
+   the per-chord × remove badge, add-bar buttons, section menu, etc. */
+.preview-section.is-selecting .bar-tools,
+.preview-section.is-selecting .delete-bar,
+.preview-section.is-selecting .chord-remove,
+.preview-section.is-selecting .add-bar,
+.preview-section.is-selecting .beat-dot {
+   display: none !important;
+}
+/* Neutralise every hover state inside a selecting section. */
+.preview-section.is-selecting .beat.drop-target:hover,
+.preview-section.is-selecting .sub-beat.drop-target:hover,
+.preview-section.is-selecting .placed-chord:hover,
+.preview-section.is-selecting .duration-line:hover,
+.preview-section.is-selecting .nested-duration-line:hover,
+.preview-section.is-selecting .lyric-input:hover {
+   background: transparent !important;
+   box-shadow: none !important;
+   cursor: pointer !important;
+}
+.preview-section.is-selecting .beat.drop-target:hover::before,
+.preview-section.is-selecting .beat.drop-target:hover::after,
+.preview-section.is-selecting .sub-beat.drop-target:hover::before,
+.preview-section.is-selecting .sub-beat.drop-target:hover::after {
+   content: none !important;
+}
+/* A selectable (not yet selected) bar gets a soft dashed outline so the user
+   sees the clickable regions, without hiding the content underneath. */
+.preview-section.is-selecting .bar.is-selectable {
+   border-radius: 8px;
+   outline: 1px dashed rgba(31, 112, 74, 0.35);
+   outline-offset: -3px;
+   transition:
+      outline-color 0.12s ease,
+      box-shadow 0.12s ease,
+      background 0.12s ease;
+}
+.preview-section.is-selecting .bar.is-selectable:hover {
+   outline-color: rgba(31, 112, 74, 0.6);
+   background: rgba(31, 112, 74, 0.05);
+}
+/* A SELECTED bar: translucent green tint + ring so the chords/lyrics inside
+   stay fully visible (previously a solid white fill hid the content). */
+.bar.is-selected,
+.preview-section.is-selecting .bar.is-selected {
+   background: color-mix(in srgb, #1f9d55 16%, transparent) !important;
+   border-top: none;
+   outline: 2px solid #1f9d55 !important;
+   outline-offset: -3px;
+   box-shadow:
+      inset 0 0 0 9999px color-mix(in srgb, #1f9d55 8%, transparent),
+      0 2px 8px rgba(31, 157, 85, 0.18);
+}
+/* A small check badge in the corner of each selected bar. */
+.preview-section.is-selecting .bar.is-selected::after {
+   content: "✓";
+   position: absolute;
+   top: 4px;
+   right: 6px;
+   width: 16px;
+   height: 16px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   font-size: 11px;
+   font-weight: 800;
+   color: #fff;
+   background: #1f9d55;
+   border-radius: 50%;
+   pointer-events: none;
+   z-index: 3;
+}
+.bar-selection-bar {
+   display: flex;
+   align-items: center;
+   gap: 16px;
+   padding: 10px 14px;
+   background: linear-gradient(135deg, #1f9d55, #178048);
+   border-radius: 12px;
+   margin: 12px 0 10px 0; /* Added top margin for spacing from section title */
+   color: #fff;
+   font-size: 12px;
+   user-select: none;
+   box-shadow: 0 6px 18px rgba(31, 157, 85, 0.28);
+}
+.bar-selection-count {
+   font-weight: 700;
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+}
+.bar-selection-hint {
+   margin-left: auto;
+   color: rgba(255, 255, 255, 0.82);
+   font-size: 11px;
+}
+.bar-selection-copy,
+.bar-selection-cancel {
+   padding: 5px 12px;
+   border-radius: 8px;
+   border: 1px solid rgba(255, 255, 255, 0.55);
+   background: rgba(255, 255, 255, 0.12);
+   color: #fff;
+   font: 700 11px inherit;
+   cursor: pointer;
+   transition:
+      background 0.12s ease,
+      transform 0.12s ease;
+}
+.bar-selection-copy {
+   background: #fff;
+   color: #178048;
+   border-color: #fff;
+}
+.bar-selection-copy:hover,
+.bar-selection-cancel:hover {
+   transform: translateY(-1px);
+}
+.bar-selection-copy:hover {
+   background: #f0fff6;
+}
+.bar-selection-cancel:hover {
+   background: rgba(255, 255, 255, 0.22);
+}
+.bar-selection-copy:disabled {
+   opacity: 0.5;
+   cursor: default;
+   transform: none;
+}
+.select-bars {
+   width: 100%;
+   border: 0;
+   border-radius: 6px;
+   padding: 8px 9px;
+   background: transparent;
+   color: var(--dark-green, #1f704a);
+   font: 750 11px inherit;
+   text-align: left;
+   cursor: pointer;
+}
+.select-bars:hover {
+   background: #e5f4e8;
 }
 .pdf-signature {
    display: none;
@@ -805,10 +1093,12 @@ body.is-dragging .drop-target::after {
 .preview-footer {
    margin-top: 4px;
    color: #7a8a80;
+   display: flex;
+   justify-content: flex-end; /* Align actions to the right (Help moved to topbar) */
+   align-items: center;
 }
 
-/* "How to edit this score" pill in the preview footer — replaces the old
-   free-text hint. Reads as a friendly, clickable help affordance. */
+/* Help button is now in topbar, not footer */
 .preview-help-btn {
    display: inline-flex;
    align-items: center;
@@ -921,7 +1211,10 @@ html[data-theme="dark"] .howto-item-text code {
    outline-offset: 2px;
 }
 .toast {
-   z-index: 100;
+   /* Must sit above the My Songs home overlay (.cloud-modal, z-index 130) and
+      the device hint (160) so copy/save feedback is visible on every screen —
+      including when triggered from a card action inside the gallery. */
+   z-index: 200;
    border: 1px solid rgba(255, 255, 255, 0.12);
    box-shadow: 0 12px 35px rgba(15, 45, 30, 0.23);
 }
@@ -1070,8 +1363,14 @@ html[data-theme="dark"] .howto-item-text code {
    border-radius: 50%;
    background: color-mix(in srgb, var(--green) 14%, transparent);
    color: var(--dark-green);
-   font-size: 22px;
+   font-size: 26px;
    line-height: 1;
+}
+/* In dark theme the deep --dark-green sits too close to the dark card bg, so
+   brighten the glyph (use --green) and strengthen the pill background. */
+html[data-theme="dark"] .confirm-dialog-icon {
+   color: var(--green);
+   background: color-mix(in srgb, var(--green) 24%, transparent);
 }
 .confirm-dialog-title {
    margin: 4px 0 0;
@@ -1085,6 +1384,28 @@ html[data-theme="dark"] .howto-item-text code {
    font-size: 13.5px;
    line-height: 1.5;
    color: var(--muted);
+}
+/* Free-text field for the Attach Link dialog (paste a share link/payload). */
+.attach-link-input {
+   width: 100%;
+   margin-top: 12px;
+   padding: 10px 12px;
+   font-size: 13px;
+   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+   line-height: 1.4;
+   color: var(--ink);
+   background: var(--surface);
+   border: 1px solid var(--line);
+   border-radius: 10px;
+   resize: vertical;
+   min-height: 68px;
+   box-sizing: border-box;
+   word-break: break-all;
+}
+.attach-link-input:focus-visible {
+   outline: none;
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent);
 }
 .confirm-dialog-actions {
    display: flex;
@@ -1764,6 +2085,11 @@ html[data-theme="dark"] .howto-item-text code {
    .delete-bar,
    .section-menu {
       display: none !important;
+   }
+   .bar-tools {
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
    }
    .pdf-signature {
       position: fixed !important;
@@ -3128,6 +3454,61 @@ html[data-theme="dark"] .cloud-auth-primary {
    text-overflow: ellipsis;
    max-width: 34vw;
 }
+/* Help button in the topbar — high-visibility affordance so first-time users
+   can always find the editing guide. Sits right after the breadcrumb. */
+.topbar-help-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 7px;
+   flex: 0 0 auto;
+   margin-left: 4px;
+   padding: 7px 13px 7px 8px;
+   border: 1.5px solid color-mix(in srgb, var(--green) 45%, var(--line));
+   border-radius: 999px;
+   background: color-mix(in srgb, var(--green) 8%, var(--surface));
+   color: var(--dark-green);
+   font-size: 13px;
+   font-weight: 600;
+   line-height: 1;
+   cursor: pointer;
+   transition:
+      background 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.12s ease,
+      box-shadow 0.18s ease;
+}
+.topbar-help-btn:hover {
+   background: var(--green);
+   border-color: var(--green);
+   color: #fff;
+   transform: translateY(-1px);
+   box-shadow: 0 4px 12px color-mix(in srgb, var(--green) 32%, transparent);
+}
+.topbar-help-btn:hover .topbar-help-icon {
+   background: #fff;
+   color: var(--green);
+}
+.topbar-help-btn:active {
+   transform: translateY(0);
+}
+.topbar-help-icon {
+   display: grid;
+   place-items: center;
+   width: 20px;
+   height: 20px;
+   border-radius: 50%;
+   background: var(--green);
+   color: #fff;
+   font-size: 13px;
+   font-weight: 800;
+   line-height: 1;
+   transition:
+      background 0.18s ease,
+      color 0.18s ease;
+}
+html[data-theme="dark"] .topbar-help-btn {
+   color: #cdeede;
+}
 /* Contextual "Back to editor": only rendered when a document is already open. */
 .gallery-resume[hidden] {
    display: none;
@@ -3644,7 +4025,17 @@ html[data-theme="dark"] .cloud-auth-primary {
    background: var(--soft);
    color: var(--dark-green);
 }
+/* Copy Link — same visual treatment as is-duplicate */
+.song-card-action.is-copy-link:hover {
+   background: var(--soft);
+   color: var(--dark-green);
+}
 .song-card-action.is-export:hover {
+   background: var(--soft);
+   color: var(--dark-green);
+}
+/* Copy Link — same visual treatment as is-duplicate */
+.song-card-action.is-copy-link:hover {
    background: var(--soft);
    color: var(--dark-green);
 }
@@ -3714,7 +4105,8 @@ html[data-theme="dark"] .cloud-auth-primary {
 }
 .cloud-gallery-state-icon {
    font-size: 40px;
-   opacity: 0.5;
+   opacity: 0.85;
+   color: var(--green, #1f9d55);
 }
 .cloud-spinner {
    width: 38px;
@@ -4220,4 +4612,423 @@ html[data-theme="dark"] .beat-menu-item.is-danger {
 }
 html[data-theme="dark"] .beat-menu-item.is-danger:hover {
    background: rgba(255, 100, 85, 0.12);
+}
+
+/* ==================== MODE PICKER DIALOG (New Song) ==================== */
+.mode-picker-card {
+   width: min(90vw, 520px);
+   max-height: 80vh;
+   text-align: left;
+   align-items: stretch;
+   overflow-y: auto;
+}
+.mode-picker-card .confirm-dialog-icon {
+   align-self: center;
+}
+.mode-picker-close {
+   position: absolute;
+   top: 16px;
+   right: 16px;
+   z-index: 2;
+   border: none;
+   background: transparent;
+   font-size: 24px;
+   line-height: 1;
+   cursor: pointer;
+   color: var(--muted);
+   padding: 4px;
+   border-radius: 4px;
+   transition: color 0.18s ease;
+}
+.mode-picker-close:hover {
+   color: var(--ink);
+   background: rgba(0, 0, 0, 0.04);
+}
+.mode-picker-grid {
+   display: grid;
+   grid-template-columns: 1fr;
+   gap: 14px;
+   margin: 20px -2px -2px;
+   padding: 0 2px;
+}
+@media (min-width: 640px) {
+   .mode-picker-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+      margin: 24px -4px -4px;
+   }
+}
+.mode-card {
+   display: flex;
+   flex-direction: column;
+   gap: 14px;
+   padding: 18px;
+   border: 1.5px solid rgba(0, 0, 0, 0.1);
+   border-radius: 14px;
+   background: #fff;
+   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+   cursor: pointer;
+   transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      border-color 0.18s ease,
+      background 0.18s ease;
+   outline: none;
+   text-align: left;
+}
+.mode-card:focus-visible {
+   box-shadow: 0 0 0 3px rgba(184, 232, 92, 0.6);
+   border-color: rgba(47, 125, 79, 0.6);
+}
+.mode-card:hover {
+   transform: translateY(-3px);
+   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
+   border-color: rgba(47, 125, 79, 0.4);
+   background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--green) 3%, #fff) 100%);
+}
+.mode-card-visual {
+   height: 80px;
+   border-radius: 10px;
+   background: rgba(0, 0, 0, 0.02);
+   display: grid;
+   place-items: center;
+   overflow: hidden;
+   border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.mode-card-anim {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 8px;
+   font-size: 16px;
+   font-weight: 700;
+   font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
+}
+.mode-anim-chords {
+   animation: chordFlow 2s ease-in-out infinite;
+}
+@keyframes chordFlow {
+   0%,
+   100% {
+      transform: translateX(0);
+   }
+   50% {
+      transform: translateX(-8px);
+   }
+}
+.mca-chord {
+   background: var(--dark-green);
+   color: #fff;
+   padding: 4px 10px;
+   border-radius: 6px;
+   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.mca-chord-1 {
+   animation-delay: 0ms;
+}
+.mca-chord-2 {
+   animation-delay: 200ms;
+}
+.mca-chord-3 {
+   animation-delay: 400ms;
+}
+.mca-chord-4 {
+   animation-delay: 600ms;
+}
+.mode-anim-numbers {
+   animation: numBounce 1.8s ease-in-out infinite;
+}
+@keyframes numBounce {
+   0%,
+   100% {
+      transform: scale(1);
+   }
+   50% {
+      transform: scale(1.08);
+   }
+}
+.mca-num {
+   display: inline-block;
+   width: 28px;
+   height: 28px;
+   line-height: 26px;
+   text-align: center;
+   background: var(--green);
+   color: #fff;
+   border-radius: 50%;
+   font-size: 14px;
+   font-weight: 800;
+   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+.mca-num-lyric {
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   min-width: 40px;
+   height: 28px;
+   padding: 0 10px;
+   background: color-mix(in srgb, var(--dark-green) 12%, #fff);
+   color: var(--dark-green);
+   font-size: 12px;
+   border-radius: 8px;
+   font-weight: 800;
+   letter-spacing: 0.08em;
+   border: 1.5px solid color-mix(in srgb, var(--dark-green) 25%, transparent);
+}
+.mode-card-body {
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+}
+.mode-card-header {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+}
+.mode-card-icon {
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   width: 52px;
+   height: 52px;
+   flex: none;
+   border-radius: 14px;
+   background: linear-gradient(
+      140deg,
+      color-mix(in srgb, var(--green) 22%, #fff) 0%,
+      color-mix(in srgb, var(--dark-green) 16%, #fff) 100%
+   );
+   color: var(--dark-green);
+   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--dark-green) 18%, transparent);
+   transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
+}
+.mode-card:hover .mode-card-icon {
+   transform: scale(1.06) rotate(-3deg);
+   box-shadow:
+      inset 0 0 0 1.5px color-mix(in srgb, var(--dark-green) 32%, transparent),
+      0 4px 12px rgba(47, 125, 79, 0.18);
+}
+.mode-card-title {
+   margin: 0;
+   font-size: 18px;
+   font-weight: 700;
+   letter-spacing: -0.02em;
+   color: var(--ink);
+}
+.mode-card-sub {
+   margin: 0;
+   font-size: 13px;
+   color: var(--muted);
+}
+.mode-card-points {
+   margin: 4px 0 0;
+   padding: 0;
+   list-style: none;
+   display: flex;
+   flex-wrap: wrap;
+   gap: 8px 10px;
+}
+.mode-card-points li {
+   font-size: 12.5px;
+   font-weight: 600;
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   padding: 4px 10px;
+   border-radius: 999px;
+   border: 1px solid transparent;
+}
+.mode-card-points li span:first-child {
+   font-weight: 800;
+   font-size: 13px;
+}
+/* Pros = green, Cons = soft red — clear affirmative/negative semantics */
+.mode-card-points li.is-pro {
+   background: color-mix(in srgb, var(--green) 12%, #fff);
+   border-color: color-mix(in srgb, var(--green) 28%, transparent);
+   color: var(--dark-green);
+}
+.mode-card-points li.is-pro span:first-child {
+   color: #1f9d55;
+}
+.mode-card-points li.is-con {
+   background: color-mix(in srgb, #e5484d 10%, #fff);
+   border-color: color-mix(in srgb, #e5484d 26%, transparent);
+   color: #b02a2f;
+}
+.mode-card-points li.is-con span:first-child {
+   color: #e5484d;
+}
+html[data-theme="dark"] .mode-card {
+   background: #1a2e23;
+   border-color: rgba(255, 255, 255, 0.08);
+   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+html[data-theme="dark"] .mode-card:hover {
+   background: linear-gradient(180deg, #1a2e23 0%, color-mix(in srgb, var(--green) 8%, #1a2e23) 100%);
+}
+html[data-theme="dark"] .mode-card-visual {
+   background: rgba(255, 255, 255, 0.04);
+   border-color: rgba(255, 255, 255, 0.08);
+}
+html[data-theme="dark"] .mode-card-points li {
+   background: rgba(100, 255, 218, 0.12);
+   border-color: rgba(100, 255, 218, 0.25);
+   color: #aaddcc;
+}
+html[data-theme="dark"] .mca-chord {
+   background: #7ee0b3;
+   color: #0a2a1e;
+}
+html[data-theme="dark"] .mca-num {
+   background: #7ee0b3;
+   color: #0a2a1e;
+}
+
+/* ---- Editor mode (chords vs numbers) visibility ------------------------
+   body[data-editor-mode] is set by render.js on every render. These rules
+   drive mode-specific UI without touching JS layout logic. */
+
+/* Lyrics toggle lives inside .song-meta but only makes sense in numbers mode.
+   Hide it in chords mode (lyrics feature is off for chord-progression songs).
+   Rendered as the first item so it sits to the LEFT of KEY. */
+.song-meta-lyrics-toggle {
+   display: none;
+   align-items: center;
+   gap: 8px;
+   cursor: pointer;
+   user-select: none;
+   padding-right: 14px;
+   margin-right: 2px;
+   border-right: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+}
+body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
+   display: inline-flex;
+}
+.song-meta-lyrics-caption {
+   font-size: 11px;
+   font-weight: 700;
+   letter-spacing: 0.06em;
+   color: var(--muted, #6b7280);
+}
+.song-meta-lyrics-switch {
+   display: inline-flex;
+   align-items: center;
+   gap: 7px;
+}
+/* Hide the native checkbox but keep it accessible/focusable. */
+.song-meta-lyrics-switch input {
+   position: absolute;
+   opacity: 0;
+   width: 1px;
+   height: 1px;
+   pointer-events: none;
+}
+.song-meta-lyrics-track {
+   position: relative;
+   display: inline-block;
+   width: 34px;
+   height: 20px;
+   border-radius: 999px;
+   background: var(--line, #d1d5db);
+   transition: background 0.2s ease;
+   flex: none;
+}
+.song-meta-lyrics-thumb {
+   position: absolute;
+   top: 2px;
+   left: 2px;
+   width: 16px;
+   height: 16px;
+   border-radius: 50%;
+   background: #fff;
+   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+   transition: transform 0.2s ease;
+}
+.song-meta-lyrics-switch input:checked + .song-meta-lyrics-track {
+   background: var(--green, #10b981);
+}
+.song-meta-lyrics-switch input:checked + .song-meta-lyrics-track .song-meta-lyrics-thumb {
+   transform: translateX(14px);
+}
+.song-meta-lyrics-switch input:focus-visible + .song-meta-lyrics-track {
+   box-shadow: 0 0 0 3px rgba(184, 232, 92, 0.55);
+}
+.song-meta-lyrics-switch b {
+   font-size: 12px;
+   font-weight: 700;
+   color: var(--ink);
+   min-width: 20px;
+}
+
+/* Mode badge — sits to the LEFT of "Save to Cloud" in the topbar actions.
+   Clean pill with a small mode glyph + label; adapts color/icon per mode. */
+.editor-mode-badge {
+   display: inline-flex;
+   align-items: center;
+   gap: 7px;
+   padding: 6px 12px 6px 8px;
+   border-radius: 999px;
+   font-size: 12px;
+   font-weight: 700;
+   letter-spacing: 0.01em;
+   border: 1px solid color-mix(in srgb, var(--dark-green, #2f7d4f) 22%, transparent);
+   color: var(--dark-green, #2f7d4f);
+   background: color-mix(in srgb, var(--green, #10b981) 10%, #fff);
+   white-space: nowrap;
+   transition:
+      background 0.18s ease,
+      border-color 0.18s ease;
+}
+.editor-mode-badge-icon {
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   width: 22px;
+   height: 22px;
+   border-radius: 50%;
+   background: color-mix(in srgb, var(--green, #10b981) 20%, #fff);
+   color: var(--dark-green, #2f7d4f);
+   font-size: 12px;
+   flex: none;
+}
+.editor-mode-badge-icon::before {
+   content: "♪";
+   font-weight: 700;
+   line-height: 1;
+}
+body[data-editor-mode="numbers"] .editor-mode-badge-icon::before {
+   content: "#";
+}
+body[data-editor-mode="numbers"] .editor-mode-badge {
+   border-color: color-mix(in srgb, #6366f1 26%, transparent);
+   color: #4f46e5;
+   background: color-mix(in srgb, #6366f1 9%, #fff);
+}
+body[data-editor-mode="numbers"] .editor-mode-badge-icon {
+   background: color-mix(in srgb, #6366f1 16%, #fff);
+   color: #4f46e5;
+}
+html[data-theme="dark"] .editor-mode-badge {
+   color: #7ee0b3;
+   border-color: rgba(126, 224, 179, 0.4);
+   background: rgba(126, 224, 179, 0.1);
+}
+html[data-theme="dark"] .editor-mode-badge-icon {
+   background: rgba(126, 224, 179, 0.16);
+   color: #7ee0b3;
+}
+html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge {
+   color: #b0b4ff;
+   border-color: rgba(129, 140, 248, 0.4);
+   background: rgba(129, 140, 248, 0.12);
+}
+html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon {
+   background: rgba(129, 140, 248, 0.2);
+   color: #b0b4ff;
 }

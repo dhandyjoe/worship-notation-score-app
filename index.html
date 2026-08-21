@@ -34,8 +34,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260808-hide-dot-active" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260808-hide-dot-active" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260821-import24" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260821-import24" />
    </head>
    <body>
       <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
@@ -51,14 +51,16 @@
                <span class="editor-breadcrumb-label">Editing</span>
                <strong class="editor-breadcrumb-title" id="editorSongName">Song Title</strong>
             </span>
+            <button class="topbar-help-btn" id="howToUseBtn" type="button" aria-haspopup="dialog" aria-controls="howToDialog" title="How to edit this score">
+               <span class="topbar-help-icon" aria-hidden="true">?</span>
+               <span class="topbar-help-label">How to edit</span>
+            </button>
          </div>
          <div class="topbar-actions">
-            <span class="autosave-status"><i aria-hidden="true"></i> Active for this session</span>
-            <label class="switch-control topbar-lyrics-toggle" for="lyricsEnabledTop" title="Show a lyric field under each beat">
-               <input id="lyricsEnabledTop" type="checkbox" />
-               <span class="switch-track" aria-hidden="true"><span></span></span>
-               <b id="lyricsEnabledTopLabel">Lyrics off</b>
-            </label>
+            <span class="editor-mode-badge" id="editorModeBadge" title="Editing mode for this song">
+               <span class="editor-mode-badge-icon" aria-hidden="true"></span>
+               <span class="editor-mode-badge-text">Chord Chart</span>
+            </span>
             <button class="button button-save" id="saveCloudBtn" type="button" title="Save this score to your cloud library">
                <span aria-hidden="true">⤒</span> Save to Cloud</button
             ><button class="button button-dark" id="exportBtn" type="button" title="Adjust PDF layout, then export" aria-haspopup="dialog" aria-controls="pdfOptionsModal"><span aria-hidden="true">↗</span> Export .pdf</button>
@@ -311,42 +313,64 @@
                               <em class="artist-value">Artist / Composer</em>
                            </p>
                         </div>
-                        <div class="song-meta">
-                           <span>KEY <b id="previewKey" class="preview-editable" title="Click to edit key">C</b></span
-                           ><span
-                              >TIME SIGNATURE
-                              <b id="previewMeter" class="preview-editable" title="Click to edit time signature"
-                                 >4/4</b
-                              ></span
-                           ><span class="transpose-control"
-                              >TRANSPOSE
-                              <span class="transpose-buttons"
-                                 ><button
-                                    id="transposeDown"
-                                    type="button"
-                                    title="Transpose every chord down one semitone"
-                                    aria-label="Transpose down one semitone"
-                                 >
-                                    −</button
-                                 ><button
-                                    id="transposeUp"
-                                    type="button"
-                                    title="Transpose every chord up one semitone"
-                                    aria-label="Transpose up one semitone"
-                                 >
-                                    +
-                                 </button></span
-                              ></span
-                           >
+                        <div class="preview-meta-col">
+                           <div class="song-meta">
+                              <label class="song-meta-lyrics-toggle" for="lyricsEnabledTop" title="Show a lyric field under each beat">
+                                 <span class="song-meta-lyrics-caption">LYRICS</span>
+                                 <span class="song-meta-lyrics-switch">
+                                    <input id="lyricsEnabledTop" type="checkbox" />
+                                    <span class="song-meta-lyrics-track" aria-hidden="true"><span class="song-meta-lyrics-thumb"></span></span>
+                                    <b id="lyricsEnabledTopLabel">Off</b>
+                                 </span>
+                              </label>
+                              <span>KEY <b id="previewKey" class="preview-editable" title="Click to edit key">C</b></span
+                              ><span
+                                 >TIME SIGNATURE
+                                 <b id="previewMeter" class="preview-editable" title="Click to edit time signature"
+                                    >4/4</b
+                                 ></span
+                              ><span class="transpose-control"
+                                 >TRANSPOSE
+                                 <span class="transpose-buttons"
+                                    ><button
+                                       id="transposeDown"
+                                       type="button"
+                                       title="Transpose every chord down one semitone"
+                                       aria-label="Transpose down one semitone"
+                                    >
+                                       −</button
+                                    ><button
+                                       id="transposeUp"
+                                       type="button"
+                                       title="Transpose every chord up one semitone"
+                                       aria-label="Transpose up one semitone"
+                                    >
+                                       +
+                                    </button></span
+                                 ></span
+                              >
+                           </div>
+                           <div class="history-toolbar">
+                              <button id="undoBtn" type="button" class="history-btn" title="Undo (⌘Z / Ctrl+Z)" aria-label="Undo previous action">
+                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 14L4 9l5-5"/>
+                                    <path d="M4 9h10c4 0 7 3 7 7"/>
+                                 </svg>
+                                 <span class="btn-label">Undo</span>
+                              </button>
+                              <button id="redoBtn" type="button" class="history-btn" title="Redo (⌘⇧Z / Ctrl+Shift+Z)" aria-label="Redo next action">
+                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M15 14l5-5-5-5"/>
+                                    <path d="M20 9H10c-4 0-7 3-7 7"/>
+                                 </svg>
+                                 <span class="btn-label">Redo</span>
+                              </button>
+                           </div>
                         </div>
                      </div>
                      <div class="preview-rule"></div>
                      <div id="sectionsPreview" aria-label="Chord drag-and-drop area"></div>
                      <div class="preview-footer">
-                        <button class="preview-help-btn" id="howToUseBtn" type="button" aria-haspopup="dialog" aria-label="How to edit this score">
-                           <span class="preview-help-icon" aria-hidden="true">?</span>
-                           Help
-                        </button>
                         <div class="preview-actions">
                            <button class="button button-reset button-small" id="resetSheetBtn">Reset Sheet</button
                            ><button class="button button-ghost button-small" id="addSectionBtn">+ Add section</button>
@@ -533,6 +557,23 @@
          </div>
       </div>
 
+      <!-- Attach Link dialog. Themed replacement for prompt(): the user pastes a
+           share link (or raw payload) from another user, and we decode it into a
+           preview + import. Driven by the #attachLinkBtn handler in cloudUI.js. -->
+      <div class="confirm-dialog" id="attachLinkDialog" hidden role="dialog" aria-modal="true" aria-labelledby="attachLinkTitle" aria-describedby="attachLinkDesc">
+         <div class="confirm-dialog-backdrop" data-attach-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">🔗</div>
+            <h2 class="confirm-dialog-title" id="attachLinkTitle">Attach a shared song</h2>
+            <p class="confirm-dialog-desc" id="attachLinkDesc">Paste a share link (or payload) from another user. The link fragment is decoded locally — nothing is sent to a server.</p>
+            <textarea class="attach-link-input" id="attachLinkInput" rows="3" placeholder="https://…/index.html#/import?d=w…" aria-label="Paste share link"></textarea>
+            <div class="confirm-dialog-actions">
+               <button class="button button-ghost" id="attachLinkCancel" type="button" data-attach-dismiss>Cancel</button>
+               <button class="button button-primary" id="attachLinkConfirm" type="button">Preview</button>
+            </div>
+         </div>
+      </div>
+
       <!-- Unsaved-changes dialog. Shown when the user clicks Back to My Songs
            while the open project has edits that haven't been saved to the cloud.
            Three choices: Save & leave (recommended), Leave without saving, and
@@ -563,6 +604,10 @@
             <p class="confirm-dialog-desc" id="howToDialogDesc">Editing happens right on the score — no dragging needed. Here's everything you can do:</p>
             <ul class="howto-list">
                <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎛️</span>
+                  <span class="howto-item-text"><strong>Two writing modes</strong> — when you start a new song you pick a mode (shown as a badge next to the title). <strong>🎸 Chords</strong> is for chord progressions like <code>C</code>, <code>Am7</code>, <code>G/B</code> with live chord suggestions and transpose. <strong>🔢 Numbers</strong> is for Nashville number notation (<code>1</code>–<code>7</code> with high/low octaves) and enables a lyrics field under each beat. The editor adapts its suggestions and controls to the mode you chose.</span>
+               </li>
+               <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">＋</span>
                   <span class="howto-item-text"><strong>Add a chord</strong> — click any empty beat, then type a chord (e.g. <code>C</code>, <code>Am7</code>, <code>G/B</code>). Pick from the live suggestions or press Enter.</span>
                </li>
@@ -590,9 +635,105 @@
                   <span class="howto-item-icon" aria-hidden="true">🎚️</span>
                   <span class="howto-item-text"><strong>Transpose</strong> — use the key ▲ / ▼ controls to shift every chord up or down a semitone.</span>
                </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">↩️</span>
+                  <span class="howto-item-text"><strong>Undo &amp; Redo</strong> — made a mistake? Use the <em>Undo</em> / <em>Redo</em> buttons below the key info, or press <code>⌘Z</code> / <code>Ctrl+Z</code> to undo and <code>⌘⇧Z</code> / <code>Ctrl+Shift+Z</code> to redo. Up to 50 steps are remembered.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">⧉</span>
+                  <span class="howto-item-text"><strong>Copy &amp; paste a bar</strong> — hover a bar and click the <em>copy</em> icon (⧉) to grab all its chords, then click <em>paste</em> (⎘) on another bar to drop them in. Great for repeating chord patterns quickly.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎼</span>
+                  <span class="howto-item-text"><strong>Add multiple bars at once</strong> — use <em>+ Add bar</em> under a section to extend it. Each new bar follows the section's time signature automatically.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🔗</span>
+                  <span class="howto-item-text"><strong>Share a song</strong> — from <em>My Songs</em>, click <em>Copy Link</em> (🔗) on any song to copy a share link. Send it to a friend — when they click <em>Attach Link</em> and paste it, the song imports straight into their library.</span>
+               </li>
             </ul>
             <div class="confirm-dialog-actions">
                <button class="button button-primary" id="howToCloseBtn" type="button" data-howto-dismiss>Got it</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== NEW SONG: MODE PICKER DIALOG ====================
+           Opened by #newSongBtn. Lets the user choose how they want to write
+           the new song: a Chord Progression sheet, or a Number Notation
+           (Nashville) sheet. Each card animates a small preview on hover to
+           telegraph what the mode produces. Driven by cloudUI.js. -->
+      <div class="confirm-dialog mode-picker-dialog" id="modePickerDialog" hidden role="dialog" aria-modal="true" aria-labelledby="modePickerTitle" aria-describedby="modePickerDesc">
+         <div class="confirm-dialog-backdrop" data-mode-dismiss></div>
+         <div class="confirm-dialog-card mode-picker-card" role="document">
+            <button class="mode-picker-close" id="modePickerClose" type="button" aria-label="Close" data-mode-dismiss>&times;</button>
+            <div class="confirm-dialog-icon" aria-hidden="true">♪</div>
+            <h2 class="confirm-dialog-title" id="modePickerTitle">How do you want to write this song?</h2>
+            <p class="confirm-dialog-desc" id="modePickerDesc">Pick a writing mode. You can focus on chords, or on number (Nashville) notation — the editor adapts to each.</p>
+
+            <div class="mode-picker-grid">
+               <!-- Mode 1: Chord Progression -->
+               <button class="mode-card" id="modeCardChords" type="button" data-mode="chords">
+                  <div class="mode-card-visual" aria-hidden="true">
+                     <div class="mode-card-anim mode-anim-chords">
+                        <span class="mca-chord mca-chord-1">C</span>
+                        <span class="mca-chord mca-chord-2">Am</span>
+                        <span class="mca-chord mca-chord-3">F</span>
+                        <span class="mca-chord mca-chord-4">G</span>
+                     </div>
+                  </div>
+                  <div class="mode-card-body">
+                     <div class="mode-card-header">
+                        <span class="mode-card-icon" aria-hidden="true">
+                           <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                              <circle cx="6" cy="18" r="3"/>
+                              <circle cx="18" cy="16" r="3"/>
+                              <path d="M9 18V5l12-2v13"/>
+                              <path d="M9 9l12-2"/>
+                           </svg>
+                        </span>
+                        <h3 class="mode-card-title">Chord Chart</h3>
+                     </div>
+                     <p class="mode-card-sub">Write chords like <code>C</code>, <code>Am7</code>, <code>G/B</code>.</p>
+                     <ul class="mode-card-points">
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Live chord suggestions</li>
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Transpose any key</li>
+                        <li class="is-con"><span aria-hidden="true">✗</span> No lyrics, no numbers</li>
+                     </ul>
+                  </div>
+               </button>
+
+               <!-- Mode 2: Number Notation -->
+               <button class="mode-card" id="modeCardNumbers" type="button" data-mode="numbers">
+                  <div class="mode-card-visual" aria-hidden="true">
+                     <div class="mode-card-anim mode-anim-numbers">
+                        <span class="mca-num mca-num-1">1</span>
+                        <span class="mca-num mca-num-2">4</span>
+                        <span class="mca-num mca-num-3">5</span>
+                        <span class="mca-num mca-num-lyric">DO</span>
+                     </div>
+                  </div>
+                  <div class="mode-card-body">
+                     <div class="mode-card-header">
+                        <span class="mode-card-icon" aria-hidden="true">
+                           <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M4 7V5a1 1 0 0 1 1-1h3"/>
+                              <path d="M20 7V5a1 1 0 0 0-1-1h-3"/>
+                              <path d="M4 17v2a1 1 0 0 0 1 1h3"/>
+                              <path d="M20 17v2a1 1 0 0 1-1 1h-3"/>
+                              <text x="12" y="15.5" text-anchor="middle" font-size="9" font-weight="700" stroke="none" fill="currentColor">1</text>
+                           </svg>
+                        </span>
+                        <h3 class="mode-card-title">Nashville Numbers</h3>
+                     </div>
+                     <p class="mode-card-sub">Write degrees <code>1</code>–<code>7</code> with high/low octaves.</p>
+                     <ul class="mode-card-points">
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Number-only input</li>
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Optional lyrics</li>
+                        <li class="is-con"><span aria-hidden="true">✗</span> No chord suggestions</li>
+                     </ul>
+                  </div>
+               </button>
             </div>
          </div>
       </div>
@@ -687,8 +828,7 @@
                </div>
                <div class="cloud-gallery-actions">
                   <button class="button button-primary" id="newSongBtn" type="button"><span aria-hidden="true">＋</span> New Song</button>
-                  <label class="button button-ghost" for="galleryUploadInput" title="Upload a .chordsheet.json into your library"><span aria-hidden="true">⤓</span> Upload</label>
-                  <input type="file" id="galleryUploadInput" accept="application/json,.json" hidden />
+                  <button class="button button-ghost" id="attachLinkBtn" type="button" title="Attach a song link from another user"><span aria-hidden="true">🔗</span> Attach Link</button>
                   <!-- Profile menu: the account button opens a card with the
                        signed-in identity, a theme switch and Sign out. -->
                   <div class="account-menu">
@@ -760,7 +900,7 @@
                <div class="cloud-gallery-state" id="galleryEmpty" hidden>
                   <div class="cloud-gallery-state-icon" aria-hidden="true">♪</div>
                   <p>No songs yet</p>
-                  <span>Save your current score or upload a file to start your library.</span>
+                  <span>Save your current score, or attach a link shared by another user to start your library.</span>
                </div>
                <div class="cloud-gallery-state" id="galleryNoResults" hidden>
                   <div class="cloud-gallery-state-icon" aria-hidden="true">⌕</div>
@@ -771,7 +911,7 @@
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260808-hide-dot-active"></script>
+      <script type="module" src="src/app.js?v=20260821-import24"></script>
       <script>
          // Register the PWA service worker for offline support. Skipped in the
          // automated test harness (?test=...) so caching never interferes with

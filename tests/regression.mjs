@@ -1230,6 +1230,96 @@ for (const [width, height, deviceScaleFactor = 1] of [
 }
 
 await viewport(1440, 1000, false);
+// ============================================================================
+// Clipboard & multi-bar selection tests (Copy bars feature)
+// ============================================================================
+// Re-navigate for a clean slate so earlier tests' edits don't interfere.
+await navigate();
+
+// Open the first section's ••• menu and confirm the "Copy bars" entry exists.
+await evaluate("document.querySelector('.section-menu summary')?.click(); true");
+await waitFor("!!document.querySelector('.select-bars')");
+record(
+   "Section menu exposes a 'Copy bars' action",
+   (await text(".select-bars")) === "Copy bars",
+   await text(".select-bars"),
+);
+
+// Enter selection mode.
+await evaluate("document.querySelector('.select-bars')?.click(); true");
+await waitFor("!!document.querySelector('.bar-selection-bar')");
+record(
+   "Clicking 'Copy bars' shows the selection toolbar",
+   await evaluate("!!document.querySelector('.bar-selection-bar')"),
+);
+
+// Before any bar is picked, the count reads the empty-state text and Copy is disabled.
+record(
+   "Selection toolbar starts with no bars selected and Copy disabled",
+   (await text(".bar-selection-count")) === "No bars selected yet" &&
+      (await evaluate("!!document.querySelector('.bar-selection-copy[disabled]')")),
+   await text(".bar-selection-count"),
+);
+
+// The whole bar is a click target in selection mode — click bar 0.
+await evaluate("document.querySelector('.bar[data-bar=\"0\"]')?.click(); true");
+await waitFor("document.querySelector('.bar-selection-count')?.textContent.trim()==='1 bar selected'");
+record(
+   "Clicking a bar selects it (count = 1) and marks it .is-selected",
+   (await text(".bar-selection-count")) === "1 bar selected" &&
+      (await evaluate("!!document.querySelector('.bar.is-selected')")),
+);
+
+// Copy becomes enabled once a bar is selected.
+record(
+   "Copy button is enabled after selecting a bar",
+   await evaluate("!!document.querySelector('.bar-selection-copy:not([disabled])')"),
+);
+
+// While selecting, editing affordances must be hidden: per-chord × badge and bar tools.
+record(
+   "Editing affordances are suppressed while selecting bars",
+   await evaluate(
+      "(()=>{const rm=[...document.querySelectorAll('.is-selecting .chord-remove')].every(el=>getComputedStyle(el).display==='none');const tools=[...document.querySelectorAll('.is-selecting .bar-tools')].every(el=>getComputedStyle(el).display==='none');return rm&&tools})()",
+   ),
+);
+
+// Shift-click bar 1 to extend the range to two bars.
+await evaluate(
+   "(()=>{const b=document.querySelector('.bar[data-bar=\"1\"]');if(!b)return false;b.dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}));return true})()",
+);
+await waitFor("document.querySelector('.bar-selection-count')?.textContent.trim()==='2 bars selected'");
+record(
+   "Shift+click extends the selection range (count = 2)",
+   (await text(".bar-selection-count")) === "2 bars selected",
+   await text(".bar-selection-count"),
+);
+
+// Copy the two-bar range; selection mode exits and the toolbar disappears.
+await evaluate("document.querySelector('.bar-selection-copy')?.click(); true");
+await waitFor("!document.querySelector('.bar-selection-bar')");
+record("Copying the range exits selection mode", await evaluate("!document.querySelector('.bar-selection-bar')"));
+
+// After copying, per-bar paste buttons become enabled (clipboard holds bars).
+record(
+   "Paste buttons are enabled after copying bars",
+   await evaluate("!!document.querySelector('.paste-bar:not([disabled])')"),
+);
+
+// Cancel path: re-enter selection mode then cancel; toolbar should disappear.
+await evaluate("document.querySelector('.section-menu summary')?.click(); true");
+await waitFor("!!document.querySelector('.select-bars')");
+await evaluate("document.querySelector('.select-bars')?.click(); true");
+await waitFor("!!document.querySelector('.bar-selection-bar')");
+await evaluate("document.querySelector('.bar-selection-cancel')?.click(); true");
+await waitFor("!document.querySelector('.bar-selection-bar')");
+record("Cancel exits selection mode without copying", await evaluate("!document.querySelector('.bar-selection-bar')"));
+
+// ============================================================================
+// End of clipboard & selection tests
+// ============================================================================
+
+await viewport(1440, 1000, false);
 const failed = results.filter((result) => !result.passed);
 await fs.writeFile(
    `${outputDir}/results.json`,

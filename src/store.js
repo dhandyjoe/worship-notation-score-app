@@ -1,6 +1,6 @@
 // store.js — single source of truth for app state + palette selection.
 // State is reassigned wholesale on import/reset, so consumers must read via getState().
-import { newSection } from "./notation.js?v=20260808-hide-dot-active";
+import { newSection } from "./notation.js?v=20260821-import24";
 
 function defaultState() {
    const first = newSection("Intro");
@@ -16,6 +16,7 @@ function defaultState() {
       nashvilleAccidental: "",
       activeId: first.id,
       editingId: null,
+      editorMode: "chords", // "chords" or "numbers" - defaults to chords for backward compat
    };
 }
 

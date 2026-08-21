@@ -17,6 +17,7 @@ import {
    syllabifyLyrics,
    MAX_BARS,
 } from "../src/notation.js";
+import { encodeShare, decodeShare, buildShareLink, extractPayloadFromLink, canCompress } from "../src/share.js";
 
 test("transposeNote wraps around 12 notes and prefers flat spelling", () => {
    assert.equal(transposeNote("B", 1), "C");
@@ -235,4 +236,299 @@ test("suggestChords maps quality aliases in Nashville mode too", () => {
    assert.equal(suggestChords("1aug")[0], "1+");
    assert.equal(suggestChords("1dim")[0], "1°");
    assert.equal(suggestChords("1m7b5")[0], "1ø7");
+});
+
+// ---- Copy / paste helpers (extractBar, replaceBarContent, cloneSection) ----
+import {
+   extractBar,
+   replaceBarContent,
+   cloneSection,
+   extractBars,
+   insertBars,
+   overwriteBars,
+} from "../src/notation.js?v=20260808-hide-dot-active";
+
+test("extractBar pulls out a single bar's beats and lyrics normalized to bar 0", () => {
+   const section = {
+      id: "sec-test",
+      name: "Test",
+      bars: 3,
+      beats: { "0-0": "C", "0-1:0": "G", "1-0": "F", "1-1": "Am" },
+      lyricBeats: {},
+   };
+   const payload = extractBar(section, 0);
+   assert.deepStrictEqual(payload, { beats: { "0-0": "C", "0-1:0": "G" }, lyricBeats: {} });
+});
+
+test("extractBar includes lyrics", () => {
+   const section = {
+      id: "sec-test",
+      name: "Test",
+      bars: 2,
+      beats: {},
+      lyricBeats: { "1-0": "hallelujah" },
+   };
+   const payload = extractBar(section, 1);
+   assert.deepStrictEqual(payload, { beats: {}, lyricBeats: { "0-0": "hallelujah" } });
+});
+
+test("replaceBarContent overwrites target bar with copied payload", () => {
+   const section = {
+      id: "sec-test",
+      name: "Test",
+      bars: 2,
+      beats: { "0-0": "C", "0-1": "Dm" },
+      lyricBeats: {},
+   };
+   const payload = { beats: { "0-0": "G", "0-1:0": "Em" }, lyricBeats: {} };
+   replaceBarContent(section, 1, payload);
+   assert.strictEqual(section.bars, 2);
+   assert.strictEqual(section.beats["1-0"], "G");
+   assert.strictEqual(section.beats["1-1:0"], "Em");
+   // Bar 0 is untouched
+   assert.strictEqual(section.beats["0-0"], "C");
+   assert.strictEqual(section.beats["0-1"], "Dm");
+});
+
+test("cloneSection creates a fresh id and allows renaming", () => {
+   const original = {
+      id: "original-id",
+      name: "Verse",
+      bars: 4,
+      beats: {},
+      lyricBeats: {},
+   };
+   const clone = cloneSection(original, "Verse Copy");
+   assert.ok(clone.id !== original.id);
+   assert.match(clone.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+   assert.equal(clone.name, "Verse Copy");
+   // Original untouched
+   assert.equal(original.id, "original-id");
+   assert.equal(original.name, "Verse");
+});
+
+test("replaceBarContent clears existing content before writing payload", () => {
+   const section = {
+      id: "sec-test",
+      name: "Test",
+      bars: 2,
+      beats: { "1-0": "X", "1-1": "Y" },
+      lyricBeats: {},
+   };
+   const payload = { beats: { "0-0": "Z" }, lyricBeats: {} };
+   replaceBarContent(section, 1, payload);
+   assert.equal(section.beats["1-0"], "Z");
+   assert.equal(section.beats["1-1"], undefined); // cleared
+});
+
+test("extractBars pulls a contiguous range normalized to bar 0", () => {
+   const section = {
+      id: "s",
+      name: "T",
+      bars: 5,
+      beats: { "0-0": "C", "1-0": "F", "2-0": "G", "2-1:0": "Am", "3-0": "Dm" },
+      lyricBeats: { "2-0": "hymn" },
+   };
+   const payload = extractBars(section, 1, 2);
+   assert.equal(payload.count, 2);
+   // bar 1 -> 0, bar 2 -> 1
+   assert.deepStrictEqual(payload.beats, { "0-0": "F", "1-0": "G", "1-1:0": "Am" });
+   assert.deepStrictEqual(payload.lyricBeats, { "1-0": "hymn" });
+});
+
+test("extractBars is order-agnostic (start/end swapped)", () => {
+   const section = { id: "s", name: "T", bars: 4, beats: { "1-0": "F", "2-0": "G" }, lyricBeats: {} };
+   const a = extractBars(section, 1, 2);
+   const b = extractBars(section, 2, 1);
+   assert.deepStrictEqual(a, b);
+});
+
+test("insertBars shifts existing bars right and writes payload before target", () => {
+   const section = {
+      id: "s",
+      name: "T",
+      bars: 3,
+      beats: { "0-0": "C", "1-0": "F", "2-0": "G" },
+      lyricBeats: {},
+   };
+   const payload = { count: 2, beats: { "0-0": "X", "1-0": "Y" }, lyricBeats: {} };
+   const ok = insertBars(section, 1, payload); // insert BEFORE bar 1
+   assert.equal(ok, true);
+   assert.equal(section.bars, 5);
+   // bar 0 stays
+   assert.equal(section.beats["0-0"], "C");
+   // payload lands at bars 1 and 2
+   assert.equal(section.beats["1-0"], "X");
+   assert.equal(section.beats["2-0"], "Y");
+   // old bar 1 (F) shifted to bar 3, old bar 2 (G) shifted to bar 4
+   assert.equal(section.beats["3-0"], "F");
+   assert.equal(section.beats["4-0"], "G");
+});
+
+test("insertBars respects MAX_BARS and refuses to overflow", () => {
+   const section = { id: "s", name: "T", bars: 95, beats: {}, lyricBeats: {} };
+   const payload = { count: 2, beats: { "0-0": "X" }, lyricBeats: {} };
+   const ok = insertBars(section, 0, payload); // 95 + 2 = 97 > 96
+   assert.equal(ok, false);
+   assert.equal(section.bars, 95); // unchanged
+});
+
+// --- share.js: encode/decode roundtrip -------------------------------------
+
+const SAMPLE_PROJECT = {
+   format: "chord-sheet",
+   version: 2,
+   title: "Amazing Grace ♭",
+   artist: "Traditional",
+   key: "G",
+   meter: "3/4",
+   sections: [
+      {
+         id: "a",
+         name: "Verse 1",
+         bars: 4,
+         beats: { "0-0": { chord: "G" }, "1-0": { chord: "C" } },
+         lyricBeats: { "0-0": "A-ma-zing" },
+      },
+   ],
+};
+
+test("encodeShare/decodeShare roundtrip preserves the project (gzip when available)", async () => {
+   const payload = await encodeShare(SAMPLE_PROJECT);
+   assert.equal(typeof payload, "string");
+   assert.equal(payload[0], "w"); // magic marker
+   assert.ok(payload[1] === "g" || payload[1] === "p"); // scheme
+   const decoded = await decodeShare(payload);
+   assert.deepEqual(decoded, SAMPLE_PROJECT);
+});
+
+test("gzip payload is smaller than plain for a realistic project", async () => {
+   if (!canCompress()) return; // environment without CompressionStream
+   const payload = await encodeShare(SAMPLE_PROJECT);
+   assert.equal(payload[1], "g"); // should pick gzip
+});
+
+test("decodeShare rejects non-share strings", async () => {
+   await assert.rejects(() => decodeShare("not-a-payload"));
+   await assert.rejects(() => decodeShare(""));
+   await assert.rejects(() => decodeShare("wz123")); // unknown scheme 'z'
+});
+
+test("buildShareLink puts payload in the fragment after #/import?d=", async () => {
+   const link = await buildShareLink(SAMPLE_PROJECT, "https://host/app/index.html#/editor");
+   assert.ok(link.startsWith("https://host/app/index.html#/import?d="));
+   // and it must decode back to the same project
+   const payload = extractPayloadFromLink(link);
+   assert.deepEqual(await decodeShare(payload), SAMPLE_PROJECT);
+});
+
+test("extractPayloadFromLink handles full links, bare fragments, and raw payloads", async () => {
+   const payload = await encodeShare(SAMPLE_PROJECT);
+   assert.equal(extractPayloadFromLink(`https://host/app/#/import?d=${payload}`), payload);
+   assert.equal(extractPayloadFromLink(`#/import?d=${payload}`), payload);
+   assert.equal(extractPayloadFromLink(`  ${payload}  `), payload); // raw payload with whitespace
+   assert.equal(extractPayloadFromLink("https://host/app/"), null); // no payload
+   assert.equal(extractPayloadFromLink(""), null);
+});
+
+// ---- Multi-bar clipboard: extract / insert / overwrite ----
+// These back the "Copy bars" selection feature (copy a bar range, paste it
+// over another range). They are pure data transforms on section.beats.
+
+test("extractBars pulls a bar range and rebases slot indices to 0", () => {
+   const section = {
+      bars: 4,
+      beats: {
+         "0-0": { chord: "C", duration: null },
+         "1-0": { chord: "G", duration: null },
+         "2-0": { chord: "Am", duration: null },
+         "3-0": { chord: "F", duration: null },
+      },
+      lyricBeats: { "1-0": "hello", "2-0": "world" },
+   };
+   const payload = extractBars(section, 1, 2);
+   assert.equal(payload.count, 2);
+   // bar 1 -> 0, bar 2 -> 1 (rebased)
+   assert.equal(payload.beats["0-0"].chord, "G");
+   assert.equal(payload.beats["1-0"].chord, "Am");
+   assert.equal(payload.lyricBeats["0-0"], "hello");
+   assert.equal(payload.lyricBeats["1-0"], "world");
+   // bars outside the range are excluded
+   assert.equal(payload.beats["2-0"], undefined);
+});
+
+test("extractBars normalizes a reversed range (endBar < startBar)", () => {
+   const section = {
+      bars: 3,
+      beats: { "0-0": { chord: "C", duration: null }, "2-0": { chord: "F", duration: null } },
+      lyricBeats: {},
+   };
+   const payload = extractBars(section, 2, 0);
+   assert.equal(payload.count, 3);
+   assert.equal(payload.beats["0-0"].chord, "C");
+   assert.equal(payload.beats["2-0"].chord, "F");
+});
+
+test("overwriteBars replaces the target range in place without shifting other bars", () => {
+   const section = {
+      bars: 4,
+      beats: {
+         "0-0": { chord: "C", duration: null },
+         "1-0": { chord: "G", duration: null },
+         "2-0": { chord: "Am", duration: null },
+         "3-0": { chord: "F", duration: null },
+      },
+      lyricBeats: { "3-0": "keep-me" },
+   };
+   const payload = extractBars(section, 0, 1); // copy C, G
+   const ok = overwriteBars(section, 2, payload); // paste over bars 2..3
+   assert.equal(ok, true);
+   assert.equal(section.beats["2-0"].chord, "C");
+   assert.equal(section.beats["3-0"].chord, "G");
+   // Overwritten bar 3's old lyric is cleared (range was replaced).
+   assert.equal(section.lyricBeats["3-0"], undefined);
+   // Bars before the paste target are untouched.
+   assert.equal(section.beats["0-0"].chord, "C");
+   assert.equal(section.beats["1-0"].chord, "G");
+   // No extra bars were inserted.
+   assert.equal(section.bars, 4);
+});
+
+test("overwriteBars grows section.bars when the pasted range extends past the end", () => {
+   const section = {
+      bars: 2,
+      beats: { "0-0": { chord: "C", duration: null }, "1-0": { chord: "G", duration: null } },
+      lyricBeats: {},
+   };
+   const payload = extractBars(section, 0, 1); // 2 bars
+   const ok = overwriteBars(section, 1, payload); // paste at bar 1 -> covers bars 1,2
+   assert.equal(ok, true);
+   assert.equal(section.bars, 3); // grew from 2 to 3
+   assert.equal(section.beats["1-0"].chord, "C");
+   assert.equal(section.beats["2-0"].chord, "G");
+});
+
+test("overwriteBars refuses to exceed MAX_BARS", () => {
+   const section = { bars: MAX_BARS, beats: {}, lyricBeats: {} };
+   const payload = { count: 2, beats: { "0-0": { chord: "C", duration: null } }, lyricBeats: {} };
+   // Pasting 2 bars at the last index would need MAX_BARS+1 bars.
+   const ok = overwriteBars(section, MAX_BARS - 1, payload);
+   assert.equal(ok, false);
+   assert.equal(section.bars, MAX_BARS); // unchanged
+});
+
+test("insertBars shifts existing bars right and respects MAX_BARS", () => {
+   const section = {
+      bars: 2,
+      beats: { "0-0": { chord: "C", duration: null }, "1-0": { chord: "G", duration: null } },
+      lyricBeats: { "1-0": "world" },
+   };
+   const payload = { count: 1, beats: { "0-0": { chord: "Am", duration: null } }, lyricBeats: {} };
+   const ok = insertBars(section, 1, payload); // insert 1 bar before bar 1
+   assert.equal(ok, true);
+   assert.equal(section.bars, 3);
+   assert.equal(section.beats["0-0"].chord, "C"); // unchanged
+   assert.equal(section.beats["1-0"].chord, "Am"); // inserted
+   assert.equal(section.beats["2-0"].chord, "G"); // shifted right
+   assert.equal(section.lyricBeats["2-0"], "world"); // lyric followed its bar
 });

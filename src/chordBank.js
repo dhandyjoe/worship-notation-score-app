@@ -216,14 +216,30 @@ function slashSuggestions(rawInput, limit) {
 /**
  * Suggest normalized chord/Nashville values for a raw query string.
  * @param {string} rawInput - what the user has typed so far.
- * @param {{limit?:number}} [options]
+ * @param {{limit?:number, mode?:"chords"|"numbers"}} [options]
+ *   - mode "chords": only chord suggestions (never Nashville numbers).
+ *   - mode "numbers": only Nashville number suggestions (never chords).
+ *   - omitted: auto-detect from the query (legacy behavior).
  * @returns {string[]} ordered suggestion values (already normalized/standard).
  */
 export function suggestChords(rawInput, options = {}) {
    const limit = options.limit ?? DEFAULT_LIMIT;
+   const mode = options.mode;
    const input = String(rawInput ?? "").trim();
    if (!input) return [];
 
+   // Numbers mode: always Nashville, ignore chord candidates entirely.
+   if (mode === "numbers") {
+      return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
+   }
+
+   // Chords mode: never fall into Nashville, even if the query looks numeric.
+   if (mode === "chords") {
+      if (input.includes("/")) return slashSuggestions(input, limit);
+      return rankAndSlice(chordCandidates(), foldChordKey(input), chordFoldKeys, limit);
+   }
+
+   // Auto-detect (legacy behavior when no mode specified).
    if (detectMode(input) === "nashville") {
       return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
    }
@@ -234,6 +250,6 @@ export function suggestChords(rawInput, options = {}) {
 }
 
 /** True when at least one suggestion exists for the query. */
-export function hasSuggestions(rawInput) {
-   return suggestChords(rawInput, { limit: 1 }).length > 0;
+export function hasSuggestions(rawInput, options = {}) {
+   return suggestChords(rawInput, { ...options, limit: 1 }).length > 0;
 }

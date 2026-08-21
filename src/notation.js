@@ -305,6 +305,152 @@ export function removeBar(section, bar) {
    section.bars = Math.max(1, section.bars - 1);
 }
 
+// ---- Copy / paste helpers (pure, unit-testable) ----
+// Extract a single bar's beats + lyrics, normalized so the bar index becomes 0.
+// Returns { beats, lyricBeats } — deep-cloned, safe to store in a clipboard.
+export function extractBar(section, bar) {
+   const pick = (source) =>
+      Object.fromEntries(
+         Object.entries(source || {}).flatMap(([slot, value]) => {
+            const match = slot.match(/^(\d+)(-.+)$/);
+            if (!match) return [];
+            if (Number(match[1]) !== bar) return [];
+            // Re-base the bar index to 0 and deep-clone the value.
+            const cloned = value && typeof value === "object" ? { ...value } : value;
+            return [[`0${match[2]}`, cloned]];
+         }),
+      );
+   return { beats: pick(section.beats), lyricBeats: pick(section.lyricBeats) };
+}
+
+// Overwrite a target bar's content with a previously-extracted bar payload.
+// Existing slots for that bar are cleared first, then the payload (which is
+// normalized to bar 0) is written at the target bar index. Mutates section.
+export function replaceBarContent(section, bar, payload) {
+   const clearBar = (source) =>
+      Object.fromEntries(Object.entries(source || {}).filter(([slot]) => slotBarIndex(slot) !== bar));
+   const rebase = (source, target) => {
+      Object.entries(source || {}).forEach(([slot, value]) => {
+         const match = slot.match(/^0(-.+)$/);
+         if (!match) return;
+         const cloned = value && typeof value === "object" ? { ...value } : value;
+         target[`${bar}${match[1]}`] = cloned;
+      });
+   };
+   const beats = clearBar(section.beats);
+   const lyricBeats = clearBar(section.lyricBeats);
+   rebase(payload?.beats, beats);
+   rebase(payload?.lyricBeats, lyricBeats);
+   section.beats = beats;
+   section.lyricBeats = lyricBeats;
+}
+
+// Deep-clone a section and assign a fresh id (for copy/paste + duplicate).
+export function cloneSection(section, newName) {
+   const clone = JSON.parse(JSON.stringify(section));
+   clone.id = crypto.randomUUID();
+   if (newName) clone.name = newName;
+   return clone;
+}
+
+// Extract a contiguous RANGE of bars [startBar..endBar] (inclusive), normalized
+// so the first bar in the range becomes bar 0. Returns { count, beats, lyricBeats }
+// — deep-cloned, safe to store in a clipboard. Order-agnostic (start/end can be
+// passed either way round).
+export function extractBars(section, startBar, endBar) {
+   const lo = Math.min(startBar, endBar);
+   const hi = Math.max(startBar, endBar);
+   const pick = (source) =>
+      Object.fromEntries(
+         Object.entries(source || {}).flatMap(([slot, value]) => {
+            const match = slot.match(/^(\d+)(-.+)$/);
+            if (!match) return [];
+            const index = Number(match[1]);
+            if (index < lo || index > hi) return [];
+            const cloned = value && typeof value === "object" ? { ...value } : value;
+            return [[`${index - lo}${match[2]}`, cloned]];
+         }),
+      );
+   return { count: hi - lo + 1, beats: pick(section.beats), lyricBeats: pick(section.lyricBeats) };
+}
+
+// Insert a previously-extracted multi-bar payload into a section BEFORE the
+// given target bar. Existing bars at/after the target shift right by
+// payload.count; the payload (normalized to bar 0) is written at the target
+// index. Mutates section. Respects MAX_BARS (returns false if it would overflow).
+export function insertBars(section, targetBar, payload) {
+   const count = payload?.count || 0;
+   if (!count) return false;
+   if (section.bars + count > MAX_BARS) return false;
+   // Shift every existing slot at index >= targetBar right by `count`.
+   const shiftSlots = (source) =>
+      Object.fromEntries(
+         Object.entries(source || {}).map(([slot, value]) => {
+            const match = slot.match(/^(\d+)(-.+)$/);
+            if (!match) return [slot, value];
+            const index = Number(match[1]);
+            const shifted = index >= targetBar ? index + count : index;
+            return [`${shifted}${match[2]}`, value];
+         }),
+      );
+   const beats = shiftSlots(section.beats);
+   const lyricBeats = shiftSlots(section.lyricBeats);
+   // Write the payload (bar-0-based) at the target index.
+   const rebase = (source, target) => {
+      Object.entries(source || {}).forEach(([slot, value]) => {
+         const match = slot.match(/^(\d+)(-.+)$/);
+         if (!match) return;
+         const cloned = value && typeof value === "object" ? { ...value } : value;
+         target[`${Number(match[1]) + targetBar}${match[2]}`] = cloned;
+      });
+   };
+   rebase(payload.beats, beats);
+   rebase(payload.lyricBeats, lyricBeats);
+   section.beats = beats;
+   section.lyricBeats = lyricBeats;
+   section.bars = section.bars + count;
+   return true;
+}
+
+// Paste a previously-extracted multi-bar payload by OVERWRITING the bars at the
+// target index and the ones after it (target, target+1, …). Bars are NOT shifted
+// right; existing content in the overwritten range is replaced. The section grows
+// only if the payload extends past the current last bar. Mutates section.
+// Respects MAX_BARS (returns false if the paste would overflow the limit).
+export function overwriteBars(section, targetBar, payload) {
+   const count = payload?.count || 0;
+   if (!count) return false;
+   const endBar = targetBar + count - 1; // inclusive last bar the paste writes to
+   if (endBar + 1 > MAX_BARS) return false;
+   // Clear every slot inside the target range [targetBar..endBar]; slots outside
+   // that range are kept exactly where they are (no shifting).
+   const clearRange = (source) =>
+      Object.fromEntries(
+         Object.entries(source || {}).filter(([slot]) => {
+            const index = slotBarIndex(slot);
+            return index < targetBar || index > endBar;
+         }),
+      );
+   const beats = clearRange(section.beats);
+   const lyricBeats = clearRange(section.lyricBeats);
+   // Write the payload (bar-0-based) at the target index.
+   const rebase = (source, target) => {
+      Object.entries(source || {}).forEach(([slot, value]) => {
+         const match = slot.match(/^(\d+)(-.+)$/);
+         if (!match) return;
+         const cloned = value && typeof value === "object" ? { ...value } : value;
+         target[`${Number(match[1]) + targetBar}${match[2]}`] = cloned;
+      });
+   };
+   rebase(payload.beats, beats);
+   rebase(payload.lyricBeats, lyricBeats);
+   section.beats = beats;
+   section.lyricBeats = lyricBeats;
+   // Grow the bar count only when the paste extends beyond the current end.
+   section.bars = Math.max(section.bars, endBar + 1);
+   return true;
+}
+
 // ---- Import normalization / hardening ----
 export function normalizeSection(section, meter = "4/4") {
    const bars = Math.min(MAX_BARS, Math.max(1, Number(section.bars) || 4));

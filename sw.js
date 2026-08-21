@@ -15,13 +15,13 @@
 //     fall through to the network. Cloud features simply require connectivity.
 //
 // Bump CACHE_VERSION whenever shell assets change so old caches are purged.
-const CACHE_VERSION = "wns-shell-v20260805-1";
+const CACHE_VERSION = "wns-shell-v20260821-import24";
 
 // Relative to the SW scope (the app root). The "?v=..." query strings must match
 // exactly what index.html / the ES modules request, or those fetches would miss
 // the precache and hit the network. We ALSO match with ignoreSearch as a
 // fallback, so a version bump degrades gracefully to a network refresh.
-const ASSET_VERSION = "20260808-hide-dot-active";
+const ASSET_VERSION = "20260821-import24";
 const CORE_ASSETS = [
    "./",
    "./index.html",
@@ -42,6 +42,9 @@ const CORE_ASSETS = [
    `./src/pdfOptions.js?v=${ASSET_VERSION}`,
    `./src/cloud.js?v=${ASSET_VERSION}`,
    `./src/cloudUI.js?v=${ASSET_VERSION}`,
+   `./src/share.js?v=${ASSET_VERSION}`,
+   `./src/history.js?v=${ASSET_VERSION}`,
+   `./src/clipboard.js?v=${ASSET_VERSION}`,
    `./src/firebase-config.js?v=${ASSET_VERSION}`,
    "./assets/favicon.svg",
    "./assets/icon-192.png",

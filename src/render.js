@@ -14,9 +14,9 @@ import {
    escapeHTML,
    beatValue,
    lyricValue,
-} from "./notation.js?v=20260808-hide-dot-active";
-import { $, prefersTap } from "./dom.js?v=20260808-hide-dot-active";
-import { getState } from "./store.js?v=20260808-hide-dot-active";
+} from "./notation.js?v=20260821-import24";
+import { $, prefersTap } from "./dom.js?v=20260821-import24";
+import { getState } from "./store.js?v=20260821-import24";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
@@ -24,6 +24,11 @@ const hooks = {
    bindPaletteItem() {},
    bindPreview() {},
    updateViewportOverflow() {},
+   // Returns the current transient bar-selection state (never persisted / undone):
+   // { active, sectionId, anchor, focus } or a falsy value when not selecting.
+   getBarSelection() {
+      return null;
+   },
 };
 export function initRender(overrides = {}) {
    Object.assign(hooks, overrides);
@@ -124,13 +129,18 @@ export function renderControls() {
       .join("");
    $("#lyricsEnabled").checked = state.lyricsEnabled;
    $("#lyricsEnabledLabel").textContent = state.lyricsEnabled ? "Lyrics on" : "Lyrics off";
-   // Mirror the global lyrics state onto the topbar toggle (ribbon is hidden).
+   // Mirror the global lyrics state onto the song-meta toggle (ribbon is hidden).
    const topToggle = $("#lyricsEnabledTop");
    if (topToggle) {
       topToggle.checked = state.lyricsEnabled;
       const topLabel = $("#lyricsEnabledTopLabel");
-      if (topLabel) topLabel.textContent = state.lyricsEnabled ? "Lyrics on" : "Lyrics off";
+      if (topLabel) topLabel.textContent = state.lyricsEnabled ? "On" : "Off";
    }
+   // Reflect the current editing mode on <body> so mode-specific UI (lyrics
+   // toggle placement, suggestion hints, mode badge) can be driven purely by CSS.
+   document.body.dataset.editorMode = state.editorMode === "numbers" ? "numbers" : "chords";
+   const modeBadgeText = $("#editorModeBadge .editor-mode-badge-text");
+   if (modeBadgeText) modeBadgeText.textContent = state.editorMode === "numbers" ? "Nashville Numbers" : "Chord Chart";
    hooks.bindDraggableChords();
    renderCustomChord();
    document
@@ -222,9 +232,19 @@ function sectionHTML(section) {
    if (!renderPreview._cumulativeBarCount) renderPreview._cumulativeBarCount = 0;
    const cumulativeBarStart = renderPreview._cumulativeBarCount;
    renderPreview._cumulativeBarCount += section.bars;
+   // Transient multi-bar selection state (never persisted / part of history).
+   const selection = hooks.getBarSelection();
+   const selecting = !!(selection && selection.active && selection.sectionId === section.id);
+   // A range only exists once an anchor bar has been clicked.
+   const hasRange = selecting && selection.anchor !== null && selection.focus !== null;
+   const selLo = hasRange ? Math.min(selection.anchor, selection.focus) : -1;
+   const selHi = hasRange ? Math.max(selection.anchor, selection.focus) : -1;
    const bars = Array.from({ length: section.bars }, (_, bar) => {
       const globalBarNum = cumulativeBarStart + bar + 1;
-      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat)).join("")}</div>`;
+      const inRange = selecting && bar >= selLo && bar <= selHi;
+      const barSelClass = selecting ? " is-selectable" : "";
+      const barSelectedClass = inRange ? " is-selected" : "";
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${barSelClass}${barSelectedClass}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat)).join("")}</div>`;
    });
    const batches = Array.from(
       { length: Math.ceil(bars.length / 4) },
@@ -240,10 +260,17 @@ function sectionHTML(section) {
          ? `<button class="section-lyrics-toggle ${section.lyricsEnabled !== false ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled !== false}"><span aria-hidden="true">${section.lyricsEnabled !== false ? "✓" : "–"}</span> Lyrics ${section.lyricsEnabled !== false ? "On" : "Off"}</button>`
          : "";
    const deleteDisabled = state.sections.length === 1;
-   const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
+   const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy bars</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
    const typeClass = sectionTypeClass(section.name);
    const chip = `<span class="section-chip" aria-hidden="true"></span>`;
-   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div><div class="bar-grid">${batches}</div></section>`;
+   // Selection action bar: shown above the grid only for the section being selected.
+   const selCount = hasRange ? selHi - selLo + 1 : 0;
+   const selectionBar = selecting
+      ? `<div class="bar-selection-bar" role="status"><span class="bar-selection-count">${
+           selCount ? `${selCount} bar${selCount === 1 ? "" : "s"} selected` : "No bars selected yet"
+        }</span><span class="bar-selection-hint">Click a bar, then Shift+click another to extend</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
+      : "";
+   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }
 export function renderPreview() {
    const state = getState();

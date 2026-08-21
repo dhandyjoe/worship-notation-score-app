@@ -4,7 +4,7 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudId / setCloudId). This keeps
 // the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260808-hide-dot-active";
+import { $, toast } from "./dom.js?v=20260821-import24";
 import {
    isConfigured,
    onAuth,
@@ -20,9 +20,11 @@ import {
    loadSong,
    deleteSong,
    duplicateSong,
-} from "./cloud.js?v=20260808-hide-dot-active";
+} from "./cloud.js?v=20260821-import24";
 
 // Injected editor bridge (set in init).
+import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260821-import24";
+
 let bridge = {
    getProject: () => ({}),
    applyProject: () => {},
@@ -128,6 +130,73 @@ function openConfirmDialog({
       openModal(dialog);
       // Focus the confirm button so the dialog is keyboard-operable at once.
       setTimeout(() => confirmBtn.focus(), 40);
+   });
+}
+
+// Themed replacement for prompt(): opens the Attach Link dialog with a textarea
+// and resolves to the pasted text (trimmed) or null if cancelled/empty. Kept
+// separate from openConfirmDialog because it needs a free-text field.
+let activeAttachCleanup = null;
+function openAttachLinkDialog() {
+   const dialog = $("#attachLinkDialog");
+   // No markup (e.g. old tests) → degrade to the native prompt.
+   if (!dialog) {
+      const text = window.prompt("Paste a share link:");
+      return Promise.resolve(text ? text.trim() : null);
+   }
+   if (activeAttachCleanup) activeAttachCleanup(null);
+
+   const confirmBtn = $("#attachLinkConfirm");
+   const cancelBtn = $("#attachLinkCancel");
+   const input = $("#attachLinkInput");
+   const previouslyFocused = document.activeElement;
+   if (input) input.value = "";
+   // Reset the header/labels in case showShareLinkFallback() repurposed them.
+   const title = $("#attachLinkTitle");
+   const desc = $("#attachLinkDesc");
+   if (title) title.textContent = "Attach a shared song";
+   if (desc)
+      desc.textContent =
+         "Paste a share link (or payload) from another user. The link fragment is decoded locally — nothing is sent to a server.";
+   if (confirmBtn) confirmBtn.textContent = "Preview";
+
+   return new Promise((resolve) => {
+      const finish = (result) => {
+         if (activeAttachCleanup !== cleanup) return;
+         cleanup(result);
+      };
+      const onConfirm = () => {
+         const val = input ? input.value.trim() : "";
+         finish(val || null);
+      };
+      const onDismiss = () => finish(null);
+      const onKey = (e) => {
+         if (e.key === "Escape") finish(null);
+      };
+      const onBackdrop = (e) => {
+         if (e.target.closest("[data-attach-dismiss]")) finish(null);
+      };
+
+      function cleanup(result) {
+         activeAttachCleanup = null;
+         confirmBtn.removeEventListener("click", onConfirm);
+         cancelBtn.removeEventListener("click", onDismiss);
+         dialog.removeEventListener("click", onBackdrop);
+         document.removeEventListener("keydown", onKey);
+         closeModal(dialog);
+         if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+            previouslyFocused.focus();
+         }
+         resolve(result);
+      }
+
+      activeAttachCleanup = cleanup;
+      confirmBtn.addEventListener("click", onConfirm);
+      cancelBtn.addEventListener("click", onDismiss);
+      dialog.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+      openModal(dialog);
+      setTimeout(() => input && input.focus(), 40);
    });
 }
 
@@ -246,6 +315,9 @@ let suppressHashHandling = false;
 // browser Back that leaves the editor while there are unsaved changes.
 let lastRoute = { name: "home" };
 let lastHash = "";
+// True while importFromPayload() is running, so a directly-opened #/import link
+// isn't re-triggered by the navigate() that runs after a successful load.
+let importInFlight = false;
 
 function editorRoute() {
    const id = bridge.getCloudId();
@@ -254,6 +326,14 @@ function editorRoute() {
 
 function parseRoute(hash) {
    const raw = String(hash || "").replace(/^#/, "");
+   // Import link: #/import?d=<payload>. Opened directly (address bar / shared
+   // link) it should trigger the same preview→load flow as the Attach button.
+   const imp = raw.match(/^\/import\b/);
+   if (imp) {
+      const q = raw.indexOf("?");
+      const params = new URLSearchParams(q >= 0 ? raw.slice(q + 1) : "");
+      return { name: "import", payload: params.get("d") || null };
+   }
    const song = raw.match(/^\/song\/(.+)$/);
    if (song) return { name: "editor", id: song[1] === "new" ? null : decodeURIComponent(song[1]) };
    return { name: "home" };
@@ -279,6 +359,19 @@ function navigate(hash, { replace = false } = {}) {
 function applyRoute() {
    const route = parseRoute(location.hash);
    const modal = $("#mySongsModal");
+   if (route.name === "import") {
+      // A shared link was opened directly. Show the gallery behind it, then run
+      // the same preview→load flow used by the Attach Link button. We guard with
+      // a flag so re-entrancy (e.g. navigate() after load) doesn't double-fire.
+      showGalleryScreen();
+      document.documentElement.dataset.screen = "home";
+      if (route.payload && !importInFlight) {
+         importFromPayload(route.payload);
+      }
+      lastRoute = route;
+      lastHash = location.hash;
+      return;
+   }
    if (route.name === "home") {
       showGalleryScreen();
    } else {
@@ -386,6 +479,19 @@ async function routeOnLoad() {
    if (TEST_MODE) {
       document.documentElement.dataset.authGate = "app";
       hasRouted = true;
+      // Honour a shared import link even in the test harness — call import directly
+      // so we don't depend on route-specific logic in applyRoute().
+      const rawHash = location.hash.replace(/^#/, "");
+      const imp = rawHash.match(/^\/import\b/);
+      if (imp) {
+         const q = rawHash.indexOf("?");
+         const params = new URLSearchParams(q >= 0 ? rawHash.slice(q + 1) : "");
+         const payload = params.get("d");
+         if (payload) {
+            await importFromPayload(payload);
+            return;
+         }
+      }
       return;
    }
    let user = null;
@@ -402,6 +508,11 @@ async function routeOnLoad() {
    }
    hideLoginPage();
    const route = parseRoute(location.hash);
+   // A shared import link (#/import?d=...) opened directly → run the preview flow.
+   if (route.name === "import") {
+      applyRoute();
+      return;
+   }
    // A reload on #/song/:id should reopen that song, not silently drop to home.
    if (route.name === "editor" && route.id) {
       openSongInEditor(route.id);
@@ -527,7 +638,7 @@ function cardMarkup(song) {
             <div class="song-card-actions">
                <button class="song-card-action is-edit" type="button" data-act="edit" data-label="Edit" title="Edit" aria-label="Edit ${title}">✎</button>
                <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${title} as PDF">↗</button>
-               <button class="song-card-action is-export" type="button" data-act="export" data-label="Export .file" title="Export .file" aria-label="Export ${title} as file">↓</button>
+               <button class="song-card-action is-export" type="button" data-act="export" data-label="Copy Link" title="Copy a share link for this song" aria-label="Copy share link for ${title}">🔗</button>
                <button class="song-card-action is-duplicate" type="button" data-act="duplicate" data-label="Duplicate" title="Duplicate" aria-label="Duplicate ${title}">⧉</button>
                <button class="song-card-action is-delete" type="button" data-act="delete" data-label="Delete" title="Delete" aria-label="Delete ${title}">🗑</button>
             </div>
@@ -750,14 +861,70 @@ async function handleCardAction(act, cloudId, card) {
          toast("Could not duplicate that song");
       }
    } else if (act === "export") {
+      // Generate a share link and copy it to the clipboard. If the clipboard
+      // API is unavailable/blocked (permissions, non-secure context, not
+      // focused), fall back to showing the link so the user can copy manually.
       try {
          const song = await loadSong(cloudId);
-         downloadSongFile(song);
-         toast(`Exported "${song.title || "Untitled"}"`);
+         const link = await buildShareLink(song, `${location.origin}${location.pathname}`);
+         const copied = await copyTextToClipboard(link);
+         if (copied) {
+            toast("Tautan share berhasil disalin!");
+         } else {
+            await showShareLinkFallback(link);
+         }
       } catch (error) {
-         toast("Could not export that song");
+         console.error("[cloudUI] Share link error:", error);
+         toast("Could not create share link");
       }
    }
+}
+
+// Copy text to clipboard with a legacy fallback. Returns true on success.
+async function copyTextToClipboard(text) {
+   try {
+      if (navigator.clipboard && window.isSecureContext) {
+         await navigator.clipboard.writeText(text);
+         return true;
+      }
+   } catch {
+      // fall through to legacy path
+   }
+   try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+   } catch {
+      return false;
+   }
+}
+
+// When clipboard copy fails, present the link in the Attach Link dialog's
+// textarea (reused, read-only) so the user can select and copy it by hand.
+async function showShareLinkFallback(link) {
+   const input = $("#attachLinkInput");
+   const dialog = $("#attachLinkDialog");
+   const title = $("#attachLinkTitle");
+   const desc = $("#attachLinkDesc");
+   if (!input || !dialog) {
+      window.prompt("Copy this share link:", link);
+      return;
+   }
+   if (title) title.textContent = "Salin tautan ini";
+   if (desc) desc.textContent = "Copy otomatis diblokir browser. Silakan pilih tautan di bawah dan salin manual.";
+   input.value = link;
+   openModal(dialog);
+   setTimeout(() => {
+      input.focus();
+      input.select();
+   }, 40);
 }
 
 // Download a song project as a .chordsheet.json file (mirrors the editor's
@@ -882,42 +1049,149 @@ function initGallery() {
       { passive: true },
    );
 
-   // New song: reset to a blank project (clears cloud link so Save creates new).
+   // New song: open mode picker dialog first (Chords or Numbers).
    // Guarded so starting fresh doesn't silently discard unsaved edits.
    $("#newSongBtn")?.addEventListener("click", () => {
       guardUnsavedThen(() => {
-         bridge.applyProject({
-            format: "chord-sheet",
-            version: 2,
-            title: "New Song",
-            artist: "Artist / Composer",
-            key: "C",
-            meter: "4/4",
-            sections: [{ name: "Intro", bars: [] }],
-            slashChords: [],
+         openModePickerDialog().then((mode) => {
+            if (!mode) return; // user cancelled
+            initNewSong(mode);
          });
-         bridge.setCloudId(null);
-         navigate("#/song/new");
-         toast("Started a new song");
       });
    });
 
-   // Upload a .json straight into the editor (does not auto-save to cloud).
-   $("#galleryUploadInput")?.addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-         const data = JSON.parse(await file.text());
-         bridge.applyProject(data);
-         bridge.setCloudId(null);
-         closeModal(modal);
-         toast("File loaded — click Save to Cloud to keep it");
-      } catch (error) {
-         toast("Invalid file or not a WorshipNotationScore project");
-      } finally {
-         e.target.value = "";
+   /** Open the mode picker dialog and wait for user selection. */
+   function openModePickerDialog() {
+      const dialog = $("#modePickerDialog");
+      if (!dialog) return Promise.reject(new Error("#modePickerDialog not found"));
+
+      return new Promise((resolve) => {
+         let closeResolve = null;
+
+         const onKey = (event) => {
+            if (event.key === "Escape") closeModal(false);
+         };
+
+         const closeModal = (selectedMode) => {
+            dialog.classList.remove("is-open");
+            document.removeEventListener("keydown", onKey);
+            setTimeout(() => {
+               dialog.hidden = true;
+               resolve(selectedMode);
+            }, 260);
+         };
+
+         // Select a mode card
+         Array.from(dialog.querySelectorAll(".mode-card")).forEach((card) => {
+            card.addEventListener("click", () => {
+               const mode = card.dataset.mode;
+               if (!["chords", "numbers"].includes(mode)) {
+                  console.error("[cloudUI] Invalid mode in dataset:", mode);
+                  return;
+               }
+               closeModal(mode);
+            });
+         });
+
+         // Backdrop or data-mode-dismiss elements close without selection
+         dialog.addEventListener("click", (event) => {
+            if (event.target.closest("[data-mode-dismiss]")) {
+               closeModal(null);
+            }
+         });
+
+         // Close button
+         const closeBtn = $("#modePickerClose");
+         closeBtn?.addEventListener("click", () => closeModal(null));
+
+         // Open modal
+         dialog.hidden = false;
+         void dialog.offsetHeight;
+         setTimeout(() => dialog.classList.add("is-open"), 20);
+      });
+   }
+
+   /** Initialize a blank project with the chosen mode settings. */
+   function initNewSong(mode) {
+      const isNumbers = mode === "numbers";
+      bridge.applyProject({
+         format: "chord-sheet",
+         version: 2,
+         title: "New Song",
+         artist: "Artist / Composer",
+         key: "C",
+         meter: "4/4",
+         sections: [{ name: "Intro", bars: [] }],
+         slashChords: [],
+         editorMode: mode,
+         lyricsEnabled: false, // lyrics start OFF in both modes; users opt in via the toggle
+      });
+      bridge.setCloudId(null);
+      navigate("#/song/new");
+      toast(`Started a new ${isNumbers ? "Nashville numbers" : "chord chart"} song`);
+   }
+
+   // Attach Link: open a themed dialog to paste a share link, decode it, and
+   // show a confirm preview before applying to the editor.
+   $("#attachLinkBtn")?.addEventListener("click", async () => {
+      const text = await openAttachLinkDialog();
+      if (!text) return;
+      const payload = extractPayloadFromLink(text);
+      if (!payload) {
+         await openConfirmDialog({
+            title: "Invalid link",
+            message:
+               "That does not look like a valid share link. Please check that you copied the whole link and try again.",
+            confirmLabel: "OK",
+            cancelLabel: "Close",
+            icon: "⚠",
+         });
+         return;
       }
+      await importFromPayload(payload);
    });
+}
+
+// Shared import flow: decode a payload, show a preview confirm, and (on accept)
+// load it into the editor. Used by BOTH the Attach Link button and a directly
+// opened #/import?d=... link. Guarded by importInFlight so an in-progress import
+// (e.g. from the route) isn't re-triggered by a subsequent navigate/applyRoute.
+async function importFromPayload(payload) {
+   if (importInFlight) return;
+   importInFlight = true;
+   try {
+      let song;
+      try {
+         song = await decodeShare(payload);
+      } catch (error) {
+         console.error("[cloudUI] Import decode error:", error);
+         await openConfirmDialog({
+            title: "Could not read link",
+            message:
+               "This link could not be decoded. It may be from a different app version or was corrupted during copy/paste.",
+            confirmLabel: "OK",
+            cancelLabel: "Close",
+            icon: "⚠",
+         });
+         return;
+      }
+      const previewText = `Import this song?\n\nTitle: ${(song.title || "Untitled").trim() || "Untitled"}\nArtist: ${(song.artist || "").trim() || "—"}\nKey: ${song.key || "—"}\nMeter: ${song.meter || "—"}\nSections: ${(song.sections || []).length}`;
+      const confirmed = await openConfirmDialog({
+         title: "Import Shared Song",
+         message: previewText,
+         confirmLabel: "Load & Use",
+         cancelLabel: "Cancel",
+         icon: "🔗",
+      });
+      if (!confirmed) return;
+      bridge.applyProject(song);
+      bridge.setCloudId(null);
+      // Go to the editor screen (NOT #/import, which would re-run this flow).
+      navigate("#/song/new");
+      toast("Song loaded — click Save to Cloud to keep it");
+   } finally {
+      importInFlight = false;
+   }
 }
 
 // ======================================================================

@@ -16,8 +16,8 @@
 // This module is UI-agnostic at its core: apply/read/reset are pure state, and
 // initPdfOptions() wires the modal. Import order: leaf-ish (only dom.js).
 
-import { $, toast } from "./dom.js?v=20260808-hide-dot-active";
-import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260808-hide-dot-active";
+import { $, toast } from "./dom.js?v=20260821-import24";
+import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260821-import24";
 
 const STORAGE_KEY = "chordSheetPdfOptions";
 

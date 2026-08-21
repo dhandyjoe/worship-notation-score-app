@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Dev Server",
+			"type": "shell",
+			"command": "cd /Users/dhandyjoenathankurniaputra/Documents/chord-sheet && python3 -m http.server 8000",
+			"isBackground": true
+		}
+	]
+}

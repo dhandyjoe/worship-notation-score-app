@@ -10,8 +10,8 @@
 //  - Tab commits then advances to the next beat (Shift+Tab → previous).
 //  - Esc / outside-click / scroll closes without committing.
 //  - No match → inline "Unknown chord" message (Option B). No raw commit.
-import { suggestChords } from "./chordBank.js?v=20260808-hide-dot-active";
-import { chordLabel } from "./render.js?v=20260808-hide-dot-active";
+import { suggestChords } from "./chordBank.js?v=20260821-import24";
+import { chordLabel } from "./render.js?v=20260821-import24";
 
 let popover = null; // the root .chord-popover element (created lazily)
 let inputEl = null;
@@ -114,7 +114,11 @@ function onOutsidePointer(event) {
 
 function refreshSuggestions() {
    const query = inputEl.value;
-   suggestions = suggestChords(query, { limit: MAX_SUGGESTIONS });
+   const opts = { limit: MAX_SUGGESTIONS };
+   // ctx.mode ("chords" | "numbers") locks the suggestion type to the song's
+   // editing mode; when absent we fall back to auto-detect (legacy behavior).
+   if (ctx?.mode === "chords" || ctx?.mode === "numbers") opts.mode = ctx.mode;
+   suggestions = suggestChords(query, opts);
    renderList();
 }
 
