@@ -217,7 +217,8 @@ function slashSuggestions(rawInput, limit) {
  * Suggest normalized chord/Nashville values for a raw query string.
  * @param {string} rawInput - what the user has typed so far.
  * @param {{limit?:number, mode?:"chords"|"numbers"}} [options]
- *   - mode "chords": only chord suggestions (never Nashville numbers).
+ *   - mode "chords": letter chord suggestions by default, but a numeric query
+ *     (leading 1–7) surfaces Nashville degrees incl. octave variants (1̇/1̣).
  *   - mode "numbers": only Nashville number suggestions (never chords).
  *   - omitted: auto-detect from the query (legacy behavior).
  * @returns {string[]} ordered suggestion values (already normalized/standard).
@@ -233,9 +234,16 @@ export function suggestChords(rawInput, options = {}) {
       return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
    }
 
-   // Chords mode: never fall into Nashville, even if the query looks numeric.
+   // Chords mode (Chord Chart): primarily letter chords, but a numeric query
+   // (leading 1–7, optionally prefixed with ♭/#) surfaces Nashville degrees so
+   // users can drop in a number with octave variants (base, high 1̇, low 1̣)
+   // without leaving Chord Chart mode. Slash queries still resolve to slash
+   // chords first.
    if (mode === "chords") {
       if (input.includes("/")) return slashSuggestions(input, limit);
+      if (detectMode(input) === "nashville") {
+         return rankAndSlice(allNashvilleCandidates(), foldNashvilleKey(input), nashvilleFoldKeys, limit);
+      }
       return rankAndSlice(chordCandidates(), foldChordKey(input), chordFoldKeys, limit);
    }
 

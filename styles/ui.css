@@ -677,13 +677,15 @@ html.is-print-layout .scroll-affordance {
    text-decoration: none;
 }
 .section-lyrics-toggle,
+.section-chord-above-toggle,
 .text-button {
    transition:
       background 0.15s ease,
       color 0.15s ease,
       border-color 0.15s ease;
 }
-.section-lyrics-toggle:hover {
+.section-lyrics-toggle:hover,
+.section-chord-above-toggle:hover {
    border-color: #9fcbaa;
    background: #e8f5eb;
 }
@@ -883,12 +885,14 @@ html.is-print-layout .scroll-affordance {
    pointer-events: none;
 }
 /* Hide ALL hover/edit affordances while selecting: copy/paste/delete tools,
-   the per-chord × remove badge, add-bar buttons, section menu, etc. */
+   the per-chord × remove badge, add-bar buttons, section menu, etc.
+   NOTE: .beat-dot is intentionally NOT hidden here — the beat/ketukan dots
+   must stay visible while Copy Bars is active so the bar's rhythm remains
+   readable during selection. */
 .preview-section.is-selecting .bar-tools,
 .preview-section.is-selecting .delete-bar,
 .preview-section.is-selecting .chord-remove,
-.preview-section.is-selecting .add-bar,
-.preview-section.is-selecting .beat-dot {
+.preview-section.is-selecting .add-bar {
    display: none !important;
 }
 /* Neutralise every hover state inside a selecting section. */
@@ -1864,6 +1868,7 @@ html[data-theme="dark"] .confirm-dialog-icon {
       padding: 5px;
    }
    .section-lyrics-toggle,
+   .section-chord-above-toggle,
    .text-button,
    .section-menu summary {
       min-height: 40px;
@@ -2325,7 +2330,15 @@ html[data-theme="dark"] .section-lyrics-toggle {
    background: #151715;
    color: var(--muted);
 }
+html[data-theme="dark"] .section-chord-above-toggle {
+   border-color: var(--line);
+   background: #151715;
+   color: var(--muted);
+}
 html[data-theme="dark"] .section-lyrics-toggle span {
+   background: #303531;
+}
+html[data-theme="dark"] .section-chord-above-toggle span {
    background: #303531;
 }
 html[data-theme="dark"] .section-lyrics-toggle.active {
@@ -2333,7 +2346,16 @@ html[data-theme="dark"] .section-lyrics-toggle.active {
    background: #1b3022;
    color: #6dcc98;
 }
+html[data-theme="dark"] .section-chord-above-toggle.active {
+   border-color: #327a52;
+   background: #1b3022;
+   color: #6dcc98;
+}
 html[data-theme="dark"] .section-lyrics-toggle.active span {
+   background: var(--green);
+   color: #08130d;
+}
+html[data-theme="dark"] .section-chord-above-toggle.active span {
    background: var(--green);
    color: #08130d;
 }
@@ -4909,6 +4931,23 @@ html[data-theme="dark"] .mca-num {
 }
 body[data-editor-mode="numbers"] .song-meta-lyrics-toggle {
    display: inline-flex;
+}
+/* Chord-above toggle — disabled for now (feature not ready in Chord Chart mode).
+   .song-meta-chord-above-toggle {
+   display: none;
+   align-items: center;
+   gap: 8px;
+   cursor: pointer;
+   user-select: none;
+   padding-right: 14px;
+   margin-right: 2px;
+   border-right: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+}
+body[data-editor-mode="chords"] .song-meta-chord-above-toggle {
+   display: inline-flex;
+} */
+.song-meta-chord-above-toggle {
+   display: none !important;
 }
 .song-meta-lyrics-caption {
    font-size: 11px;

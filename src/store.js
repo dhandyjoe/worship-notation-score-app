@@ -1,6 +1,6 @@
 // store.js — single source of truth for app state + palette selection.
 // State is reassigned wholesale on import/reset, so consumers must read via getState().
-import { newSection } from "./notation.js?v=20260821-import24";
+import { newSection } from "./notation.js?v=20260824-chordAbove";
 
 function defaultState() {
    const first = newSection("Intro");
@@ -10,6 +10,7 @@ function defaultState() {
       customChord: "",
       meter: "4/4",
       lyricsEnabled: false,
+      chordAboveEnabled: false, // Chord Chart mode: letter chords above numbers; OFF by default
       sections: [first],
       slashChords: [],
       nashvilleNumber: "1",

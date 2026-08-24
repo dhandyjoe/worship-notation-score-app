@@ -14,9 +14,10 @@ import {
    escapeHTML,
    beatValue,
    lyricValue,
-} from "./notation.js?v=20260821-import24";
-import { $, prefersTap } from "./dom.js?v=20260821-import24";
-import { getState } from "./store.js?v=20260821-import24";
+   chordAboveValue,
+} from "./notation.js?v=20260824-chordAbove";
+import { $, prefersTap } from "./dom.js?v=20260824-chordAbove";
+import { getState } from "./store.js?v=20260824-chordAbove";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
@@ -136,6 +137,21 @@ export function renderControls() {
       const topLabel = $("#lyricsEnabledTopLabel");
       if (topLabel) topLabel.textContent = state.lyricsEnabled ? "On" : "Off";
    }
+   // Chord-above (Chord Chart mode) global switch — keep checkbox + label in sync.
+   const chordAboveToggle = $("#chordAboveEnabled");
+   if (chordAboveToggle) {
+      chordAboveToggle.checked = !!state.chordAboveEnabled;
+      const chordAboveLabel = $("#chordAboveEnabledLabel");
+      if (chordAboveLabel)
+         chordAboveLabel.textContent = state.chordAboveEnabled ? "Chords above on" : "Chords above off";
+   }
+   // Mirror onto the visible topbar toggle (ribbon is hidden by default).
+   const chordAboveTop = $("#chordAboveEnabledTop");
+   if (chordAboveTop) {
+      chordAboveTop.checked = !!state.chordAboveEnabled;
+      const topLabel = $("#chordAboveEnabledTopLabel");
+      if (topLabel) topLabel.textContent = state.chordAboveEnabled ? "On" : "Off";
+   }
    // Reflect the current editing mode on <body> so mode-specific UI (lyrics
    // toggle placement, suggestion hints, mode badge) can be driven purely by CSS.
    document.body.dataset.editorMode = state.editorMode === "numbers" ? "numbers" : "chords";
@@ -157,6 +173,15 @@ function lyricInputHTML(section, slot) {
    const text = lyricValue(section, slot),
       label = `Lyrics for beat ${slot.replace(":", " part ")}`;
    return `<span class="lyric-editor"><input class="lyric-input" type="text" value="${escapeHTML(text)}" placeholder="" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="lyric-print">${escapeHTML(text)}</span></span>`;
+}
+// Chord-above cell (Chord Chart mode): a letter chord shown ABOVE the number.
+// Mirrors lyricInputHTML but sits in the top grid row. An empty value renders a
+// faint "+" placeholder so users can discover the affordance.
+function chordAboveInputHTML(section, slot) {
+   const chord = chordAboveValue(section, slot),
+      label = `Chord above beat ${slot.replace(":", " part ")}`,
+      filled = chord ? "has-chord-above" : "";
+   return `<span class="chord-above-editor ${filled}"><input class="chord-above-input" type="text" value="${escapeHTML(chord)}" placeholder="+" data-section="${section.id}" data-slot="${slot}" aria-label="${label}" autocomplete="off" spellcheck="false"><span class="chord-above-print">${chord ? chordLabel(chord) : ""}</span></span>`;
 }
 function subdivisionTargetHTML(section, baseSlot, index, parentDuration) {
    const subSlot = `${baseSlot}:${index}`,
@@ -180,10 +205,13 @@ function beatHTML(section, bar, beat) {
    const state = getState();
    const slot = `${bar}-${beat}`,
       value = beatValue(section, slot),
-      showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false;
+      showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false,
+      showChordAbove = state.editorMode === "chords" && state.chordAboveEnabled && section.chordAboveEnabled !== false;
    if (!value.duration) {
       const notation = `<span class="beat drop-target ${value.chord ? "has-chord" : ""}" data-section="${section.id}" data-slot="${slot}" data-base-slot="${slot}" data-level="0">${chordOrDot(section, slot)}</span>`;
-      return `<span class="beat-column ${showLyrics ? "with-lyrics" : ""}"><span class="notation-cell">${notation}</span>${showLyrics ? lyricInputHTML(section, slot) : ""}</span>`;
+      const columnClasses = `beat-column ${showChordAbove ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
+      const chordAbove = showChordAbove ? chordAboveInputHTML(section, slot) : "";
+      return `<span class="${columnClasses}">${chordAbove}<span class="notation-cell">${notation}</span>${showLyrics ? lyricInputHTML(section, slot) : ""}</span>`;
    }
    if (value.chord && !section.beats[`${slot}:0`]) {
       section.beats[`${slot}:0`] = { chord: value.chord, duration: null };
@@ -210,7 +238,11 @@ function beatHTML(section, bar, beat) {
    const subLyrics = showLyrics
       ? `<span class="sub-lyrics" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((lyricSlot) => lyricInputHTML(section, lyricSlot)).join("")}</span>`
       : "";
-   return `<span class="beat-column duration-column duration-${value.duration} ${showLyrics ? "with-lyrics" : ""}"><span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length ? "has-nested-duration" : ""}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span></span></span>${subLyrics}</span>`;
+   const subChordAbove = showChordAbove
+      ? `<span class="sub-chord-above" style="--lyric-leaves:${lyricSlots.length}">${lyricSlots.map((chordSlot) => chordAboveInputHTML(section, chordSlot)).join("")}</span>`
+      : "";
+   const columnClasses = `beat-column duration-column duration-${value.duration} ${showChordAbove ? "with-chord-above" : ""} ${showLyrics ? "with-lyrics" : ""}`;
+   return `<span class="${columnClasses}">${subChordAbove}<span class="notation-cell"><span class="beat-group duration-${value.duration} ${nestedSplitSlots.length ? "has-nested-duration" : ""}" data-section="${section.id}" data-base-slot="${slot}"><span class="duration-line" title="Click to remove rhythm marker"></span>${quarterPrintLine}<span class="sub-beats">${subBeats}</span></span></span>${subLyrics}</span>`;
 }
 function sectionTypeClass(name) {
    const n = name.toLowerCase().trim();
@@ -227,6 +259,7 @@ function sectionHTML(section) {
    const state = getState();
    const { beats } = meterInfo();
    const showLyrics = lyricsFeatureAvailable && state.lyricsEnabled && section.lyricsEnabled !== false,
+      showChordAbove = state.editorMode === "chords" && state.chordAboveEnabled && section.chordAboveEnabled !== false,
       hasLyricContent = Object.values(section.lyricBeats || {}).some((text) => String(text).trim());
    // Track cumulative bar count across sections
    if (!renderPreview._cumulativeBarCount) renderPreview._cumulativeBarCount = 0;
@@ -244,7 +277,7 @@ function sectionHTML(section) {
       const inRange = selecting && bar >= selLo && bar <= selHi;
       const barSelClass = selecting ? " is-selectable" : "";
       const barSelectedClass = inRange ? " is-selected" : "";
-      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${barSelClass}${barSelectedClass}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat)).join("")}</div>`;
+      return `<div class="bar ${showLyrics ? "has-lyrics" : ""}${showChordAbove ? " has-chord-above" : ""}${barSelClass}${barSelectedClass}" style="--beats:${beats}" data-bar="${bar}"><span class="bar-num" aria-hidden="true">${globalBarNum}</span><span class="bar-tools"><button class="copy-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Copy bar ${globalBarNum}" aria-label="Copy bar ${globalBarNum}">⧉</button><button class="paste-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Paste into bar ${globalBarNum}" aria-label="Paste into bar ${globalBarNum}">⎘</button></span><button class="delete-bar" type="button" data-section="${section.id}" data-bar="${bar}" title="Delete bar ${globalBarNum}" aria-label="Delete bar ${globalBarNum}">×</button>${Array.from({ length: beats }, (_, beat) => beatHTML(section, bar, beat)).join("")}</div>`;
    });
    const batches = Array.from(
       { length: Math.ceil(bars.length / 4) },
@@ -259,6 +292,11 @@ function sectionHTML(section) {
       lyricsFeatureAvailable && state.lyricsEnabled
          ? `<button class="section-lyrics-toggle ${section.lyricsEnabled !== false ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.lyricsEnabled !== false}"><span aria-hidden="true">${section.lyricsEnabled !== false ? "✓" : "–"}</span> Lyrics ${section.lyricsEnabled !== false ? "On" : "Off"}</button>`
          : "";
+   // Chord-above toggle only appears in Chord Chart mode with the global switch on.
+   const chordAboveToggle =
+      state.editorMode === "chords" && state.chordAboveEnabled
+         ? `<button class="section-chord-above-toggle ${section.chordAboveEnabled !== false ? "active" : ""}" data-section="${section.id}" aria-pressed="${section.chordAboveEnabled !== false}"><span aria-hidden="true">${section.chordAboveEnabled !== false ? "✓" : "–"}</span> Chords ${section.chordAboveEnabled !== false ? "On" : "Off"}</button>`
+         : "";
    const deleteDisabled = state.sections.length === 1;
    const sectionMenu = `<details class="section-menu"><summary title="Section options" aria-label="Options for ${escapeHTML(section.name)}">•••</summary><div class="section-menu-popover"><button class="select-bars" type="button" data-section="${section.id}">Copy bars</button><button class="copy-section" type="button" data-section="${section.id}">Copy section</button><button class="paste-section" type="button" data-section="${section.id}">Paste section</button><button class="delete-section" type="button" data-section="${section.id}" ${deleteDisabled ? "disabled" : ""}>Delete section</button></div></details>`;
    const typeClass = sectionTypeClass(section.name);
@@ -270,7 +308,7 @@ function sectionHTML(section) {
            selCount ? `${selCount} bar${selCount === 1 ? "" : "s"} selected` : "No bars selected yet"
         }</span><span class="bar-selection-hint">Click a bar, then Shift+click another to extend</span><button class="bar-selection-copy" type="button" data-section="${section.id}" ${selCount ? "" : "disabled"}>Copy</button><button class="bar-selection-cancel" type="button">Cancel</button></div>`
       : "";
-   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
+   return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }
 export function renderPreview() {
    const state = getState();

@@ -10,8 +10,8 @@
 //  - Tab commits then advances to the next beat (Shift+Tab → previous).
 //  - Esc / outside-click / scroll closes without committing.
 //  - No match → inline "Unknown chord" message (Option B). No raw commit.
-import { suggestChords } from "./chordBank.js?v=20260821-import24";
-import { chordLabel } from "./render.js?v=20260821-import24";
+import { suggestChords } from "./chordBank.js?v=20260824-chordAbove";
+import { chordLabel } from "./render.js?v=20260824-chordAbove";
 
 let popover = null; // the root .chord-popover element (created lazily)
 let inputEl = null;

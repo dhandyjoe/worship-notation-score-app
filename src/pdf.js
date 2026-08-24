@@ -17,8 +17,8 @@
 //    "Save as PDF" dialog proposes a meaningful default filename, then restore
 //    the original title afterward.
 
-import { $ } from "./dom.js?v=20260821-import24";
-import { safeFileName } from "./notation.js?v=20260821-import24";
+import { $ } from "./dom.js?v=20260824-chordAbove";
+import { safeFileName } from "./notation.js?v=20260824-chordAbove";
 
 // Whether WE added the is-print-layout class for the current print job. We only
 // strip it in afterprint if we added it — this preserves a manual "PDF layout"

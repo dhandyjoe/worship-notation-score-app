@@ -11,6 +11,8 @@ import {
    lyricValue,
    setLyric,
    prepareLyricsForDuration,
+   chordAboveValue,
+   setChordAbove,
    barHasContent,
    slotBarIndex,
    splitSyllables,
@@ -102,6 +104,67 @@ test("barHasContent detects chords and lyrics in a bar", () => {
    assert.ok(barHasContent(section, 1));
    assert.ok(barHasContent(section, 2));
    assert.equal(barHasContent(section, 0), false);
+});
+
+test("setChordAbove writes and clears entries", () => {
+   const section = { chordAboveBeats: {} };
+   setChordAbove(section, "0-0", "Am7");
+   assert.equal(section.chordAboveBeats["0-0"], "Am7");
+   setChordAbove(section, "0-0", "   ");
+   assert.equal(section.chordAboveBeats["0-0"], undefined);
+});
+
+test("chordAboveValue returns empty string for unset slots", () => {
+   const section = { chordAboveBeats: { "0-0": "G" } };
+   assert.equal(chordAboveValue(section, "0-0"), "G");
+   assert.equal(chordAboveValue(section, "0-1"), "");
+   assert.equal(chordAboveValue({}, "0-0"), "");
+});
+
+test("barHasContent detects chord-above entries in a bar", () => {
+   const section = { beats: {}, lyricBeats: {}, chordAboveBeats: { "1-0": "Dm" } };
+   assert.ok(barHasContent(section, 1));
+   assert.equal(barHasContent(section, 0), false);
+});
+
+test("normalizeSection preserves and sanitizes chordAboveBeats", () => {
+   const section = { name: "Verse", bars: 2, chordAboveBeats: { "0-0": "C", "0-1": "  " } };
+   const out = normalizeSection(section, "4/4");
+   assert.equal(out.chordAboveBeats["0-0"], "C");
+   assert.equal(out.chordAboveBeats["0-1"], undefined);
+   assert.equal(out.chordAboveEnabled, true);
+   assert.equal(normalizeSection({ name: "X", bars: 1 }).chordAboveEnabled, true);
+   assert.equal(normalizeSection({ name: "X", bars: 1, chordAboveEnabled: false }).chordAboveEnabled, false);
+});
+
+test("extractBar/replaceBarContent preserve chordAboveBeats", () => {
+   const source = {
+      beats: { "1-0": { chord: "C", duration: null } },
+      lyricBeats: { "1-0": "sing" },
+      chordAboveBeats: { "1-0": "G/B" },
+   };
+   const payload = extractBar(source, 1);
+   assert.equal(payload.chordAboveBeats["0-0"], "G/B");
+   const target = { beats: {}, lyricBeats: {}, chordAboveBeats: { "2-0": "old" } };
+   replaceBarContent(target, 2, payload);
+   assert.equal(target.chordAboveBeats["2-0"], "G/B");
+   assert.equal(target.chordAboveBeats["2-1"], undefined);
+});
+
+test("extractBars/overwriteBars preserve chordAboveBeats for multi-bar ranges", () => {
+   const source = {
+      bars: 4,
+      beats: {},
+      lyricBeats: {},
+      chordAboveBeats: { "0-0": "C", "1-0": "F", "2-0": "G", "3-0": "Am" },
+   };
+   const payload = extractBars(source, 0, 1);
+   assert.equal(payload.chordAboveBeats["0-0"], "C");
+   assert.equal(payload.chordAboveBeats["1-0"], "F");
+   const target = { bars: 4, beats: {}, lyricBeats: {}, chordAboveBeats: {} };
+   overwriteBars(target, 2, payload);
+   assert.equal(target.chordAboveBeats["2-0"], "C");
+   assert.equal(target.chordAboveBeats["3-0"], "F");
 });
 
 test("safeFileName produces a filesystem-safe slug", () => {
@@ -238,6 +301,33 @@ test("suggestChords maps quality aliases in Nashville mode too", () => {
    assert.equal(suggestChords("1m7b5")[0], "1ø7");
 });
 
+// Chord Chart mode: a numeric query surfaces Nashville degrees (incl. octave
+// variants) so users can add numbers with high/low octaves without switching
+// out of Chord Chart mode. Letters and slash queries keep letter-chord results.
+test("suggestChords in chords mode surfaces Nashville octave variants for numeric queries", () => {
+   const out = suggestChords("1", { mode: "chords", limit: 6 });
+   assert.equal(out[0], "1"); // base degree first
+   assert.ok(out.includes("1\u0307")); // octave-high 1̇
+   assert.ok(out.includes("1\u0323")); // octave-low 1̣
+});
+
+test("suggestChords in chords mode keeps letter chords for letter queries", () => {
+   const out = suggestChords("C", { mode: "chords", limit: 4 });
+   assert.ok(out.every((value) => /^[A-G]/.test(value))); // no Nashville leaked in
+   assert.equal(out[0], "C");
+});
+
+test("suggestChords in chords mode still resolves slash chords first", () => {
+   const out = suggestChords("G/", { mode: "chords", limit: 3 });
+   assert.ok(out.every((value) => value.startsWith("G/")));
+});
+
+test("suggestChords in chords mode honours Nashville accidentals", () => {
+   const out = suggestChords("♭3", { mode: "chords", limit: 5 });
+   assert.ok(out.length > 0);
+   assert.ok(out.every((value) => value.startsWith("♭3")));
+});
+
 // ---- Copy / paste helpers (extractBar, replaceBarContent, cloneSection) ----
 import {
    extractBar,
@@ -257,7 +347,7 @@ test("extractBar pulls out a single bar's beats and lyrics normalized to bar 0",
       lyricBeats: {},
    };
    const payload = extractBar(section, 0);
-   assert.deepStrictEqual(payload, { beats: { "0-0": "C", "0-1:0": "G" }, lyricBeats: {} });
+   assert.deepStrictEqual(payload, { beats: { "0-0": "C", "0-1:0": "G" }, lyricBeats: {}, chordAboveBeats: {} });
 });
 
 test("extractBar includes lyrics", () => {
@@ -269,7 +359,7 @@ test("extractBar includes lyrics", () => {
       lyricBeats: { "1-0": "hallelujah" },
    };
    const payload = extractBar(section, 1);
-   assert.deepStrictEqual(payload, { beats: {}, lyricBeats: { "0-0": "hallelujah" } });
+   assert.deepStrictEqual(payload, { beats: {}, lyricBeats: { "0-0": "hallelujah" }, chordAboveBeats: {} });
 });
 
 test("replaceBarContent overwrites target bar with copied payload", () => {

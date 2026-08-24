@@ -24,13 +24,15 @@ import {
    lyricValue,
    setLyric,
    prepareLyricsForDuration,
+   chordAboveValue,
+   setChordAbove,
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260821-import24";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260821-import24";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260821-import24";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260821-import24";
+} from "./notation.js?v=20260824-chordAbove";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260824-chordAbove";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260824-chordAbove";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260824-chordAbove";
 import {
    getState,
    setState,
@@ -38,19 +40,19 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260821-import24";
+} from "./store.js?v=20260824-chordAbove";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260821-import24";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260821-import24";
-import { initPdfOptions } from "./pdfOptions.js?v=20260821-import24";
-import { initCloudUI } from "./cloudUI.js?v=20260821-import24";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260821-import24";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260821-import24";
+} from "./render.js?v=20260824-chordAbove";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260824-chordAbove";
+import { initPdfOptions } from "./pdfOptions.js?v=20260824-chordAbove";
+import { initCloudUI } from "./cloudUI.js?v=20260824-chordAbove";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260824-chordAbove";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260824-chordAbove";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Firestore doc id of the currently-open cloud song (null = unsaved / local only).
@@ -674,6 +676,43 @@ function bindPreview() {
          toast(`${words.length} words distributed across beats`);
       });
    });
+   // Chord-above inputs (Chord Chart mode): a letter chord above each number.
+   // Free-text letter chord only (no Nashville) — mirrors lyric-input behaviour.
+   document.querySelectorAll(".chord-above-input").forEach((input) => {
+      input.addEventListener("click", (event) => event.stopPropagation());
+      input.addEventListener("input", () => {
+         const section = findSection(input.dataset.section);
+         if (!section) return;
+         if (isSelectionActiveFor(input.dataset.section)) {
+            renderPreview();
+            return;
+         }
+         setChordAbove(section, input.dataset.slot, input.value);
+         state.activeId = section.id;
+         save();
+      });
+      input.addEventListener("blur", () => {
+         const section = findSection(input.dataset.section);
+         if (!section) return;
+         input.value = input.value.trim();
+         setChordAbove(section, input.dataset.slot, input.value);
+         renderPreview();
+         save();
+      });
+      input.addEventListener("keydown", (event) => {
+         if (event.key === "Escape") {
+            input.blur();
+            return;
+         }
+         if (event.key !== "Enter") return;
+         event.preventDefault();
+         const inputs = [...document.querySelectorAll(".chord-above-input")],
+            index = inputs.indexOf(input),
+            target = inputs[index + (event.shiftKey ? -1 : 1)];
+         target?.focus();
+         target?.select();
+      });
+   });
    document.querySelectorAll(".section-lyrics-toggle").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
@@ -684,6 +723,18 @@ function bindPreview() {
          renderPreview();
          save();
          toast(`Lyrics ${section.lyricsEnabled ? "enabled" : "hidden"} for ${section.name}`);
+      }),
+   );
+   document.querySelectorAll(".section-chord-above-toggle").forEach((button) =>
+      button.addEventListener("click", (event) => {
+         event.stopPropagation();
+         const section = findSection(button.dataset.section);
+         if (!section) return;
+         section.chordAboveEnabled = section.chordAboveEnabled === false;
+         state.activeId = section.id;
+         renderPreview();
+         save();
+         toast(`Chords above ${section.chordAboveEnabled ? "enabled" : "hidden"} for ${section.name}`);
       }),
    );
    document.querySelectorAll(".add-bar").forEach((button) =>
@@ -1167,6 +1218,7 @@ function projectData() {
       customChord: state.customChord,
       meter: state.meter,
       lyricsEnabled: state.lyricsEnabled,
+      chordAboveEnabled: state.chordAboveEnabled,
       sections: state.sections,
       slashChords: state.slashChords,
       nashvilleNumber: state.nashvilleNumber,
@@ -1203,12 +1255,17 @@ function applyProject(project) {
       typeof project.lyricsEnabled === "boolean"
          ? project.lyricsEnabled
          : sections.some((section) => Object.keys(section.lyricBeats).length > 0);
+   const chordAboveEnabled =
+      typeof project.chordAboveEnabled === "boolean"
+         ? project.chordAboveEnabled
+         : sections.some((section) => Object.keys(section.chordAboveBeats || {}).length > 0);
    setState({
       key: keys.includes(project.key) ? project.key : "C",
       chordRoot: keys.includes(project.chordRoot) ? project.chordRoot : "C",
       customChord: typeof project.customChord === "string" ? project.customChord : "",
       meter,
       lyricsEnabled,
+      chordAboveEnabled,
       sections,
       slashChords: Array.isArray(project.slashChords)
          ? project.slashChords.filter((chord) => typeof chord === "string")
@@ -1405,6 +1462,21 @@ function bindControlListeners() {
       const ribbonToggle = $("#lyricsEnabled");
       ribbonToggle.checked = event.target.checked;
       ribbonToggle.dispatchEvent(new Event("change"));
+   });
+   $("#chordAboveEnabledTop")?.addEventListener("change", (event) => {
+      const ribbonToggle = $("#chordAboveEnabled");
+      if (ribbonToggle) {
+         ribbonToggle.checked = event.target.checked;
+         ribbonToggle.dispatchEvent(new Event("change"));
+      }
+   });
+   // Chord-above (Chord Chart mode): a letter chord row above each number.
+   $("#chordAboveEnabled")?.addEventListener("change", (event) => {
+      getState().chordAboveEnabled = event.target.checked;
+      renderControls();
+      renderPreview();
+      save();
+      toast(getState().chordAboveEnabled ? "Chords above numbers enabled" : "Chords above hidden");
    });
    bindAutoSyllable();
    document.querySelectorAll(".ribbon-tab").forEach((tab) => {

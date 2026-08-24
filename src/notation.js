@@ -84,6 +84,8 @@ export const newSection = (name = "Intro") => ({
    name,
    lyricsEnabled: true,
    lyricBeats: {},
+   chordAboveEnabled: true,
+   chordAboveBeats: {},
    bars: 4,
    beats: {},
 });
@@ -265,6 +267,17 @@ export function setLyric(section, slot, text) {
    if (text.trim()) section.lyricBeats[slot] = text;
    else delete section.lyricBeats[slot];
 }
+// ---- Chord-above (Chord Chart mode) --------------------------------------
+// A letter chord shown ABOVE a Nashville number, one per beat slot. Mirrors the
+// lyricBeats model but lives above the notation row instead of below it.
+export function chordAboveValue(section, slot) {
+   return typeof section.chordAboveBeats?.[slot] === "string" ? section.chordAboveBeats[slot] : "";
+}
+export function setChordAbove(section, slot, chord) {
+   section.chordAboveBeats ??= {};
+   if (String(chord).trim()) section.chordAboveBeats[slot] = String(chord).trim();
+   else delete section.chordAboveBeats[slot];
+}
 export function prepareLyricsForDuration(section, baseSlot, nextDuration) {
    section.lyricBeats ??= {};
    const currentDuration = beatValue(section, baseSlot).duration,
@@ -286,7 +299,12 @@ export function prepareLyricsForDuration(section, baseSlot, nextDuration) {
 export function barHasContent(section, bar) {
    return (
       Object.keys(section.beats || {}).some((slot) => slotBarIndex(slot) === bar) ||
-      Object.entries(section.lyricBeats || {}).some(([slot, text]) => slotBarIndex(slot) === bar && String(text).trim())
+      Object.entries(section.lyricBeats || {}).some(
+         ([slot, text]) => slotBarIndex(slot) === bar && String(text).trim(),
+      ) ||
+      Object.entries(section.chordAboveBeats || {}).some(
+         ([slot, chord]) => slotBarIndex(slot) === bar && String(chord).trim(),
+      )
    );
 }
 export function removeBar(section, bar) {
@@ -302,6 +320,7 @@ export function removeBar(section, bar) {
       );
    section.beats = shiftSlots(section.beats);
    section.lyricBeats = shiftSlots(section.lyricBeats);
+   section.chordAboveBeats = shiftSlots(section.chordAboveBeats);
    section.bars = Math.max(1, section.bars - 1);
 }
 
@@ -320,7 +339,11 @@ export function extractBar(section, bar) {
             return [[`0${match[2]}`, cloned]];
          }),
       );
-   return { beats: pick(section.beats), lyricBeats: pick(section.lyricBeats) };
+   return {
+      beats: pick(section.beats),
+      lyricBeats: pick(section.lyricBeats),
+      chordAboveBeats: pick(section.chordAboveBeats),
+   };
 }
 
 // Overwrite a target bar's content with a previously-extracted bar payload.
@@ -339,10 +362,13 @@ export function replaceBarContent(section, bar, payload) {
    };
    const beats = clearBar(section.beats);
    const lyricBeats = clearBar(section.lyricBeats);
+   const chordAboveBeats = clearBar(section.chordAboveBeats);
    rebase(payload?.beats, beats);
    rebase(payload?.lyricBeats, lyricBeats);
+   rebase(payload?.chordAboveBeats, chordAboveBeats);
    section.beats = beats;
    section.lyricBeats = lyricBeats;
+   section.chordAboveBeats = chordAboveBeats;
 }
 
 // Deep-clone a section and assign a fresh id (for copy/paste + duplicate).
@@ -371,7 +397,12 @@ export function extractBars(section, startBar, endBar) {
             return [[`${index - lo}${match[2]}`, cloned]];
          }),
       );
-   return { count: hi - lo + 1, beats: pick(section.beats), lyricBeats: pick(section.lyricBeats) };
+   return {
+      count: hi - lo + 1,
+      beats: pick(section.beats),
+      lyricBeats: pick(section.lyricBeats),
+      chordAboveBeats: pick(section.chordAboveBeats),
+   };
 }
 
 // Insert a previously-extracted multi-bar payload into a section BEFORE the
@@ -395,6 +426,7 @@ export function insertBars(section, targetBar, payload) {
       );
    const beats = shiftSlots(section.beats);
    const lyricBeats = shiftSlots(section.lyricBeats);
+   const chordAboveBeats = shiftSlots(section.chordAboveBeats);
    // Write the payload (bar-0-based) at the target index.
    const rebase = (source, target) => {
       Object.entries(source || {}).forEach(([slot, value]) => {
@@ -406,8 +438,10 @@ export function insertBars(section, targetBar, payload) {
    };
    rebase(payload.beats, beats);
    rebase(payload.lyricBeats, lyricBeats);
+   rebase(payload.chordAboveBeats, chordAboveBeats);
    section.beats = beats;
    section.lyricBeats = lyricBeats;
+   section.chordAboveBeats = chordAboveBeats;
    section.bars = section.bars + count;
    return true;
 }
@@ -433,6 +467,7 @@ export function overwriteBars(section, targetBar, payload) {
       );
    const beats = clearRange(section.beats);
    const lyricBeats = clearRange(section.lyricBeats);
+   const chordAboveBeats = clearRange(section.chordAboveBeats);
    // Write the payload (bar-0-based) at the target index.
    const rebase = (source, target) => {
       Object.entries(source || {}).forEach(([slot, value]) => {
@@ -444,8 +479,10 @@ export function overwriteBars(section, targetBar, payload) {
    };
    rebase(payload.beats, beats);
    rebase(payload.lyricBeats, lyricBeats);
+   rebase(payload.chordAboveBeats, chordAboveBeats);
    section.beats = beats;
    section.lyricBeats = lyricBeats;
+   section.chordAboveBeats = chordAboveBeats;
    // Grow the bar count only when the paste extends beyond the current end.
    section.bars = Math.max(section.bars, endBar + 1);
    return true;
@@ -476,11 +513,19 @@ export function normalizeSection(section, meter = "4/4") {
          if (index < bars * beatCount) lyricBeats[`${Math.floor(index / beatCount)}-${index % beatCount}`] = word;
       });
    }
+   // Chord-above (Chord Chart mode): letter chords displayed above each number.
+   const chordAboveBeats = {};
+   if (section.chordAboveBeats && typeof section.chordAboveBeats === "object")
+      Object.entries(section.chordAboveBeats).forEach(([slot, chord]) => {
+         if (typeof chord === "string" && chord.trim()) chordAboveBeats[slot] = chord.trim();
+      });
    return {
       id: section.id || crypto.randomUUID(),
       name: String(section.name || "Section"),
       lyricsEnabled: section.lyricsEnabled !== false,
       lyricBeats,
+      chordAboveEnabled: section.chordAboveEnabled !== false,
+      chordAboveBeats,
       bars,
       beats,
    };

@@ -483,6 +483,8 @@ html:not(.is-print-layout) .nashville-octave-low .nashville-octave-dot {
    --lyric-h: 32px; /* lyric input + lyric row height */
    --lyric-gap: 8px; /* gap between notation lane and lyric row */
    --lyric-bar-pad: 14px; /* breathing room between barline and beats (lyrics ON only) */
+   --chord-above-h: 28px; /* chord-above input + row height */
+   --chord-above-gap: 6px; /* gap between chord-above row and notation lane */
 }
 .bar-batch .bar {
    flex: 0 0 auto;
@@ -1147,7 +1149,8 @@ body {
    font-size: 11px;
    line-height: 1.3;
 }
-.section-lyrics-toggle {
+.section-lyrics-toggle,
+.section-chord-above-toggle {
    border: 1px solid #cfe4d4;
    border-radius: 999px;
    padding: 5px 9px;
@@ -1157,7 +1160,8 @@ body {
    cursor: pointer;
    white-space: nowrap;
 }
-.section-lyrics-toggle span {
+.section-lyrics-toggle span,
+.section-chord-above-toggle span {
    display: inline-grid;
    width: 14px;
    height: 14px;
@@ -1166,12 +1170,14 @@ body {
    border-radius: 50%;
    background: #e5eee7;
 }
-.section-lyrics-toggle.active {
+.section-lyrics-toggle.active,
+.section-chord-above-toggle.active {
    border-color: #b9dfc2;
    background: #edf8f0;
    color: var(--green);
 }
-.section-lyrics-toggle.active span {
+.section-lyrics-toggle.active span,
+.section-chord-above-toggle.active span {
    background: var(--green);
    color: #fff;
 }
@@ -1214,6 +1220,16 @@ body {
 .beat-column.with-lyrics {
    grid-template-rows: 54px var(--lyric-h, 32px);
    row-gap: var(--lyric-gap, 8px);
+}
+/* Chord-above (Chord Chart mode): a chord row sits ABOVE the notation lane.
+   The chord-above HTML is the FIRST child, so the top grid row holds it. */
+.beat-column.with-chord-above {
+   grid-template-rows: var(--chord-above-h, 28px) 54px;
+   row-gap: var(--chord-above-gap, 6px);
+}
+.beat-column.with-chord-above.with-lyrics {
+   grid-template-rows: var(--chord-above-h, 28px) 54px var(--lyric-h, 32px);
+   row-gap: var(--chord-above-gap, 6px) var(--lyric-gap, 8px);
 }
 .notation-cell {
    min-width: 0;
@@ -1292,6 +1308,65 @@ body {
    width: 34px;
 }
 
+/* ---- Chord-above (Chord Chart mode) ------------------------------------
+   A letter-chord row above each number. Mirrors the lyric editor styling but
+   sits in the top grid row. Only rendered when the toggle is ON, so it never
+   affects layout when OFF. */
+.chord-above-editor {
+   display: block;
+   justify-self: center;
+   align-self: end;
+   min-width: 0;
+   width: 44px;
+}
+.chord-above-print {
+   display: none;
+}
+.chord-above-input {
+   width: 100%;
+   min-width: 0;
+   height: var(--chord-above-h, 28px);
+   border: 1px solid #d8e7dc;
+   border-radius: 7px;
+   padding: 3px 5px;
+   background: rgba(255, 255, 255, 0.78);
+   color: #1f704a;
+   font:
+      750 13px/1.2 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: center;
+   outline: 0;
+   transition:
+      border-color 0.15s,
+      box-shadow 0.15s,
+      background 0.15s;
+}
+.chord-above-input::placeholder {
+   color: #bccabe;
+   font-weight: 500;
+}
+.chord-above-input:hover {
+   border-color: #b7d3be;
+   background: #fff;
+}
+.chord-above-input:focus {
+   position: relative;
+   z-index: 2;
+   border-color: #64a77b;
+   background: #fff;
+   box-shadow: 0 0 0 3px rgba(100, 167, 123, 0.14);
+}
+.sub-chord-above {
+   min-width: 0;
+   display: grid;
+   gap: 0;
+   grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--leaf, 60px), max-content));
+}
+.sub-chord-above .chord-above-editor {
+   width: 40px;
+}
+
 /*
   A duration marker divides one beat; it must never widen OR narrow that beat.
   Lyrics ON must keep the EXACT same beat pitch as lyrics OFF. Non-lyrics slots
@@ -1343,6 +1418,28 @@ body {
 }
 .bar.has-lyrics .sub-lyrics .lyric-editor {
    width: 40px;
+}
+/* Keep beat pitch uniform when chord-above is ON (mirrors .has-lyrics). */
+.bar.has-chord-above .beat-column:not(.duration-column),
+.bar.has-chord-above .sub-beat {
+   min-width: var(--leaf, 60px);
+   width: max-content;
+}
+.bar.has-chord-above .duration-column {
+   width: max-content;
+   min-width: max-content;
+}
+.bar.has-chord-above .beat-group {
+   min-width: 0;
+}
+.bar.has-chord-above .beat-group,
+.bar.has-chord-above .sub-beats,
+.bar.has-chord-above .sub-chord-above {
+   width: max-content;
+}
+.bar.has-chord-above .sub-chord-above {
+   grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--leaf, 60px), max-content));
+   gap: 0;
 }
 .bar.has-lyrics .sub-beat.has-chord .placed-chord {
    min-width: 42px;
@@ -2115,6 +2212,14 @@ html[data-theme="dark"] .placing-cancel:hover {
       grid-template-rows: var(--print-notation-h) minmax(4.2mm, auto);
       row-gap: 1.5mm;
    }
+   .beat-column.with-chord-above {
+      grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h);
+      row-gap: 1.2mm;
+   }
+   .beat-column.with-chord-above.with-lyrics {
+      grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h) minmax(4.2mm, auto);
+      row-gap: 1.2mm 1.5mm;
+   }
    .notation-cell {
       height: var(--print-notation-h);
       display: flex;
@@ -2143,6 +2248,47 @@ html[data-theme="dark"] .placing-cancel:hover {
          sans-serif;
       text-align: center;
       overflow-wrap: anywhere;
+   }
+   /* Chord-above in print: hide the input, show the rendered chord token. */
+   .chord-above-editor {
+      width: 100%;
+      min-width: var(--print-slot);
+      align-self: end;
+   }
+   .chord-above-input {
+      display: none;
+   }
+   .chord-above-print {
+      display: block;
+      min-width: 0;
+      padding: 0.2mm 0.4mm;
+      color: #1f704a;
+      font:
+         800 var(--print-chord-size)/1.2 Inter,
+         ui-sans-serif,
+         sans-serif;
+      text-align: center;
+      overflow-wrap: anywhere;
+   }
+   .sub-chord-above {
+      gap: var(--print-sub-gap);
+   }
+   .bar.has-chord-above .beat-column:not(.duration-column),
+   .bar.has-chord-above .sub-beat {
+      width: max-content;
+      min-width: var(--print-slot);
+   }
+   .bar.has-chord-above .duration-column {
+      width: max-content;
+   }
+   .bar.has-chord-above .sub-chord-above {
+      width: 100%;
+      grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--print-slot), 1fr));
+      gap: var(--print-sub-gap);
+   }
+   .bar.has-chord-above .sub-chord-above .chord-above-editor {
+      width: 100%;
+      min-width: 0;
    }
    .sub-lyrics {
       gap: var(--print-sub-gap);
@@ -2612,6 +2758,14 @@ html.is-print-layout #previewCard .beat-column.with-lyrics {
    grid-template-rows: var(--print-notation-h) minmax(4.2mm, auto);
    row-gap: 1.5mm;
 }
+html.is-print-layout #previewCard .beat-column.with-chord-above {
+   grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h);
+   row-gap: 1.2mm;
+}
+html.is-print-layout #previewCard .beat-column.with-chord-above.with-lyrics {
+   grid-template-rows: minmax(3.6mm, auto) var(--print-notation-h) minmax(4.2mm, auto);
+   row-gap: 1.2mm 1.5mm;
+}
 html.is-print-layout #previewCard .notation-cell {
    height: var(--print-notation-h);
    display: flex;
@@ -2640,6 +2794,47 @@ html.is-print-layout #previewCard .lyric-print {
       sans-serif;
    text-align: center;
    overflow-wrap: anywhere;
+}
+html.is-print-layout #previewCard .chord-above-editor {
+   width: 100%;
+   min-width: var(--print-slot);
+   align-self: end;
+}
+html.is-print-layout #previewCard .chord-above-input {
+   display: none;
+}
+html.is-print-layout #previewCard .chord-above-print {
+   display: block;
+   min-width: 0;
+   padding: 0.2mm 0.4mm;
+   color: #1f704a;
+   font:
+      800 var(--print-chord-size)/1.2 Inter,
+      ui-sans-serif,
+      sans-serif;
+   text-align: center;
+   overflow-wrap: anywhere;
+}
+html.is-print-layout #previewCard .sub-chord-above {
+   gap: var(--print-sub-gap);
+}
+html.is-print-layout #previewCard .bar.has-chord-above .beat-column:not(.duration-column),
+html.is-print-layout #previewCard .bar.has-chord-above .sub-beat {
+   width: max-content;
+   min-width: var(--print-slot);
+}
+html.is-print-layout #previewCard .bar.has-chord-above .duration-column {
+   width: max-content;
+   min-width: 0;
+}
+html.is-print-layout #previewCard .bar.has-chord-above .sub-chord-above {
+   width: 100%;
+   grid-template-columns: repeat(var(--lyric-leaves), minmax(var(--print-slot), 1fr));
+   gap: var(--print-sub-gap);
+}
+html.is-print-layout #previewCard .bar.has-chord-above .sub-chord-above .chord-above-editor {
+   width: 100%;
+   min-width: 0;
 }
 html.is-print-layout #previewCard .sub-lyrics {
    gap: var(--print-sub-gap);

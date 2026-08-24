@@ -34,8 +34,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260821-import24" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260821-import24" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260824-chordAbove" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260824-chordAbove" />
    </head>
    <body>
       <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
@@ -184,6 +184,18 @@
                            <div class="custom-chord-preview" id="customChordPreview"></div>
                         </div>
                      </div>
+                     <div class="palette-divider"><span></span></div>
+                     <div class="palette-group chord-above-settings">
+                        <div>
+                           <span class="palette-label">Chords above numbers</span>
+                           <p class="lyrics-setting-copy">Add a letter chord above each number, like a lyric line on top.</p>
+                        </div>
+                        <label class="switch-control" for="chordAboveEnabled">
+                           <input id="chordAboveEnabled" type="checkbox" />
+                           <span class="switch-track" aria-hidden="true"><span></span></span>
+                           <b id="chordAboveEnabledLabel">Chords above off</b>
+                        </label>
+                     </div>
                   </div>
                   <div
                      class="ribbon-panel"
@@ -321,6 +333,14 @@
                                     <input id="lyricsEnabledTop" type="checkbox" />
                                     <span class="song-meta-lyrics-track" aria-hidden="true"><span class="song-meta-lyrics-thumb"></span></span>
                                     <b id="lyricsEnabledTopLabel">Off</b>
+                                 </span>
+                              </label>
+                              <label class="song-meta-chord-above-toggle" for="chordAboveEnabledTop" title="Show a letter chord above each beat">
+                                 <span class="song-meta-lyrics-caption">CHORDS+</span>
+                                 <span class="song-meta-lyrics-switch">
+                                    <input id="chordAboveEnabledTop" type="checkbox" />
+                                    <span class="song-meta-lyrics-track" aria-hidden="true"><span class="song-meta-lyrics-thumb"></span></span>
+                                    <b id="chordAboveEnabledTopLabel">Off</b>
                                  </span>
                               </label>
                               <span>KEY <b id="previewKey" class="preview-editable" title="Click to edit key">C</b></span
@@ -911,7 +931,7 @@
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260821-import24"></script>
+      <script type="module" src="src/app.js?v=20260824-chordAbove"></script>
       <script>
          // Register the PWA service worker for offline support. Skipped in the
          // automated test harness (?test=...) so caching never interferes with

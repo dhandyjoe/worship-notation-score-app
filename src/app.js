@@ -5,6 +5,6 @@
 //   store.js    — single source of truth for state + palette selection
 //   render.js   — view layer: builds score HTML and writes it to the DOM
 //   events.js   — all user interaction, listeners, import/export, and bootstrap wiring
-import { initEvents } from "./events.js?v=20260821-import24";
+import { initEvents } from "./events.js?v=20260824-chordAbove";
 
 initEvents();
