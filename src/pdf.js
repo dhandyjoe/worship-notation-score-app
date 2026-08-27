@@ -31,22 +31,57 @@ let printClassAddedForJob = false;
 // keep their left barline so every row opens with a clean divider.
 const MID_BAR_CLASS = "pdf-mid-bar";
 
-/**
+// Paper width (mm) by id, mirroring PDF_PAPER in src/pdfOptions.js.
+const PDF_PAPER_MM = { a4: 210, letter: 215.9 };
+// Horizontal side margin (mm) per preset — 2nd token of PDF_MARGINS[.all].
+const PDF_SIDE_MARGIN_MM = { narrow: 7, normal: 9, wide: 14 };
+const PDF_OPTIONS_KEY = "chordSheetPdfOptions";
+const PX_PER_MM = 96 / 25.4;
+
+// Original inline widths saved while we pin the score to the printed title
+// box, so clearMidRowBars() can restore the editor layout as it was.
+const pinnedWidths = new Map(); // element -> original inline width
+
+export function printContentWidthPx() {
+   let paper = "a4", margin = "normal";
+   try {
+      const raw = JSON.parse(localStorage.getItem(PDF_OPTIONS_KEY) || "null");
+      if (raw && PDF_PAPER_MM[raw.paper]) paper = raw.paper;
+      if (raw && raw.margin in PDF_SIDE_MARGIN_MM) margin = raw.margin;
+   } catch { /* keep defaults */ }
+   const contentMM = PDF_PAPER_MM[paper] - 2 * PDF_SIDE_MARGIN_MM[margin];
+   return Math.max(1, contentMM * PX_PER_MM);
+}
+
+/*
  * Tag every bar that does not start a printed row with MID_BAR_CLASS so its
- * redundant left barline can be hidden. Must run while `is-print-layout` is
- * active (its geometry decides where bars wrap). Row membership is derived from
- * each bar's vertical offset within its .bar-grid (bars on the same row share a
- * top; a new top means a new row → that bar is a row start → keep its barline).
+ * redundant left barline can be hidden (the previous bar's RIGHT barline
+ * stays as the single divider).
+ *
+ * IMPORTANT (root cause of `wrong export but correct preview`):
+ *  • The score is pinned to the paper content WIDTH here and KEPT, so
+ *    window.print actually paginates at the same width we classified at.
+ *    clearMidRowBars() (afterprint / preview close) restores afterwards.
+ *  • Bar at grid's left edge starts a row -> keep its left barline.
+ *  • Others: the left barline would sit on top of previous right one
+ *    (doubling thickness), so we drop it.
  */
 export function markMidRowBars() {
+   const printWidth = printContentWidthPx();
    document.querySelectorAll(".bar-grid").forEach((grid) => {
-      let rowTop = null;
+      if (!grid.querySelector(".bar")) return;
+      const card = grid.closest("#previewCard");
+      if (card && !pinnedWidths.has(card)) pinnedWidths.set(card, card.style.width);
+      if (card) card.style.width = `${printWidth}px`;
+
+      if (!pinnedWidths.has(grid)) pinnedWidths.set(grid, grid.style.width);
+      grid.style.width = `${grid.clientWidth}px`;
+
+      const gridLeft = grid.getBoundingClientRect().left;
       grid.querySelectorAll(".bar").forEach((bar) => {
-         const top = Math.round(bar.getBoundingClientRect().top);
-         // First bar overall, or first bar whose top differs from the current
-         // row, starts a new row → keep its left barline.
-         if (rowTop === null || Math.abs(top - rowTop) > 1) {
-            rowTop = top;
+         const left = bar.getBoundingClientRect().left;
+         // row start = left edge glued to the grid's edge.
+         if (Math.abs(left - gridLeft) <= 1) {
             bar.classList.remove(MID_BAR_CLASS);
          } else {
             bar.classList.add(MID_BAR_CLASS);
@@ -55,9 +90,13 @@ export function markMidRowBars() {
    });
 }
 
-/** Remove all MID_BAR_CLASS tags added by markMidRowBars(). */
+/** Remove MID tags AND restore widths pinned by markMidRowBars(). */
 export function clearMidRowBars() {
-   document.querySelectorAll(`.${MID_BAR_CLASS}`).forEach((bar) => bar.classList.remove(MID_BAR_CLASS));
+   document.querySelectorAll(`.${MID_BAR_CLASS}`).forEach((b) => b.classList.remove(MID_BAR_CLASS));
+   pinnedWidths.forEach((originalWidth, el) => {
+      el.style.width = originalWidth;
+   });
+   pinnedWidths.clear();
 }
 
 /**

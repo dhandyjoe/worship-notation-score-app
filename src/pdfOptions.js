@@ -21,6 +21,37 @@ import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260824-chordAbove"
 
 const STORAGE_KEY = "chordSheetPdfOptions";
 
+// Current settings backing this session. Mirror of what will be soldered into
+// the song that is currently open, so the editor can serialize it (per-song
+// PDF options). `null` until first read; functions below lazily initialise it.
+let activeSettings = null;
+function currentSettings() {
+   if (!activeSettings) activeSettings = readPdfOptions();
+   return activeSettings;
+}
+
+// ---- Per-song PDF options ----
+// PDF options were originally stored once per browser (global localStorage).
+// To let EACH song keep its own PDF appearance, events.js serializes the
+// current settings into the song document (`project.pdfOptions`) and re-applies
+// them when that song is loaded via setPdfOptions(). The global localStorage
+// value stays as the DEFAULT for a brand-new song, so nothing regresses.
+
+/** The settings currently being used for the open song (safe clone). */
+export function getPdfOptions() {
+   return sanitize({ ...currentSettings() });
+}
+
+/**
+ * Load + apply the PDF options belonging to a song. Called when a project is
+ * imported / opened from the cloud so its saved appearance is restored.
+ */
+export function setPdfOptions(settings) {
+   activeSettings = sanitize(settings);
+   persist(activeSettings);
+   return applyPdfOptions(activeSettings);
+}
+
 // Tunable tokens. `prop` is the CSS custom property; values are in mm.
 export const PDF_TOKENS = {
    chord: { prop: "--print-chord-size", min: 3.4, max: 5.6, step: 0.1, default: 4.3, label: "Chord size" },
@@ -290,9 +321,14 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
    }
 
    function commit({ persistNow = true } = {}) {
+      activeSettings = settings;
       applyPdfOptions(settings);
       if (persistNow) persist(settings);
       syncControls();
+      // Editing the PDF options is a real document change: the settings are
+      // serialized into the open song, so mark it dirty (saves with the song)
+      // and let the app know to re-serialize.
+      window.dispatchEvent(new CustomEvent("chordsheet:pdfoptionschange", { detail: { settings } }));
       // Geometry changed → re-fit the paper inside the preview pane. Done
       // synchronously: reading offsetWidth forces layout anyway, and relying on
       // requestAnimationFrame can silently skip when the tab isn't rendering.
@@ -302,6 +338,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
    // ---- Open / close ----
    function open() {
       settings = readPdfOptions();
+      activeSettings = settings;
       lastFocused = document.activeElement;
       previewWasOn = typeof isPreviewOn === "function" ? Boolean(isPreviewOn()) : false;
       if (!previewWasOn && typeof setPreview === "function") setPreview(true, { announce: false });

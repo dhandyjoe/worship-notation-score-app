@@ -9,6 +9,7 @@ function defaultState() {
       chordRoot: "C",
       customChord: "",
       meter: "4/4",
+      bpm: 120,
       lyricsEnabled: false,
       chordAboveEnabled: false, // Chord Chart mode: letter chords above numbers; OFF by default
       sections: [first],

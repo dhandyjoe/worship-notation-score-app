@@ -157,6 +157,10 @@ export function renderControls() {
    document.body.dataset.editorMode = state.editorMode === "numbers" ? "numbers" : "chords";
    const modeBadgeText = $("#editorModeBadge .editor-mode-badge-text");
    if (modeBadgeText) modeBadgeText.textContent = state.editorMode === "numbers" ? "Nashville Numbers" : "Chord Chart";
+   // Tempo lives per-song, so mirror the state back into the BPM input whenever
+   // controls re-render (e.g. on load/import) — keeps it from sticking at 120.
+   const bpmInput = $("#bpmInput");
+   if (bpmInput && bpmInput !== document.activeElement) bpmInput.value = String(state.bpm || 120);
    hooks.bindDraggableChords();
    renderCustomChord();
    document

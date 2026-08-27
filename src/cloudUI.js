@@ -33,6 +33,8 @@ let bridge = {
    openPdfOptions: () => {},
    hasUnsavedChanges: () => false,
    markSaved: () => {},
+   isPlaying: () => false,
+   stopPlayback: () => {},
 };
 
 let cachedSongs = []; // last-fetched list (for client-side search filtering)
@@ -265,7 +267,28 @@ function openUnsavedChangesDialog() {
 // Guarded navigation back to My Songs. If the open document has unsaved cloud
 // changes, ask first; otherwise leave immediately.
 async function leaveEditorToHome() {
+   // If audio is still playing, confirm before leaving so the user isn't
+   // surprised the sound cuts out when they land on My Songs. Playback is
+   // stopped automatically on confirmation.
+   if (!(await confirmStopPlayback())) return;
    await guardUnsavedThen(() => navigate(HOME_ROUTE));
+}
+
+// If playback is currently active, ask the user before stopping it. Returns
+// true when we may proceed (nothing was playing, or they chose "Stop & leave");
+// returns false when they cancelled, in which case callers must stay put.
+async function confirmStopPlayback() {
+   if (!bridge.isPlaying || !bridge.isPlaying()) return true;
+   const confirmed = await openConfirmDialog({
+      title: "Playback in progress",
+      message: "The score is still playing. Stop playback and return to My Songs?",
+      confirmLabel: "Stop & leave",
+      cancelLabel: "Stay",
+      icon: "⏹",
+   });
+   if (!confirmed) return false;
+   if (bridge.stopPlayback) bridge.stopPlayback();
+   return true;
 }
 
 // Central unsaved-changes gate. Runs `proceed` immediately when there is nothing
@@ -622,9 +645,13 @@ function cardMarkup(song) {
    const meter = escapeHtml(song.meter || "—");
    const sectionCount = Array.isArray(song.sections) ? song.sections.length : 0;
    const updated = song.updatedAt ? new Date(song.updatedAt).toLocaleDateString() : "";
+   const mode = song.editorMode === "numbers" ? "numbers" : "chords";
+   // Match the edit page's editor-mode badge glyphs: ♪ for Chord Chart, # for Numbers.
+   const modeGlyph = mode === "numbers" ? "#" : "\u266A";
+   const modeTitle = mode === "numbers" ? "Nashville Number" : "Chord Chart";
    return `
       <article class="song-card" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
-               aria-label="${title} by ${creator}">
+               aria-label="${escapeHtml(title)} by ${creator}">
          <h3 class="song-card-title">${title}</h3>
          <div class="song-card-creator">${creator}</div>
          <div class="song-card-detail">
@@ -634,6 +661,7 @@ function cardMarkup(song) {
             <div class="song-card-meta">
                <span class="song-card-chip"><small>Key</small> ${key}</span>
                <span class="song-card-chip"><small>Time</small> ${meter}</span>
+               <span class="song-card-mode-icon is-${mode}" title="${modeTitle}" aria-label="Mode: ${modeTitle}">${modeGlyph}</span>
             </div>
             <div class="song-card-actions">
                <button class="song-card-action is-edit" type="button" data-act="edit" data-label="Edit" title="Edit" aria-label="Edit ${title}">✎</button>
@@ -1306,6 +1334,10 @@ export function initCloudUI(editorBridge) {
    // Test hook: the per-card Export .file path can't reach Firebase in headless
    // CI, so expose the pure download helper for the regression suite to exercise.
    if (TEST_MODE) window.__cloudDownloadSong = downloadSongFile;
+   // Test hook: the old file-upload import flow (an <input type=file> triggered
+   // applyProject) was replaced by share-link import, so expose the real
+   // applyProject path for the regression suite to import a project directly.
+   if (TEST_MODE) window.__cloudImportForTest = (project) => bridge.applyProject(project);
    // Test hook: render N mock cards through the real grid path so the
    // regression suite exercises actual layout (not a DOM stub).
    if (TEST_MODE) {
@@ -1344,26 +1376,38 @@ export function initCloudUI(editorBridge) {
    window.addEventListener("hashchange", () => {
       if (suppressHashHandling) return;
       // Detect a browser Back/Forward (or manual hash edit) that leaves an open
-      // editor for home while there are unsaved cloud changes. The hash has
-      // already changed by the time this fires, so we re-assert the editor route
-      // (without pushing history) and run the same guard used by every other
-      // exit. If the user chooses to stay, they remain in the editor; if they
-      // save or discard, we complete the navigation home.
+      // editor for home. When audio is playing or there are unsaved cloud
+      // changes, we re-pin the editor URL (no new history entry) and route
+      // through the async guards so a "Cancel" keeps the user in the editor.
       const from = lastRoute;
       const to = parseRoute(location.hash);
       const leavingEditor = from.name === "editor" && to.name === "home";
-      if (leavingEditor && bridge.hasUnsavedChanges() && cloudSaveAvailable()) {
+      if (leavingEditor && (bridge.isPlaying?.() || (bridge.hasUnsavedChanges() && cloudSaveAvailable()))) {
          const editorHash = editorRoute();
          // Re-pin the URL to the editor without a new history entry, then prompt.
          suppressHashHandling = true;
          history.replaceState(null, "", editorHash);
          suppressHashHandling = false;
          lastHash = editorHash;
-         guardUnsavedThen(() => navigate(HOME_ROUTE));
+         handleLeaveWithGuard();
          return;
       }
       applyRoute();
    });
+   // Async tail of the hashchange guard: confirm stopping playback first (if
+   // active), then run the unsaved-changes dialog (if needed) before completing
+   // the navigation home. Cancelling any step keeps the (re-pinned) editor open.
+   async function handleLeaveWithGuard() {
+      if (!(await confirmStopPlayback())) {
+         applyRoute();
+         return;
+      }
+      if (bridge.hasUnsavedChanges() && cloudSaveAvailable()) {
+         guardUnsavedThen(() => navigate(HOME_ROUTE));
+      } else {
+         navigate(HOME_ROUTE);
+      }
+   }
    // Reload / tab close protection. Custom dialogs can't run here — the browser
    // shows its own native "Leave site?" prompt when we cancel the event. Only
    // arm it when there is genuinely unsaved cloud work to lose. NEVER arm it in

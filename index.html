@@ -368,6 +368,27 @@
                                        +
                                     </button></span
                                  ></span
+                              ><span class="playback-control"
+                                 ><button
+                                    id="playBtn"
+                                    type="button"
+                                    class="play-btn"
+                                    title="Play score"
+                                    aria-label="Play score"
+                                 >
+                                    ▶</button
+                                 ><span class="bpm-control"
+                                    >BPM
+                                    <input
+                                       id="bpmInput"
+                                       type="number"
+                                       min="40"
+                                       max="240"
+                                       value="120"
+                                       title="Beats per minute"
+                                       aria-label="Beats per minute"
+                                    /></span
+                                 ></span
                               >
                            </div>
                            <div class="history-toolbar">
@@ -666,6 +687,22 @@
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🎼</span>
                   <span class="howto-item-text"><strong>Add multiple bars at once</strong> — use <em>+ Add bar</em> under a section to extend it. Each new bar follows the section's time signature automatically.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎶</span>
+                  <span class="howto-item-text"><strong>Keep a section outline in the PDF</strong> — when you export, every section name is framed in a rounded black outline so parts stay easy to spot on the printed sheet.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">⏱️</span>
+                  <span class="howto-item-text"><strong>Tempo per song</strong> — set each song's own BPM in the box near the play button (▶). It's saved together with the song, so reopening it keeps your exact tempo — every song isn't stuck at 120.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">📄</span>
+                  <span class="howto-item-text"><strong>Per-song PDF options</strong> — in the <em>Export .pdf</em> dialog, chord size, lyric size, beat spacing, paper and margins are saved for each song. Adjusting one song's export never changes another's.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">⏹️</span>
+                  <span class="howto-item-text"><strong>Playback &amp; leaving</strong> — if the music is still playing when you tap <em>My Songs</em>, the app asks before you leave; choosing to go will stop the playback automatically.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🔗</span>

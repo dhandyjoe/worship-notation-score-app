@@ -7,9 +7,12 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 ## Features
 
 - 🎸 Chord palette, slash-chord builder, and full Nashville Number System (with upper/lower octave dots)
+- 🎹 **Instrumental playback** — chords & Nashville numbers are resolved to real piano audio
+  (multi-sample **MusyngKite** acoustic grand piano, sampled every 2 semitones). Letter chords play
+  as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
 - 🥁 Rhythm subdivisions ½ / ⅓ / ¼ per beat (nested up to two levels)
-- 📝 Per-beat lyrics — paste a sentence to auto-distribute words across beats
-- 🔁 Transpose the whole score by semitone (chords + key)
+- 📝 Per-beat lyrics — paste a sentence to auto-distribute words across bars
+- ♻️ Transpose all chords by semitone (chords + key)
 - 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview
 - 📄 Export to PDF (print) and save/load projects as `.chordsheet.json`
 
@@ -62,7 +65,6 @@ chord-sheet/
 │   └── preview.css     #   score canvas + print/PDF layout
 ├── assets/             # Static assets (favicon)
 ├── docs/               # Project docs (Firebase / Firestore setup)
-├── samples/            # Example .chordsheet.json songbooks
 └── tests/              # Unit + regression tests
     ├── unit.test.mjs
     └── regression.mjs

@@ -2053,6 +2053,9 @@ html[data-theme="dark"] .placing-cancel:hover {
    .section-tools,
    .preview-actions,
    .transpose-control,
+   .playback-control,
+   .song-meta-lyrics-toggle,
+   .song-meta-chord-above-toggle,
    .history-toolbar,
    .bar-num,
    .chord-remove,
@@ -2066,7 +2069,7 @@ html[data-theme="dark"] .placing-cancel:hover {
    }
    .preview-card {
       font-size: 11px;
-      color: #173a28;
+      color: #0d2017;
    }
    .preview-header {
       margin-bottom: 0;
@@ -2116,13 +2119,26 @@ html[data-theme="dark"] .placing-cancel:hover {
       border-radius: 2px;
       background: var(--lime);
    }
+   .preview-section.is-active {
+      background: transparent !important;
+      border-radius: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+   }
+   .bar,
+   .beat-group,
+   .notation-cell {
+      background: transparent !important;
+   }
    .section-preview-heading {
       min-height: 16px;
       margin-bottom: 0;
       break-after: avoid;
    }
    .section-title {
-      color: var(--dark-green);
+      color: #000;
       font-size: 13px;
       font-weight: 900;
       letter-spacing: 0.1em;
@@ -2241,7 +2257,7 @@ html[data-theme="dark"] .placing-cancel:hover {
       display: block;
       min-width: 0;
       padding: 0.2mm 0.4mm;
-      color: #20392b;
+      color: #12241c;
       font:
          700 var(--print-lyric-size)/1.25 Inter,
          ui-sans-serif,
@@ -2262,7 +2278,7 @@ html[data-theme="dark"] .placing-cancel:hover {
       display: block;
       min-width: 0;
       padding: 0.2mm 0.4mm;
-      color: #1f704a;
+      color: #0e4d2e;
       font:
          800 var(--print-chord-size)/1.2 Inter,
          ui-sans-serif,
@@ -2561,6 +2577,10 @@ html.is-print-layout .preview-header > div:first-child > .eyebrow,
 html.is-print-layout .section-tools,
 html.is-print-layout .preview-actions,
 html.is-print-layout .transpose-control,
+html.is-print-layout .playback-control,
+html.is-print-layout .bpm-control,
+html.is-print-layout .song-meta-lyrics-toggle,
+html.is-print-layout .song-meta-chord-above-toggle,
 html.is-print-layout .history-toolbar,
 html.is-print-layout .bar-tools,
 html.is-print-layout .copy-bar,
@@ -2650,19 +2670,19 @@ html.is-print-layout #previewCard .section-preview-heading {
 }
 html.is-print-layout #previewCard .section-title {
    display: inline-block;
-   color: var(--dark-green);
+   color: #000;
    font-size: 14.5px;
    font-style: italic;
    font-weight: 800;
    letter-spacing: 0.03em;
-   padding: 2.5px 11px 3px;
-   border: 1.4px solid rgba(50, 122, 82, 0.5);
-   border-radius: 8px;
-   background: rgba(184, 232, 92, 0.16);
-   /* Keep the chip tint + border when printed (Chrome drops backgrounds under
-      the default economy color adjustment otherwise). */
-   -webkit-print-color-adjust: exact;
-   print-color-adjust: exact;
+   /* A crisp black outline around every section name in the exported PDF. The
+      rounded corners + small padding keep it from looking rigid/stiff, so it
+      reads like a clean printed label — but the border always stays black ink
+      (this rule only runs under @media print / is-print-layout). */
+   padding: 1.5px 7px;
+   border: 1px solid #000;
+   border-radius: 6px;
+   background: transparent;
    pointer-events: none;
    text-decoration: none;
 }

@@ -464,8 +464,11 @@ record(
       hasBeats: !!exported.data.sections?.[0]?.beats,
    }),
 );
+// Import: the old topbar file-upload flow (an <input type=file> that applied the
+// picked .json) was replaced by share-link import, so the suite exercises import
+// through the real applyProject path via the __cloudImportForTest test hook.
 await evaluate(
-   `(async()=>{const project=${JSON.stringify({ format: "chord-sheet", version: 2, title: "Imported Song", artist: "Regression Artist", key: "F", chordRoot: "F", customChord: "F6/9", meter: "4/4", lyricsEnabled: true, sections: [{ id: "imported", name: "Verse", lyricsEnabled: true, lyricBeats: { "0-0": "Sing", "0-1:1": "grace", "0-2:0": "through", "0-2:3": "night", "0-3:0": "for", "0-3:1": "me", "1-0:0.0": "nested", "1-0:0.1": "half", "1-1": "slash" }, bars: 4, beats: { "0-0": { chord: "F", duration: null }, "0-1": { chord: null, duration: "half" }, "0-1:1": { chord: "2̇m", duration: null }, "0-2": { chord: null, duration: "quarter" }, "0-2:0": { chord: "1̇", duration: null }, "0-2:3": { chord: "3̣", duration: null }, "0-3": { chord: null, duration: "half" }, "0-3:0": { chord: "4̇", duration: null }, "0-3:1": { chord: "1̇", duration: null }, "1-0": { chord: null, duration: "half" }, "1-0:0": { chord: null, duration: "half" }, "1-0:0.0": { chord: "4", duration: null }, "1-0:0.1": { chord: "Gmaj7", duration: null }, "1-0:1": { chord: "7", duration: null }, "1-1": { chord: "C/F", duration: null } } }], slashChords: ["F/A"], nashvilleNumber: "2̇", nashvilleAccidental: "" })};const input=document.querySelector('#galleryUploadInput'),file=new File([JSON.stringify(project)],'import.chordsheet.json',{type:'application/json'}),transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));return true})()`,
+   `(()=>{const project=${JSON.stringify({ format: "chord-sheet", version: 2, title: "Imported Song", artist: "Regression Artist", key: "F", chordRoot: "F", customChord: "F6/9", meter: "4/4", lyricsEnabled: true, sections: [{ id: "imported", name: "Verse", lyricsEnabled: true, lyricBeats: { "0-0": "Sing", "0-1:1": "grace", "0-2:0": "through", "0-2:3": "night", "0-3:0": "for", "0-3:1": "me", "1-0:0.0": "nested", "1-0:0.1": "half", "1-1": "slash" }, bars: 4, beats: { "0-0": { chord: "F", duration: null }, "0-1": { chord: null, duration: "half" }, "0-1:1": { chord: "2̇m", duration: null }, "0-2": { chord: null, duration: "quarter" }, "0-2:0": { chord: "1̇", duration: null }, "0-2:3": { chord: "3̣", duration: null }, "0-3": { chord: null, duration: "half" }, "0-3:0": { chord: "4̇", duration: null }, "0-3:1": { chord: "1̇", duration: null }, "1-0": { chord: null, duration: "half" }, "1-0:0": { chord: null, duration: "half" }, "1-0:0.0": { chord: "4", duration: null }, "1-0:0.1": { chord: "Gmaj7", duration: null }, "1-0:1": { chord: "7", duration: null }, "1-1": { chord: "C/F", duration: null } } }], slashChords: ["F/A"], nashvilleNumber: "2̇", nashvilleAccidental: "" })};window.__cloudImportForTest(project);return true})()`,
 );
 record(
    "Upload .file restores title and section",
@@ -558,17 +561,16 @@ await screenshot("desktop-1440");
 // screen + is-print-layout is geometrically identical to print + is-print-layout.
 await evaluate("document.documentElement.classList.add('is-print-layout');true");
 const exportLayout = await evaluate(
-   "(()=>{const title=document.querySelector('.section-title'),ts=title&&getComputedStyle(title),sig=document.querySelector('.pdf-signature'),ss=sig&&getComputedStyle(sig),card=document.querySelector('#previewCard'),cs=card&&getComputedStyle(card);let chipBg='';for(const sheet of document.styleSheets){let rules;try{rules=sheet.cssRules}catch(e){continue}for(const r of rules){if(r.selectorText==='html.is-print-layout #previewCard .section-title'){chipBg=r.style.background||r.style.backgroundColor}}}return {titleDisplay:ts?.display,titleStyle:ts?.fontStyle,titleBorderRadius:ts?.borderTopLeftRadius,titleBorderWidth:ts?.borderTopWidth,chipBg,titleFontSize:parseFloat(ts?.fontSize||'0'),sigFontSize:parseFloat(ss?.fontSize||'0'),cardShadow:cs?.boxShadow}})()",
+   "(()=>{const title=document.querySelector('.section-title'),ts=title&&getComputedStyle(title),sig=document.querySelector('.pdf-signature'),ss=sig&&getComputedStyle(sig),card=document.querySelector('#previewCard'),cs=card&&getComputedStyle(card);let chipBg='';for(const sheet of document.styleSheets){let rules;try{rules=sheet.cssRules}catch(e){continue}for(const r of rules){if(r.selectorText==='html.is-print-layout #previewCard .section-title'){chipBg=r.style.background||r.style.backgroundColor}}}return {titleDisplay:ts?.display,titleStyle:ts?.fontStyle,titleColor:ts?.color,titleBorderRadius:ts?.borderTopLeftRadius,titleBorderWidth:ts?.borderTopWidth,titleBorderColor:ts?.borderTopColor,chipBg,titleFontSize:parseFloat(ts?.fontSize||'0'),sigFontSize:parseFloat(ss?.fontSize||'0'),cardShadow:cs?.boxShadow}})()",
 );
 record(
-   "Export: section name is an italic chip (rounded border + tint)",
+   "Export: section name has a rounded black outline (no chip tint)",
    exportLayout.titleDisplay === "inline-block" &&
       exportLayout.titleStyle === "italic" &&
-      parseFloat(exportLayout.titleBorderRadius) > 0 &&
-      parseFloat(exportLayout.titleBorderWidth) > 0 &&
-      /rgba?\(/.test(exportLayout.chipBg) &&
-      exportLayout.chipBg !== "rgba(0, 0, 0, 0)" &&
-      exportLayout.chipBg !== "transparent",
+      parseFloat(exportLayout.titleBorderRadius) === 6 &&
+      (exportLayout.titleBorderWidth === "1px" || parseFloat(exportLayout.titleBorderWidth) === 1) &&
+      (exportLayout.titleColor === "rgb(0, 0, 0)" || exportLayout.titleColor === "#000") &&
+      (exportLayout.chipBg === "transparent" || exportLayout.chipBg === "rgba(0, 0, 0, 0)"),
    JSON.stringify(exportLayout),
 );
 record("Export: footer label is enlarged (>= 9px)", exportLayout.sigFontSize >= 9, JSON.stringify(exportLayout));
@@ -989,8 +991,8 @@ record(
 );
 await evaluate("window.__cloudRenderMock(6);true");
 record(
-   "Cloud: gallery exposes New Song and Upload controls",
-   await evaluate("!!document.querySelector('#newSongBtn')&&!!document.querySelector('#galleryUploadInput')"),
+   "Cloud: gallery exposes New Song and Attach Link controls",
+   await evaluate("!!document.querySelector('#newSongBtn')&&!!document.querySelector('#attachLinkBtn')"),
 );
 // Home is not dismissible, so instead of a close button the route drives the
 // screen: #/song/... shows the editor, #/songs shows home.
@@ -1001,6 +1003,15 @@ record(
    await evaluate("document.querySelector('#mySongsModal').hidden"),
 );
 await evaluate("(()=>{location.hash='#/songs';return true})()");
+// A dirty editor (earlier tests edited the title) triggers the app's unsaved-changes
+// guard, which re-pins the URL and shows the dialog before routing home. Dismiss it
+// the same way the suite's other leave-editor tests do, so home can render.
+await waitFor(
+   "(document.querySelector('#mySongsModal')&&!document.querySelector('#mySongsModal').hidden)||(document.querySelector('#unsavedDialog')&&!document.querySelector('#unsavedDialog').hidden)",
+);
+await evaluate(
+   "(()=>{const d=document.querySelector('#unsavedDialog');if(d&&!d.hidden){document.querySelector('#unsavedDiscardBtn').click()}return true})()",
+);
 await waitFor("!document.querySelector('#mySongsModal').hidden");
 record(
    "Nav: routing to #/songs returns to home (browser Back works)",
@@ -1076,7 +1087,7 @@ for (const [width, height, deviceScaleFactor = 1] of [
    await viewport(width, height, true, deviceScaleFactor);
    await navigate();
    const layout = await evaluate(
-      "(()=>{const inside=el=>{const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.width>0&&r.height>0};return {pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,actions:[...document.querySelectorAll('.topbar-actions .button,.topbar-actions .upload-project')].every(inside),ribbonHidden:getComputedStyle(document.querySelector('.editor-card')).display==='none',lyricsToggle:inside(document.querySelector('.topbar-lyrics-toggle')),toolbarGone:!document.querySelector('.canvas-toolbar'),cardZoom:getComputedStyle(document.querySelector('#previewCard')).zoom}})()",
+      "(()=>{const inside=el=>{const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.width>0&&r.height>0};return {pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1,actions:[...document.querySelectorAll('.topbar-actions .button,.topbar-actions .upload-project')].every(inside),ribbonHidden:getComputedStyle(document.querySelector('.editor-card')).display==='none',lyricsToggle:inside(document.querySelector('.song-meta-lyrics-toggle')),toolbarGone:!document.querySelector('.canvas-toolbar'),cardZoom:getComputedStyle(document.querySelector('#previewCard')).zoom}})()",
    );
    record(`${width}px no page-level horizontal overflow`, !layout.pageOverflow, JSON.stringify(layout));
    record(`${width}px header actions remain visible`, layout.actions, JSON.stringify(layout));

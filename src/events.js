@@ -49,10 +49,11 @@ import {
    chordLabel,
 } from "./render.js?v=20260824-chordAbove";
 import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260824-chordAbove";
-import { initPdfOptions } from "./pdfOptions.js?v=20260824-chordAbove";
+import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260824-chordAbove";
 import { initCloudUI } from "./cloudUI.js?v=20260824-chordAbove";
 import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260824-chordAbove";
 import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260824-chordAbove";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260824-chordAbove";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Firestore doc id of the currently-open cloud song (null = unsaved / local only).
@@ -1217,8 +1218,12 @@ function projectData() {
       chordRoot: state.chordRoot,
       customChord: state.customChord,
       meter: state.meter,
+      bpm: state.bpm,
       lyricsEnabled: state.lyricsEnabled,
       chordAboveEnabled: state.chordAboveEnabled,
+      // Per-song PDF appearance: each song stores its own PDF options so that
+      // tweaking layout for one song never bleeds into another.
+      pdfOptions: getPdfOptions(),
       sections: state.sections,
       slashChords: state.slashChords,
       nashvilleNumber: state.nashvilleNumber,
@@ -1264,6 +1269,7 @@ function applyProject(project) {
       chordRoot: keys.includes(project.chordRoot) ? project.chordRoot : "C",
       customChord: typeof project.customChord === "string" ? project.customChord : "",
       meter,
+      bpm: Number(project.bpm) || 120,
       lyricsEnabled,
       chordAboveEnabled,
       sections,
@@ -1278,6 +1284,11 @@ function applyProject(project) {
       editingId: null,
       editorMode: project.editorMode === "numbers" ? "numbers" : "chords",
    });
+   // Restore this song's own PDF options (font sizes, spacing, paper, margins),
+   // so opening it again keeps the exact export appearance chosen for it.
+   if (project.pdfOptions && typeof project.pdfOptions === "object") {
+      setPdfOptions(project.pdfOptions);
+   }
    clearPaletteSelection();
    $("#songTitle").value = String(project.title || "Song Title");
    $("#artist").value = String(project.artist || "Artist / Composer");
@@ -1447,6 +1458,47 @@ function bindControlListeners() {
    });
    $("#transposeDown").addEventListener("click", () => transposeSheet(-1));
    $("#transposeUp").addEventListener("click", () => transposeSheet(1));
+
+   // Playback controls: play/stop button + BPM input + metronome toggle.
+   const playBtn = $("#playBtn");
+   const bpmInput = $("#bpmInput");
+
+   function updatePlayButton() {
+      const playing = getIsPlaying();
+      playBtn.textContent = playing ? "⏸" : "▶";
+      playBtn.classList.toggle("playing", playing);
+      playBtn.setAttribute("aria-label", playing ? "Pause score" : "Play score");
+      playBtn.setAttribute("title", playing ? "Pause score" : "Play score");
+   }
+
+   playBtn?.addEventListener("click", async () => {
+      if (getIsPlaying()) {
+         stopPlayback();
+         updatePlayButton();
+      } else {
+         // Optimistic: show the "playing" state immediately so the button reacts
+         // while samples are being loaded/downloaded, not only after playback begins.
+         playBtn.textContent = "⏸";
+         playBtn.classList.add("playing");
+         playBtn.setAttribute("aria-label", "Pause score");
+         playBtn.setAttribute("title", "Pause score");
+         // startPlayback is async (may await a sample download). After it resolves,
+         // sync the button to the real playback state (playing / fallback / error).
+         await startPlayback({ onBeat: highlightBeat, onEnd: updatePlayButton });
+         updatePlayButton();
+      }
+   });
+
+   bpmInput?.addEventListener("input", (event) => {
+      const bpm = Math.min(240, Math.max(40, Number(event.target.value)));
+      getState().bpm = bpm || 120;
+      // Persist to the song (history + dirty flag) and re-sync the control so
+      // it reflects the new tempo (each song keeps its own BPM, not a static 120).
+      save();
+      renderControls();
+   });
+
+
    $("#undoBtn")?.addEventListener("click", () => undoSheet());
    $("#redoBtn")?.addEventListener("click", () => redoSheet());
    $("#lyricsEnabled").addEventListener("change", (event) => {
@@ -1621,6 +1673,9 @@ function bindControlListeners() {
          exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
       },
    });
+   // PDF options are part of each song's document (per-song PDF options), so
+   // tweaking them marks the song as having unsaved changes.
+   window.addEventListener("chordsheet:pdfoptionschange", () => setDirty(true));
    window.addEventListener(
       "scroll",
       () => {
@@ -1831,5 +1886,10 @@ export function initEvents() {
          renderPreview();
          pdfOptionsControl?.open();
       },
+      // Playback awareness for cloudUI: it needs to know whether audio is live
+      // so that leaving to My Songs can ask first and stop it, without cloudUI
+      // importing the playback module (keeps the module graph acyclic).
+      isPlaying: () => getIsPlaying(),
+      stopPlayback: () => stopPlayback(),
    });
 }
