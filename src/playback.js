@@ -42,6 +42,10 @@ const MIDI_TO_FREQ = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
 // Base octave: Nashville number root sits at octave 4 (C4 = MIDI 60).
 const BASE_OCTAVE = 4;
+// Letter chord voicing (experiment): a low bass note (C2 = MIDI 36) with the
+// triad at the middle octave (C4 = MIDI 60), i.e. C → C2 + C4-E4-G4.
+const CHORD_OCTAVE = 4;
+const CHORD_BASS_OCTAVE = 2;
 const MIDI_C0 = 12; // MIDI note 0 = C-1, so C0 = 12
 
 // ---- Parsing helpers ----
@@ -89,7 +93,7 @@ function parseNashville(chord) {
 /**
  * Resolve a chord string into an array of MIDI note numbers.
  *
- * - Letter chord → chord (root + quality intervals + optional bass).
+ * - Letter chord → low bass + middle-voiced triad (root + quality intervals).
  * - Nashville number → single note (root only, ignore quality).
  *
  * @param {string} chord  The chord/number string from section.beats[slot].chord
@@ -112,18 +116,22 @@ export function chordToMidiNotes(chord, songKey) {
       return [midiNote];
    }
 
-   // Letter chord → chord (block harmony)
+   // Letter chord → chord (block harmony), voiced low-mid:
+   // a low bass note (root or slash bass) plus the triad one octave above.
    const parsed = parseLetterChord(chord);
    if (!parsed) return [];
 
    const intervals = QUALITY_INTERVALS[parsed.quality] ?? QUALITY_INTERVALS[""];
-   const rootMidi = MIDI_C0 + parsed.rootPitch + BASE_OCTAVE * 12;
+   const rootMidi = MIDI_C0 + parsed.rootPitch + CHORD_OCTAVE * 12;
    const notes = intervals.map((interval) => rootMidi + interval);
 
-   // Slash chord: add bass note one octave below root
-   if (parsed.bassPitch !== null) {
-      notes.unshift(MIDI_C0 + parsed.bassPitch + (BASE_OCTAVE - 1) * 12);
-   }
+   // Low bass: use the slash bass when present, otherwise double the root one
+   // octave below, so chords sit comfortably in the low-mid register.
+   notes.unshift(
+      parsed.bassPitch !== null
+         ? MIDI_C0 + parsed.bassPitch + CHORD_BASS_OCTAVE * 12
+         : MIDI_C0 + parsed.rootPitch + CHORD_BASS_OCTAVE * 12,
+   );
 
    return notes;
 }
@@ -225,9 +233,9 @@ function scheduleNote(frequencies, time, duration) {
    const gain = audioCtx.createGain();
    gain.connect(audioCtx.destination);
 
-   // Envelope: 20ms attack, hold, 150ms release
+   // Envelope: 20ms attack, hold, 300ms release (longer sustain feel)
    const attack = 0.02;
-   const release = 0.15;
+   const release = 0.3;
    const sustain = Math.max(duration - attack - release, 0.05);
 
    gain.gain.setValueAtTime(0, time);
@@ -257,7 +265,7 @@ function scheduleClick(time) {
    osc.connect(gain);
    gain.connect(audioCtx.destination);
    gain.gain.setValueAtTime(0, time);
-   gain.gain.linearRampToValueAtTime(0.08, time + 0.001);
+   gain.gain.linearRampToValueAtTime(0.06, time + 0.001);
    gain.gain.linearRampToValueAtTime(0, time + 0.03);
    osc.start(time);
    osc.stop(time + 0.04);

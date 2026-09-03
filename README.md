@@ -8,8 +8,8 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 
 - 🎸 Chord palette, slash-chord builder, and full Nashville Number System (with upper/lower octave dots)
 - 🎹 **Instrumental playback** — chords & Nashville numbers are resolved to real piano audio
-  (multi-sample **MusyngKite** acoustic grand piano, sampled every 2 semitones). Letter chords play
-  as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
+  (multi-sample **Salamander Grand Piano** V3 — Yamaha C5, recorded by Alexander Holm). Letter
+  chords play as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
 - 🥁 Rhythm subdivisions ½ / ⅓ / ¼ per beat (nested up to two levels)
 - 📝 Per-beat lyrics — paste a sentence to auto-distribute words across bars
 - ♻️ Transpose all chords by semitone (chords + key)

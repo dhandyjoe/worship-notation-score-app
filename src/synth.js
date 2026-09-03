@@ -2,13 +2,13 @@
 //
 // Design rules (2026-08-26):
 //  • Lazy load on first play: don't download until user clicks "Play"
-//  • Multi-sample (per-2-semitone) so each note uses a nearby sample with a small
-//    playbackRate shift → much more realistic sound than a single stretched sample.
+//  • Multi-sample (Salamander set, sampled in minor thirds) so each note uses a
+//    nearby sample with a small playbackRate shift → realistic sound.
 //  • Confirm dialog before download: show total size + how many files.
 //  • Progress bar during download: real-time % and MB across all files.
 //  • Cache in IndexedDB: after first download, samples persist across refreshes.
-//  • Source: MusyngKite acoustic grand piano (Steinway via F. Amedori),
-//    hosted on gleitz.github.io (CORS-enabled), CC BY-SA 3.0.
+//  • Source: Salamander Grand Piano V3 (Yamaha C5, Alexander Holm),
+//    hosted on tonejs.github.io/audio (CORS-enabled), CC BY 3.0.
 
 let audioCtx = null;
 let samples = []; // [{ midi, buffer }] — decoded samples
@@ -23,48 +23,48 @@ let reverbWetGain = null;
 // ---- Central audio tuning knobs ----
 // Adjust these instead of hunting through scheduling/envelope code.
 const AUDIO_CONFIG = {
-   masterVolume: 0.7, // master gain — protect ears & avoid clipping on chords
-   notePeak: 0.6,     // per-note peak gain (× velocity)
+   masterVolume: 0.95, // master gain — protect ears & avoid clipping on chords
+   notePeak: 0.9,     // per-note peak gain (× velocity)
    compressorThreshold: -18, // dB
    compressorRatio: 6,
    compressorKnee: 10,       // dB (soft knee)
    compressorAttack: 0.003,
    compressorRelease: 0.25,
    attack: 0.015,     // seconds — fast hammer attack
-   release: 1.1,      // seconds — gentle tail after the decay
-   minDuration: 1.5,  // seconds — floor so notes aren't chopped at fast tempos
+   release: 1.8,      // seconds — longer tail after the decay (sustain feel)
+   minDuration: 2.5,  // seconds — floor so notes sound longer at fast tempos
    reverbLevel: 0.12, // wet/dry mix (0 = fully dry)
    reverbDuration: 1.8, // seconds — synthetic IR length
    reverbDecay: 2.6,     // exponent — higher = shorter tail
 };
 
-// Base URL for MusyngKite acoustic grand piano (CORS-enabled GitHub Pages).
+// Base URL for Salamander Grand Piano V3 (CORS-enabled GitHub Pages).
 const SOUNDFONT_BASE =
-   "https://gleitz.github.io/midi-js-soundfonts/MusyngKite/acoustic_grand_piano-mp3/";
+   "https://tonejs.github.io/audio/salamander/";
 
-// Per-2-semitone sample set spanning the full piano range (A0–C8).
-// The soundfont manifest names notes with flats (Db, Eb, Gb, Ab, Bb).
+// Salamander sample set spanning the full piano range (A0–C8), kept in its
+// original minor-third grid. File names use sharp suffixes: Ds, Fs (no flats).
 const SAMPLE_NOTES = [
-   "A0", "B0", "C1", "D1", "E1", "Gb1", "Ab1", "Bb1",
-   "C2", "D2", "E2", "Gb2", "Ab2", "Bb2",
-   "C3", "D3", "E3", "Gb3", "Ab3", "Bb3",
-   "C4", "D4", "E4", "Gb4", "Ab4", "Bb4",
-   "C5", "D5", "E5", "Gb5", "Ab5", "Bb5",
-   "C6", "D6", "E6", "Gb6", "Ab6", "Bb6",
-   "C7", "D7", "E7", "Gb7", "Ab7", "Bb7", "C8",
+   "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
+   "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8",
+   "Ds1", "Ds2", "Ds3", "Ds4", "Ds5", "Ds6", "Ds7",
+   "Fs1", "Fs2", "Fs3", "Fs4", "Fs5", "Fs6", "Fs7",
 ];
 
 // IndexedDB key prefix for the sample set (bump to force re-download).
-export const SAMPLE_CACHE_KEY = "musyngkite-piano-per2-v1";
+export const SAMPLE_CACHE_KEY = "salamander-piano-tonejs-v1";
 
 const PITCH_CLASS = {
-   C: 0, Db: 1, D: 2, Eb: 3, E: 4, F: 5, Gb: 6,
-   G: 7, Ab: 8, A: 9, Bb: 10, B: 11,
+   C: 0, Cs: 1, Db: 1, D: 2, Ds: 3, Eb: 3, E: 4, F: 5, Fs: 6, Gb: 6,
+   G: 7, Gs: 8, Ab: 8, A: 9, As: 10, Bb: 10, B: 11,
 };
 
-/** Convert a soundfont note name ("C4", "Db3") to a MIDI note number. */
+/**
+ * Convert a sample note name ("C4", "Ds3", "Gb4") to a MIDI note number.
+ * Supports both sharp suffixes ("Ds") — used by Salamander — and flat names ("Db").
+ */
 export function noteNameToMidi(name) {
-   const m = String(name).match(/^([A-G]b?)([0-9])$/);
+   const m = String(name).match(/^([A-G]s?b?)([0-9])$/);
    if (!m) return null;
    const pc = PITCH_CLASS[m[1]];
    if (pc === undefined) return null;
@@ -149,13 +149,13 @@ export async function askForDownload() {
                </div>
                <div class="info-row">
                   <span class="info-label">🎹 Source:</span>
-                  <span class="info-value">MusyngKite acoustic grand piano (Steinway)</span>
+                  <span class="info-value">Salamander Grand Piano V3 (Yamaha C5)</span>
                </div>
                <div class="info-row">
                   <span class="info-label">📜 License:</span>
                   <span class="info-value">
-                     CC BY-SA 3.0 —
-                     <a href="https://github.com/gleitz/midi-js-soundfonts" target="_blank" rel="noopener">gleitz/midi-js-soundfonts</a>
+                     CC BY 3.0 —
+                     <a href="https://github.com/tonejs/audio" target="_blank" rel="noopener">tonejs/audio — Salamander samples</a>
                   </span>
                </div>
                
@@ -466,17 +466,17 @@ export function playSoundFontChord(frequencies, opts = {}) {
       source.buffer = nearest.buffer;
       source.playbackRate.value = Math.min(2, Math.max(0.5, ratio));
 
-      // Natural piano envelope: fast hammer attack → exponential decay → soft tail.
+      // Natural piano envelope: fast hammer attack → long gentle sustain → soft tail.
       const gain = audioCtx.createGain();
       const peak = AUDIO_CONFIG.notePeak * velocity;
 
       gain.gain.setValueAtTime(0, start);
       gain.gain.linearRampToValueAtTime(peak, start + AUDIO_CONFIG.attack);
-      gain.gain.exponentialRampToValueAtTime(
-         peak * 0.001,
-         start + duration * 0.8,
-      );
-      gain.gain.setTargetAtTime(0, start + duration * 0.8, AUDIO_CONFIG.release / 4);
+      // Sustain: keep most of the level until nearly the end of the note, then
+      // let it decay gently so notes linger longer (melodic, warm feel).
+      const sustainEnd = start + duration * 0.95;
+      gain.gain.exponentialRampToValueAtTime(peak * 0.05, sustainEnd);
+      gain.gain.setTargetAtTime(0, sustainEnd, AUDIO_CONFIG.release / 4);
 
       source.connect(gain);
 

@@ -4,108 +4,110 @@ import {
    chordToMidiNotes,
    chordToFrequencies,
 } from "../src/playback.js";
+import { noteNameToMidi } from "../src/synth.js?v=20260824-chordAbove";
 
 // ---- Chord to MIDI note resolution ----
 
 test("chordToMidiNotes resolves letter chords to MIDI note arrays", () => {
-   // C major triad: C(60) + E(64) + G(67)
+   // C major triad: low bass C2 + middle C4-E4-G4
    const notes = chordToMidiNotes("C", "C");
-   assert.deepEqual(notes, [60, 64, 67]);
+   assert.deepEqual(notes, [36, 60, 64, 67]);
 });
 
 test("chordToMidiNotes handles minor chords", () => {
-   // Cm: C(60) + Eb(63) + G(67)
+   // Cm: C2 + C4-Eb4-G4
    const notes = chordToMidiNotes("Cm", "C");
-   assert.deepEqual(notes, [60, 63, 67]);
+   assert.deepEqual(notes, [36, 60, 63, 67]);
 });
 
 test("chordToMidiNotes handles 7th chords", () => {
-   // C7: C(60) + E(64) + G(67) + Bb(70)
+   // C7: C2 + C4-E4-G4-Bb4
    const notes = chordToMidiNotes("C7", "C");
-   assert.deepEqual(notes, [60, 64, 67, 70]);
+   assert.deepEqual(notes, [36, 60, 64, 67, 70]);
 });
 
 test("chordToMidiNotes handles maj7 chords", () => {
-   // Cmaj7: C(60) + E(64) + G(67) + B(71)
+   // Cmaj7: C2 + C4-E4-G4-B4
    const notes = chordToMidiNotes("Cmaj7", "C");
-   assert.deepEqual(notes, [60, 64, 67, 71]);
+   assert.deepEqual(notes, [36, 60, 64, 67, 71]);
 });
 
 test("chordToMidiNotes handles m7 chords", () => {
-   // Cm7: C(60) + Eb(63) + G(67) + Bb(70)
+   // Cm7: C2 + C4-Eb4-G4-Bb4
    const notes = chordToMidiNotes("Cm7", "C");
-   assert.deepEqual(notes, [60, 63, 67, 70]);
+   assert.deepEqual(notes, [36, 60, 63, 67, 70]);
 });
 
 test("chordToMidiNotes handles slash chords (bass note)", () => {
-   // G/B: B(59 one octave below root) + G(67) + B(71) + D(74)
+   // G/B: B2 bass + G4-B4-D5 triad
    const notes = chordToMidiNotes("G/B", "C");
    assert.ok(notes.length === 4);
-   assert.equal(notes[0], 59); // Bass B one octave below root (match D/F# = 54)
-   assert.ok(notes.includes(67)); // G root
+   assert.equal(notes[0], 47); // Bass B2
+   assert.ok(notes.includes(67)); // G4 root
 });
 
 test("chordToMidiNotes handles sus2 chords", () => {
-   // Csus2: C(60) + D(62) + G(67)
+   // Csus2: C2 + C4-D4-G4
    const notes = chordToMidiNotes("Csus2", "C");
-   assert.deepEqual(notes, [60, 62, 67]);
+   assert.deepEqual(notes, [36, 60, 62, 67]);
 });
 
 test("chordToMidiNotes handles sus4 chords", () => {
-   // Csus4: C(60) + F(65) + G(67)
+   // Csus4: C2 + C4-F4-G4
    const notes = chordToMidiNotes("Csus4", "C");
-   assert.deepEqual(notes, [60, 65, 67]);
+   assert.deepEqual(notes, [36, 60, 65, 67]);
 });
 
 test("chordToMidiNotes handles diminished chords (°)", () => {
-   // C°: C(60) + Eb(63) + Gb(66)
+   // C°: C2 + C4-Eb4-Gb4
    const notes = chordToMidiNotes("C°", "C");
-   assert.deepEqual(notes, [60, 63, 66]);
+   assert.deepEqual(notes, [36, 60, 63, 66]);
 });
 
 test("chordToMidiNotes handles augmented chords (+)", () => {
-   // C+: C(60) + E(64) + G#(68)
+   // C+: C2 + C4-E4-G#4
    const notes = chordToMidiNotes("C+", "C");
-   assert.deepEqual(notes, [60, 64, 68]);
+   assert.deepEqual(notes, [36, 60, 64, 68]);
 });
 
 test("chordToMidiNotes handles half-diminished chords (ø7)", () => {
-   // Cø7: C(60) + Eb(63) + Gb(66) + Bb(70)
+   // Cø7: C2 + C4-Eb4-Gb4-Bb4
    const notes = chordToMidiNotes("Cø7", "C");
-   assert.deepEqual(notes, [60, 63, 66, 70]);
+   assert.deepEqual(notes, [36, 60, 63, 66, 70]);
 });
 
 test("chordToMidiNotes handles add9 chords", () => {
-   // Cadd9: C(60) + E(64) + G(67) + D(74) - D is one octave higher
+   // Cadd9: C2 + C4-E4-G4 + D4 (the 9th is a whole tone above the root)
    const notes = chordToMidiNotes("Cadd9", "C");
-   assert.ok(notes.includes(60)); // C root
+   assert.ok(notes.includes(36)); // C2 bass
+   assert.ok(notes.includes(60)); // C4 root
    assert.ok(notes.includes(64)); // E
    assert.ok(notes.includes(67)); // G
-   assert.ok(notes.includes(74)); // D (add9)
+   assert.ok(notes.includes(62)); // D (add9)
 });
 
 test("chordToMidiNotes handles sharp accidentals", () => {
-   // C#m: C#(61) + E(64) + G#(68)
+   // C#m: C#2 + C#4-E4-G#4
    const notes = chordToMidiNotes("C#m", "C");
-   assert.deepEqual(notes, [61, 64, 68]);
+   assert.deepEqual(notes, [37, 61, 64, 68]);
 });
 
 test("chordToMidiNotes handles flat accidentals", () => {
-   // Bbm: Bb(70) + Db(73) + F(77) at octave 4 (C4 = 60)
+   // Bbm: Bb2 + Bb4-Db4-F4
    const notes = chordToMidiNotes("Bbm", "C");
-   assert.deepEqual(notes, [70, 73, 77]);
+   assert.deepEqual(notes, [46, 70, 73, 77]);
 });
 
 test("chordToMidiNotes handles unicode sharp accidentals", () => {
-   // C♯m: C♯(61) + E(64) + G♯(68)
+   // C♯m: C♯2 + C♯4-E4-G♯4
    const notes = chordToMidiNotes("C♯m", "C");
-   assert.deepEqual(notes, [61, 64, 68]);
+   assert.deepEqual(notes, [37, 61, 64, 68]);
 });
 
 test("chordToMidiNotes handles unicode flat accidentals", () => {
-   // B♭m: Bb(70) + Db(73) + F(77) at octave 4 (C4 = 60)
+   // B♭m: B♭2 + B♭4-D♭4-F4
    const notes = chordToMidiNotes("B♭m", "C");
-   assert.deepEqual(notes, [70, 73, 77]);
+   assert.deepEqual(notes, [46, 70, 73, 77]);
 });
 
 test("chordToMidiNotes returns empty array for empty chord", () => {
@@ -264,12 +266,13 @@ test("chordToMidiNotes: Nashville with octave + accidental (#5̣)", () => {
 test("chordToFrequencies converts chords to Hz arrays", () => {
    const freqs = chordToFrequencies("C", "C");
    assert.ok(Array.isArray(freqs));
-   assert.equal(freqs.length, 3); // C major triad
+   assert.equal(freqs.length, 4); // C2 bass + C4-E4-G4 triad
    assert.ok(freqs.every(f => typeof f === "number"));
-   // C(60) ≈ 261.63 Hz, E(64) ≈ 329.63 Hz, G(67) ≈ 392 Hz
-   assert.ok(freqs[0] > 260 && freqs[0] < 263);
-   assert.ok(freqs[1] > 329 && freqs[1] < 330);
-   assert.ok(freqs[2] > 391 && freqs[2] < 393);
+   // C2(36) ≈ 65.41 Hz, C4(60) ≈ 261.63 Hz, E4(64) ≈ 329.63 Hz, G4(67) ≈ 392 Hz
+   assert.ok(freqs[0] > 64.5 && freqs[0] < 66);
+   assert.ok(freqs[1] > 260 && freqs[1] < 263);
+   assert.ok(freqs[2] > 329 && freqs[2] < 330);
+   assert.ok(freqs[3] > 391 && freqs[3] < 393);
 });
 
 test("chordToFrequencies handles Nashville numbers", () => {
@@ -318,12 +321,13 @@ test("chordToMidiNotes handles multiple accidentals in complex chords", () => {
    const notes = chordToMidiNotes("B♭maj7", "C");
    assert.ok(Array.isArray(notes));
    assert.ok(notes.length > 0);
-   assert.equal(notes[0], 70); // Bb root
+   assert.equal(notes[0], 46); // Bb2 bass
 });
 
 test("chordToMidiNotes: 6th chords", () => {
    const notes = chordToMidiNotes("C6", "C");
-   assert.ok(notes.includes(60)); // C
+   assert.ok(notes.includes(36)); // C2 bass
+   assert.ok(notes.includes(60)); // C4
    assert.ok(notes.includes(64)); // E
    assert.ok(notes.includes(67)); // G
    assert.ok(notes.includes(69)); // A (6th)
@@ -331,7 +335,8 @@ test("chordToMidiNotes: 6th chords", () => {
 
 test("chordToMidiNotes: m6 chords", () => {
    const notes = chordToMidiNotes("Cm6", "C");
-   assert.ok(notes.includes(60)); // C
+   assert.ok(notes.includes(36)); // C2 bass
+   assert.ok(notes.includes(60)); // C4
    assert.ok(notes.includes(63)); // Eb
    assert.ok(notes.includes(67)); // G
    assert.ok(notes.includes(69)); // A (6th)
@@ -407,9 +412,9 @@ test("chordToMidiNotes with various keys consistency", () => {
    const notesC = chordToMidiNotes("Cm7", "C");
    const notesG = chordToMidiNotes("Gm7", "C");
    
-   // Both should be Cm7 and Gm7 respectively (4 notes)
-   assert.equal(notesC.length, 4);
-   assert.equal(notesG.length, 4);
+   // Both should be Cm7 and Gm7 respectively (5 notes: bass + 4 chord tones)
+   assert.equal(notesC.length, 5);
+   assert.equal(notesG.length, 5);
    
    // Intervals should be same
    const intervalsC = [notesC[1] - notesC[0], notesC[2] - notesC[1], notesC[3] - notesC[2]];
@@ -422,9 +427,8 @@ test("chordToMidiNotes slash chord placement", () => {
    // D/F# should have F# as bass (lowest note)
    const notes = chordToMidiNotes("D/F#", "C");
    
-   // F# is MIDI 66, D is MIDI 62
-   // Bass F# should be one octave lower = 54
-   assert.equal(notes[0], 54);
+   // F# bass is MIDI 42 (F#2), D root is MIDI 62 (D4)
+   assert.equal(notes[0], 42);
    assert.ok(notes.includes(62)); // D root
 });
 
@@ -433,9 +437,31 @@ test("chordToMidiNotes all major chords in C major scale", () => {
    const keys = ["C", "D", "E", "F", "G", "A", "B"];
    const allNotes = keys.map(k => chordToMidiNotes(k, "C"));
    
-   // All should produce valid triads
+   // All should produce a low bass + triad (4 notes each)
    allNotes.forEach(notes => {
-      assert.equal(notes.length, 3);
+      assert.equal(notes.length, 4);
       assert.ok(notes.every(n => typeof n === "number"));
    });
 });
+
+// ---- noteNameToMidi (Salamander sample names) ----
+
+test("noteNameToMidi parses sharp-suffix names", () => {
+   assert.equal(noteNameToMidi("A0"), 21);
+   assert.equal(noteNameToMidi("C8"), 108);
+   assert.equal(noteNameToMidi("Ds4"), 63);
+   assert.equal(noteNameToMidi("Fs3"), 54);
+});
+
+test("noteNameToMidi still parses flat names", () => {
+   assert.equal(noteNameToMidi("Gb4"), 66);
+   assert.equal(noteNameToMidi("Eb3"), 51);
+   assert.equal(noteNameToMidi("Bb2"), 46);
+});
+
+test("noteNameToMidi returns null for invalid names", () => {
+   assert.equal(noteNameToMidi("H4"), null);
+   assert.equal(noteNameToMidi(""), null);
+   assert.equal(noteNameToMidi("C-1"), null);
+});
+
