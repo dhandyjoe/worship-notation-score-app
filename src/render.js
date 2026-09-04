@@ -15,9 +15,9 @@ import {
    beatValue,
    lyricValue,
    chordAboveValue,
-} from "./notation.js?v=20260824-chordAbove";
-import { $, prefersTap } from "./dom.js?v=20260824-chordAbove";
-import { getState } from "./store.js?v=20260824-chordAbove";
+} from "./notation.js?v=20260904-marginnarrow0";
+import { $, prefersTap } from "./dom.js?v=20260904-marginnarrow0";
+import { getState } from "./store.js?v=20260904-marginnarrow0";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {

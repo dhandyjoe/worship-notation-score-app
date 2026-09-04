@@ -2093,6 +2093,9 @@ html[data-theme="dark"] .placing-cancel:hover {
    .song-meta {
       font-size: 8px;
       gap: 16px;
+      /* Move the KEY / TIME SIGNATURE block further in from the right edge of
+         the printed header (chord glyphs in the bars are untouched). */
+      margin-right: 10mm;
    }
    .song-meta b {
       margin-top: 4px;
@@ -2623,6 +2626,9 @@ html.is-print-layout #previewCard .song-meta {
    font-size: 8px;
    gap: 16px;
    color: #5f7367;
+   /* Mirrors @media print: KEY / TIME SIGNATURE block moved further toward the
+      center so the preview matches the exported PDF exactly. */
+   margin-right: 10mm;
 }
 html.is-print-layout #previewCard .song-meta b {
    margin-top: 4px;

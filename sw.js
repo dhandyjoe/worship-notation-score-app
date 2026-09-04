@@ -15,13 +15,13 @@
 //     fall through to the network. Cloud features simply require connectivity.
 //
 // Bump CACHE_VERSION whenever shell assets change so old caches are purged.
-const CACHE_VERSION = "wns-shell-v20260827-barline";
+const CACHE_VERSION = "wns-shell-v20260904-marginnarrow0";
 
 // Relative to the SW scope (the app root). The "?v=..." query strings must match
 // exactly what index.html / the ES modules request, or those fetches would miss
 // the precache and hit the network. We ALSO match with ignoreSearch as a
 // fallback, so a version bump degrades gracefully to a network refresh.
-const ASSET_VERSION = "20260827-barline";
+const ASSET_VERSION = "20260904-marginnarrow0";
 const CORE_ASSETS = [
    "./",
    "./index.html",

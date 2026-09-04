@@ -8,9 +8,9 @@
 //  • One-shot playback (no loop), stop at end.
 //  • Supports both Synthesis (instant) and SoundFont (real samples) modes.
 
-import { notePitches, isNashvilleChord, beatValue, durationMeta } from "./notation.js?v=20260824-chordAbove";
-import { getState } from "./store.js?v=20260824-chordAbove";
-import { initAudioContext, closeAudioContext, playSoundFontChord, checkSoundFontSize, downloadSoundFont, getDownloadState, askForDownload, loadSamplesFromCache } from "./synth.js?v=20260824-chordAbove";
+import { notePitches, isNashvilleChord, beatValue, durationMeta } from "./notation.js?v=20260904-marginnarrow0";
+import { getState } from "./store.js?v=20260904-marginnarrow0";
+import { initAudioContext, closeAudioContext, playSoundFontChord, checkSoundFontSize, downloadSoundFont, getDownloadState, askForDownload, loadSamplesFromCache } from "./synth.js?v=20260904-marginnarrow0";
 
 // ---- Chord quality → semitone intervals (from root) ----
 const QUALITY_INTERVALS = {

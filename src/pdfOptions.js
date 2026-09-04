@@ -16,8 +16,8 @@
 // This module is UI-agnostic at its core: apply/read/reset are pure state, and
 // initPdfOptions() wires the modal. Import order: leaf-ish (only dom.js).
 
-import { $, toast } from "./dom.js?v=20260824-chordAbove";
-import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260824-chordAbove";
+import { $, toast } from "./dom.js?v=20260904-marginnarrow0";
+import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260904-marginnarrow0";
 
 const STORAGE_KEY = "chordSheetPdfOptions";
 
@@ -56,7 +56,7 @@ export function setPdfOptions(settings) {
 export const PDF_TOKENS = {
    chord: { prop: "--print-chord-size", min: 3.4, max: 5.6, step: 0.1, default: 4.3, label: "Chord size" },
    lyric: { prop: "--print-lyric-size", min: 2.6, max: 4.4, step: 0.1, default: 3.2, label: "Lyric size" },
-   slot: { prop: "--print-slot", min: 5.0, max: 9.0, step: 0.1, default: 6.2, label: "Beat spacing" },
+   slot: { prop: "--print-slot", min: 3.0, max: 9.0, step: 0.1, default: 6.2, label: "Beat spacing" },
 };
 
 // One-click presets set all three tokens at once.

@@ -4,7 +4,7 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudId / setCloudId). This keeps
 // the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260824-chordAbove";
+import { $, toast } from "./dom.js?v=20260904-marginnarrow0";
 import {
    isConfigured,
    onAuth,
@@ -20,10 +20,10 @@ import {
    loadSong,
    deleteSong,
    duplicateSong,
-} from "./cloud.js?v=20260824-chordAbove";
+} from "./cloud.js?v=20260904-marginnarrow0";
 
 // Injected editor bridge (set in init).
-import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260824-chordAbove";
+import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260904-marginnarrow0";
 
 let bridge = {
    getProject: () => ({}),

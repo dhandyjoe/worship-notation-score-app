@@ -17,8 +17,8 @@
 //    "Save as PDF" dialog proposes a meaningful default filename, then restore
 //    the original title afterward.
 
-import { $ } from "./dom.js?v=20260824-chordAbove";
-import { safeFileName } from "./notation.js?v=20260824-chordAbove";
+import { $ } from "./dom.js?v=20260904-marginnarrow0";
+import { safeFileName } from "./notation.js?v=20260904-marginnarrow0";
 
 // Whether WE added the is-print-layout class for the current print job. We only
 // strip it in afterprint if we added it — this preserves a manual "PDF layout"
@@ -35,6 +35,21 @@ const MID_BAR_CLASS = "pdf-mid-bar";
 const PDF_PAPER_MM = { a4: 210, letter: 215.9 };
 // Horizontal side margin (mm) per preset — 2nd token of PDF_MARGINS[.all].
 const PDF_SIDE_MARGIN_MM = { narrow: 7, normal: 9, wide: 14 };
+// Narrow's margins for the ACTUAL print/export job only. The on-screen PDF
+// options preview keeps the (unchanged) PDF_MARGINS value from pdfOptions.js -
+// this override is applied only while a print job runs (beforeprint ->
+// afterprint) and removed right after, so the live preview/dialog/web layout
+// are never affected.
+const EXPORT_PAGE_MARGINS = {
+   narrow: { all: "0mm 0mm 0mm", first: "0mm" },
+   // The default "normal" preset also exports with NARROWER side margins than
+   // its preview counterpart (9mm), so every printed row is WIDER and can fit
+   // more chords on one line. Only the side value differs; top/bottom match
+   // Normal. This is the single knob that controls how wide printed rows are.
+   normal: { all: "18mm 5mm 12mm", first: "9mm" },
+};
+// Side (left/right) margin used to compute printable width during a real print.
+const EXPORT_SIDE_MARGIN_MM = { narrow: 0, normal: 5 };
 const PDF_OPTIONS_KEY = "chordSheetPdfOptions";
 const PX_PER_MM = 96 / 25.4;
 
@@ -42,14 +57,20 @@ const PX_PER_MM = 96 / 25.4;
 // box, so clearMidRowBars() can restore the editor layout as it was.
 const pinnedWidths = new Map(); // element -> original inline width
 
-export function printContentWidthPx() {
+export function printContentWidthPx({ forExport = false } = {}) {
    let paper = "a4", margin = "normal";
    try {
       const raw = JSON.parse(localStorage.getItem(PDF_OPTIONS_KEY) || "null");
       if (raw && PDF_PAPER_MM[raw.paper]) paper = raw.paper;
       if (raw && raw.margin in PDF_SIDE_MARGIN_MM) margin = raw.margin;
    } catch { /* keep defaults */ }
-   const contentMM = PDF_PAPER_MM[paper] - 2 * PDF_SIDE_MARGIN_MM[margin];
+   // During an actual export the printed side margins can differ from the
+   // preview ones (see EXPORT_* above) - use the job-specific value then.
+   const sideMM =
+      forExport && EXPORT_SIDE_MARGIN_MM[margin] != null
+         ? EXPORT_SIDE_MARGIN_MM[margin]
+         : PDF_SIDE_MARGIN_MM[margin];
+   const contentMM = PDF_PAPER_MM[paper] - 2 * sideMM;
    return Math.max(1, contentMM * PX_PER_MM);
 }
 
@@ -66,8 +87,8 @@ export function printContentWidthPx() {
  *  • Others: the left barline would sit on top of previous right one
  *    (doubling thickness), so we drop it.
  */
-export function markMidRowBars() {
-   const printWidth = printContentWidthPx();
+export function markMidRowBars({ forExport = false } = {}) {
+   const printWidth = printContentWidthPx({ forExport });
    document.querySelectorAll(".bar-grid").forEach((grid) => {
       if (!grid.querySelector(".bar")) return;
       const card = grid.closest("#previewCard");
@@ -100,6 +121,39 @@ export function clearMidRowBars() {
 }
 
 /**
+ * Apply the export-only @page margins for the current print job (if any) and
+ * remove the helper <style> otherwise. The style is appended AFTER #pdfPageStyle
+ * (managed by pdfOptions.js) so it overrides the same @page properties at equal
+ * specificity while a job runs; afterprint removes it again, so the on-screen
+ * preview, dialog and live editor are never affected.
+ */
+function applyExportPageMargins() {
+   let margin = null;
+   try {
+      const raw = JSON.parse(localStorage.getItem(PDF_OPTIONS_KEY) || "null");
+      margin = raw && EXPORT_PAGE_MARGINS[raw.margin] ? raw.margin : null;
+   } catch {
+      margin = null;
+   }
+   const style = document.getElementById("pdfExportPageStyle");
+   if (!margin) {
+      style?.remove();
+      return;
+   }
+   const m = EXPORT_PAGE_MARGINS[margin];
+   const css = `@page { margin: ${m.all}; }\n@page :first { margin-top: ${m.first}; }`;
+   if (!style) {
+      const s = Object.assign(document.createElement("style"), { id: "pdfExportPageStyle" });
+      s.textContent = css;
+      document.head.appendChild(s);
+   } else {
+      style.textContent = css;
+      // Keep it last in source order so it wins over pdfPageStyle.
+      document.head.appendChild(style);
+   }
+}
+
+/**
  * Register the global beforeprint/afterprint listeners that make the
  * `is-print-layout` geometry the single source of truth for printed output.
  * Call once during app init.
@@ -111,11 +165,16 @@ export function initPrintListeners() {
          root.classList.add("is-print-layout");
          printClassAddedForJob = true;
       }
+      // Export-only page margins (Normal -> narrower side margins for wider rows,
+      // Narrow -> 0mm) for THIS job; the preview keeps its own PDF_MARGINS values.
+      applyExportPageMargins();
       // Tag mid-row bars now that print geometry is active, so overlapping
-      // left barlines can be hidden.
-      markMidRowBars();
+      // left barlines can be hidden (classified against the exported margins).
+      markMidRowBars({ forExport: true });
    });
    window.addEventListener("afterprint", () => {
+      // Drop the export-only @page override so nothing leaks into the app.
+      document.getElementById("pdfExportPageStyle")?.remove();
       clearMidRowBars();
       if (printClassAddedForJob) {
          document.documentElement.classList.remove("is-print-layout");
