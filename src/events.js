@@ -29,10 +29,10 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260904-marginnarrow0";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260904-marginnarrow0";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260904-marginnarrow0";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260904-marginnarrow0";
+} from "./notation.js?v=20260904-marginnarrow4";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260904-marginnarrow4";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260904-marginnarrow4";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260904-marginnarrow4";
 import {
    getState,
    setState,
@@ -40,20 +40,20 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260904-marginnarrow0";
+} from "./store.js?v=20260904-marginnarrow4";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260904-marginnarrow0";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260904-marginnarrow0";
-import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260904-marginnarrow0";
-import { initCloudUI } from "./cloudUI.js?v=20260904-marginnarrow0";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260904-marginnarrow0";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260904-marginnarrow0";
-import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260904-marginnarrow0";
+} from "./render.js?v=20260904-marginnarrow4";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260904-marginnarrow4";
+import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260904-marginnarrow4";
+import { initCloudUI } from "./cloudUI.js?v=20260904-marginnarrow4";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260904-marginnarrow4";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260904-marginnarrow4";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260904-marginnarrow4";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Firestore doc id of the currently-open cloud song (null = unsaved / local only).

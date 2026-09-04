@@ -2877,9 +2877,11 @@ html[data-theme="dark"] .site-footer {
    --pdf-page-w: 210mm;
    --pdf-page-h: 297mm;
    --pdf-page-count: 1;
-   --pdf-page-margin-top: 9mm;
-   --pdf-page-margin-x: 9mm;
-   --pdf-page-margin-bottom: 12mm;
+   /* Margins are locked to the "narrow" preset (see PDF_MARGINS in pdfOptions.js);
+      fitPreviewToPane() overrides these inline for the live preview. */
+   --pdf-page-margin-top: 7mm;
+   --pdf-page-margin-x: 7mm;
+   --pdf-page-margin-bottom: 9mm;
    width: calc(var(--pdf-page-w) * var(--pdf-preview-scale));
    height: calc(var(--pdf-page-h) * var(--pdf-page-count, 1) * var(--pdf-preview-scale));
    margin: 0 auto;

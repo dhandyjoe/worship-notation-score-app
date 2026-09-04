@@ -2043,11 +2043,14 @@ html[data-theme="dark"] .placing-cancel:hover {
          2nd and beyond — gets the same left/right/bottom margins. Body padding
          only pads the first page, leaving later pages flush to the paper edge.
          Page 2+ gets a larger TOP margin so content starts lower and is easier
-         to read; the first page keeps a tight top via @page :first below. */
-      margin: 18mm 9mm 12mm;
+         to read; the first page keeps a tight top via @page :first below.
+         Margins are LOCKED to the "narrow" preset (the PDF options dialog no
+         longer offers a margin choice): 12mm top / 7mm sides / 9mm bottom,
+         first page 7mm. The export job overrides this to 0mm full-bleed. */
+      margin: 12mm 7mm 9mm;
    }
    @page :first {
-      margin-top: 9mm;
+      margin-top: 7mm;
    }
    .preview-header > div:first-child > .eyebrow,
    .section-tools,

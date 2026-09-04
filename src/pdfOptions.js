@@ -16,8 +16,8 @@
 // This module is UI-agnostic at its core: apply/read/reset are pure state, and
 // initPdfOptions() wires the modal. Import order: leaf-ish (only dom.js).
 
-import { $, toast } from "./dom.js?v=20260904-marginnarrow0";
-import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260904-marginnarrow0";
+import { $, toast } from "./dom.js?v=20260904-marginnarrow4";
+import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260904-marginnarrow4";
 
 const STORAGE_KEY = "chordSheetPdfOptions";
 
@@ -54,14 +54,14 @@ export function setPdfOptions(settings) {
 
 // Tunable tokens. `prop` is the CSS custom property; values are in mm.
 export const PDF_TOKENS = {
-   chord: { prop: "--print-chord-size", min: 3.4, max: 5.6, step: 0.1, default: 4.3, label: "Chord size" },
+   chord: { prop: "--print-chord-size", min: 4.0, max: 6.0, step: 0.1, default: 4.3, label: "Chord size" },
    lyric: { prop: "--print-lyric-size", min: 2.6, max: 4.4, step: 0.1, default: 3.2, label: "Lyric size" },
-   slot: { prop: "--print-slot", min: 3.0, max: 9.0, step: 0.1, default: 6.2, label: "Beat spacing" },
+   slot: { prop: "--print-slot", min: 3.5, max: 8.5, step: 0.1, default: 6.2, label: "Beat spacing" },
 };
 
 // One-click presets set all three tokens at once.
 export const PDF_PRESETS = {
-   compact: { chord: 3.8, lyric: 2.8, slot: 5.4 },
+   compact: { chord: 4.0, lyric: 2.8, slot: 5.4 },
    normal: { chord: 4.3, lyric: 3.2, slot: 6.2 },
    large: { chord: 4.8, lyric: 3.6, slot: 7.2 },
    xlarge: { chord: 5.3, lyric: 4.0, slot: 8.2 },
@@ -76,8 +76,6 @@ export const PDF_PAPER = {
 };
 export const PDF_MARGINS = {
    narrow: { all: "12mm 7mm 9mm", first: "7mm", label: "Narrow" },
-   normal: { all: "18mm 9mm 12mm", first: "9mm", label: "Normal" },
-   wide: { all: "24mm 14mm 16mm", first: "14mm", label: "Wide" },
 };
 
 export function defaultPdfOptions() {
@@ -86,7 +84,7 @@ export function defaultPdfOptions() {
       lyric: PDF_TOKENS.lyric.default,
       slot: PDF_TOKENS.slot.default,
       paper: "a4",
-      margin: "normal",
+      margin: "narrow",
    };
 }
 
@@ -102,7 +100,7 @@ function sanitize(raw) {
       if (Number.isFinite(value)) base[key] = clamp(Math.round(value * 10) / 10, meta.min, meta.max);
    }
    if (raw.paper && PDF_PAPER[raw.paper]) base.paper = raw.paper;
-   if (raw.margin && PDF_MARGINS[raw.margin]) base.margin = raw.margin;
+   // Margins are locked to the "narrow" preset — ignore anything stored.
    return base;
 }
 
@@ -142,14 +140,15 @@ export function applyPdfOptions(settings = readPdfOptions()) {
          root.style.setProperty(PDF_TOKENS[key].prop, `${settings[key]}mm`);
       }
    }
-   // Paper size + margins via injected @page (only when non-default).
+   // Paper size via injected @page (only when non-default); margins are locked
+   // to the "narrow" preset.
    const existing = document.getElementById("pdfPageStyle");
-   const isDefaultPage = settings.paper === "a4" && settings.margin === "normal";
+   const isDefaultPage = settings.paper === "a4" && settings.margin === "narrow";
    if (isDefaultPage) {
       existing?.remove();
    } else {
       const paper = PDF_PAPER[settings.paper] || PDF_PAPER.a4;
-      const margin = PDF_MARGINS[settings.margin] || PDF_MARGINS.normal;
+      const margin = PDF_MARGINS[settings.margin] || PDF_MARGINS.narrow;
       const css = `@page { size: ${paper.size}; margin: ${margin.all}; }\n@page :first { margin-top: ${margin.first}; }`;
       const style = existing || Object.assign(document.createElement("style"), { id: "pdfPageStyle" });
       style.textContent = css;
@@ -189,7 +188,6 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
    const exportBtn = $("#pdfOptionsExport");
    const presetWrap = $("#pdfPresetGroup");
    const paperWrap = $("#pdfPaperGroup");
-   const marginWrap = $("#pdfMarginGroup");
 
    let settings = readPdfOptions();
    let previewWasOn = false;
@@ -248,7 +246,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
       const page = previewHost?.querySelector(".pdf-preview-page");
       if (!page || !previewHost || !previewScroll) return;
       const paper = PDF_PAPER[settings.paper] || PDF_PAPER.a4;
-      const margin = PDF_MARGINS[settings.margin] || PDF_MARGINS.normal;
+      const margin = PDF_MARGINS.narrow;
       previewHost.style.setProperty("--pdf-page-w", paper.width);
       previewHost.style.setProperty("--pdf-page-h", paper.height);
       // `margin.all` is "<top> <x> <bottom>"; the FIRST page uses margin.first.
@@ -310,11 +308,6 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
       });
       paperWrap?.querySelectorAll("[data-paper]").forEach((btn) => {
          const on = btn.dataset.paper === settings.paper;
-         btn.classList.toggle("is-active", on);
-         btn.setAttribute("aria-pressed", String(on));
-      });
-      marginWrap?.querySelectorAll("[data-margin]").forEach((btn) => {
-         const on = btn.dataset.margin === settings.margin;
          btn.classList.toggle("is-active", on);
          btn.setAttribute("aria-pressed", String(on));
       });
@@ -412,13 +405,6 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
       const btn = event.target.closest("[data-paper]");
       if (!btn || !PDF_PAPER[btn.dataset.paper]) return;
       settings.paper = btn.dataset.paper;
-      commit();
-   });
-
-   marginWrap?.addEventListener("click", (event) => {
-      const btn = event.target.closest("[data-margin]");
-      if (!btn || !PDF_MARGINS[btn.dataset.margin]) return;
-      settings.margin = btn.dataset.margin;
       commit();
    });
 

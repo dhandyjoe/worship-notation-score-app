@@ -641,10 +641,10 @@ record(
    JSON.stringify({ a4PaperWidth }),
 );
 const a4Printable = await evaluate(
-   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:192mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
+   "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:196mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
 );
 record(
-   "PDF options: default content width equals A4 printable area (192mm)",
+   "PDF options: default content width equals A4 printable area (196mm)",
    Math.abs((await evaluate("document.querySelector('.pdf-preview-page #previewCard').clientWidth")) - a4Printable) <=
       2,
    JSON.stringify({ a4Printable }),
@@ -653,12 +653,12 @@ record(
    "PDF options: mid-row bars are tagged so redundant barlines are hidden",
    (await evaluate("document.querySelectorAll('.pdf-preview-page #previewCard .bar.pdf-mid-bar').length")) >= 1,
 );
-// Switch to Letter + Wide and confirm the paper geometry tracks the choice.
+// Switch to Letter and confirm the paper geometry tracks the choice (margins
+// are locked to Narrow — there is no margin choice to click anymore).
 const letterPaperWidth = await evaluate(
    "(()=>{const p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;width:215.9mm';document.body.appendChild(p);const w=p.getBoundingClientRect().width;p.remove();return w})()",
 );
 await evaluate("document.querySelector('[data-paper=\"letter\"]').click();true");
-await evaluate("document.querySelector('[data-margin=\"wide\"]').click();true");
 record(
    "PDF options: choosing Letter resizes the preview paper",
    Math.abs((await evaluate("document.querySelector('.pdf-preview-page').offsetWidth")) - letterPaperWidth) <= 2,
