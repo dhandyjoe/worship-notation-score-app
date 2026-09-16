@@ -29,10 +29,10 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260904-marginnarrow4";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260904-marginnarrow4";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260904-marginnarrow4";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260904-marginnarrow4";
+} from "./notation.js?v=20260927-dirty";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260927-dirty";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260927-dirty";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260927-dirty";
 import {
    getState,
    setState,
@@ -40,24 +40,49 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260904-marginnarrow4";
+} from "./store.js?v=20260927-dirty";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260904-marginnarrow4";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260904-marginnarrow4";
-import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260904-marginnarrow4";
-import { initCloudUI } from "./cloudUI.js?v=20260904-marginnarrow4";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260904-marginnarrow4";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260904-marginnarrow4";
-import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260904-marginnarrow4";
+} from "./render.js?v=20260927-dirty";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260927-dirty";
+import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260927-dirty";
+import { initCloudUI } from "./cloudUI.js?v=20260927-dirty";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260927-dirty";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260927-dirty";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260927-dirty";
 
 // ---- UI-only state (not part of the serializable document) ----
-// Firestore doc id of the currently-open cloud song (null = unsaved / local only).
-let currentCloudId = null;
+// Which cloud document is currently open in the editor:
+//   { songId, versionId, versionLabel } — or null for an unsaved local draft.
+let currentCloudContext = null;
+function setCloudContext(next) {
+   currentCloudContext = next
+      ? {
+           songId: next.songId || null,
+           versionId: next.versionId || null,
+           versionLabel: next.versionLabel || "",
+        }
+      : null;
+}
+// Staged "version details" edit (version name / YouTube link) that the user has
+// changed in the details dialog but not yet persisted. It is written to
+// Firestore together with the next "Save to Cloud" — until then it only powers
+// the yellow unsaved badge + the local UI (pill / version list).
+let pendingVersionDetails = null;
+function setPendingVersionDetails(next) {
+   pendingVersionDetails = next
+      ? {
+           versionId: next.versionId,
+           label: next.label || "",
+           youtubeUrl: next.youtubeUrl || null,
+           youtubeId: next.youtubeId || null,
+        }
+      : null;
+}
 // Tracks whether the document has been edited since it was last loaded from — or
 // saved to — the cloud. Powers the "unsaved changes" guard on Back to My Songs.
 // Set true by save() (fired on every edit), cleared on fresh load / cloud save.
@@ -1869,10 +1894,12 @@ export function initEvents() {
    initCloudUI({
       getProject: () => projectData(),
       applyProject: (project) => applyProject(project),
-      getCloudId: () => currentCloudId,
-      setCloudId: (id) => {
-         currentCloudId = id || null;
-      },
+      getCloudContext: () => currentCloudContext,
+      setCloudContext: (ctx) => setCloudContext(ctx),
+      getPendingVersionDetails: () => pendingVersionDetails,
+      setPendingVersionDetails: (ctx) => setPendingVersionDetails(ctx),
+      // Notify the badge that the document has unsaved (cloud-pending) state.
+      markDirty: () => setDirty(true),
       // Unsaved-changes guard: cloudUI asks whether the open document has edits
       // that haven't been persisted to the cloud, and clears the flag once a
       // save succeeds (or when leaving without saving is confirmed).

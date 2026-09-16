@@ -20,6 +20,8 @@ import {
    MAX_BARS,
 } from "../src/notation.js";
 import { encodeShare, decodeShare, buildShareLink, extractPayloadFromLink, canCompress } from "../src/share.js";
+import { composeSong, isLegacySongDoc } from "../src/cloud.js";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "../src/youtube.js";
 
 test("transposeNote wraps around 12 notes and prefers flat spelling", () => {
    assert.equal(transposeNote("B", 1), "C");
@@ -621,4 +623,132 @@ test("insertBars shifts existing bars right and respects MAX_BARS", () => {
    assert.equal(section.beats["1-0"].chord, "Am"); // inserted
    assert.equal(section.beats["2-0"].chord, "G"); // shifted right
    assert.equal(section.lyricBeats["2-0"], "world"); // lyric followed its bar
+});
+
+// ---- song + version composition (pure helpers from cloud.js) ----
+
+test("composeSong produces a clean editor project without version meta fields", () => {
+   const meta = { title: "O Holy Night", artist: "Adolphe Adam" };
+   const version = {
+      versionId: "version-x",
+      label: "Pop",
+      number: 2,
+      createdAt: 1,
+      updatedAt: 2,
+      cloudId: "song-c",
+      songId: "song-s",
+      format: "chord-sheet",
+      version: 2,
+      title: "O Holy Night",
+      artist: "Adolphe Adam",
+      key: "C",
+      meter: "4/4",
+      sections: [{ name: "Intro", bars: [] }],
+      pdfOptions: { paper: "A4" },
+   };
+   const out = composeSong(meta, version);
+   assert.equal(out.title, "O Holy Night");
+   assert.equal(out.artist, "Adolphe Adam");
+   assert.equal(out.key, "C");
+   assert.deepEqual(out.sections, [{ name: "Intro", bars: [] }]);
+   assert.equal(out.pdfOptions.paper, "A4");
+   for (const key of ["label", "number", "createdAt", "updatedAt", "cloudId", "songId", "versionId"]) {
+      assert.ok(!(key in out), `version meta field "${key}" must not leak into the project`);
+   }
+});
+
+test("composeSong prefers the song metadata for title/artist", () => {
+   const meta = { title: "From Meta", artist: "Arranger" };
+   const version = { format: "chord-sheet", title: "From Version", artist: "Old", sections: [] };
+   const out = composeSong(meta, version);
+   assert.equal(out.title, "From Meta");
+   assert.equal(out.artist, "Arranger");
+});
+
+test("composeSong falls back to the version's own title when metadata is missing", () => {
+   const out = composeSong({}, { format: "chord-sheet", title: "Fallback", artist: "A", sections: [] });
+   assert.equal(out.title, "Fallback");
+});
+
+test("composeSong fills generic placeholders when nothing provides a title", () => {
+   const out = composeSong(null, { format: "chord-sheet", sections: [] });
+   assert.equal(out.title, "Song Title");
+   assert.equal(out.artist, "Artist / Composer");
+});
+
+test("isLegacySongDoc flags flat documents that still hold sections inline", () => {
+   assert.equal(isLegacySongDoc({ sections: [] }), true);
+   assert.equal(isLegacySongDoc({ title: "new", versionCount: 1 }), false);
+   assert.equal(isLegacySongDoc({}), false);
+   assert.equal(isLegacySongDoc(null), false);
+});
+
+test("composeSong preserves the full project shape for PDF/export compatibility", () => {
+   const meta = { title: "T", artist: "A" };
+   const version = {
+      format: "chord-sheet",
+      version: 2,
+      title: "T",
+      artist: "A",
+      key: "G",
+      meter: "3/4",
+      bpm: 90,
+      lyricsEnabled: true,
+      chordAboveEnabled: false,
+      nashvilleNumber: "1",
+      nashvilleAccidental: "#",
+      slashChords: ["G/B"],
+      sections: [{ name: "Verse", bars: 2, beats: { "0-0": "C" } }],
+      pdfOptions: { fontSize: 14 },
+   };
+   const out = composeSong(meta, version);
+   assert.deepEqual(out, {
+      format: "chord-sheet",
+      version: 2,
+      title: "T",
+      artist: "A",
+      key: "G",
+      meter: "3/4",
+      bpm: 90,
+      lyricsEnabled: true,
+      chordAboveEnabled: false,
+      nashvilleNumber: "1",
+      nashvilleAccidental: "#",
+      slashChords: ["G/B"],
+      sections: [{ name: "Verse", bars: 2, beats: { "0-0": "C" } }],
+      pdfOptions: { fontSize: 14 },
+   });
+});
+
+// ---- YouTube link parsing (pure helpers from youtube.js) ----
+
+test("parseYoutubeUrl extracts the id from common URL forms", () => {
+   const id = "dQw4w9WgXcQ";
+   const forms = [
+      `https://www.youtube.com/watch?v=${id}`,
+      `https://youtu.be/${id}`,
+      `https://www.youtube.com/shorts/${id}`,
+      `https://www.youtube.com/embed/${id}`,
+      `https://www.youtube.com/watch?v=${id}&list=PL1234`,
+      id, // bare 11-char id
+   ];
+   for (const form of forms) {
+      const out = parseYoutubeUrl(form);
+      assert.equal(out?.videoId, id, `expected id for ${form}`);
+      assert.equal(out?.url, `https://www.youtube.com/watch?v=${id}`);
+   }
+});
+
+test("parseYoutubeUrl rejects invalid or non-YouTube input", () => {
+   const bad = ["", "   ", "not a video", "https://vimeo.com/12345", "https://example.com/dQw4w9WgXcQ", "abc"];
+   for (const value of bad) {
+      assert.equal(parseYoutubeUrl(value), null, `expected null for ${JSON.stringify(value)}`);
+   }
+});
+
+test("canonicalUrl and thumbnailUrl helpers", () => {
+   assert.equal(canonicalUrl("abc123XYZ-q"), "https://www.youtube.com/watch?v=abc123XYZ-q");
+   assert.equal(thumbnailUrl("abc"), "https://i.ytimg.com/vi/abc/mqdefault.jpg");
+   assert.equal(thumbnailUrl("abc", "hqdefault"), "https://i.ytimg.com/vi/abc/hqdefault.jpg");
+   assert.equal(thumbnailUrl("abc", "bogus"), "https://i.ytimg.com/vi/abc/mqdefault.jpg");
 });

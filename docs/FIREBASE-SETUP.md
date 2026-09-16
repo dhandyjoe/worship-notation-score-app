@@ -9,8 +9,10 @@ They enforce that a signed-in user can only read/write documents under their own
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // A user's private song library. Only the owner (matching auth uid) may access.
-    match /users/{uid}/songs/{songId} {
+    // A user's private song library. The recursive wildcard also covers the
+    // versions subcollection (users/{uid}/songs/{songId}/versions/{versionId}).
+    // Only the owner (matching auth uid) may access.
+    match /users/{uid}/{all=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
     // Deny everything else by default.
@@ -25,14 +27,31 @@ service cloud.firestore {
 
 ```
 users/{uid}/songs/{songId} = {
-  ...projectData(),   // title, artist, key, chordRoot, customChord, meter,
-                      // lyricsEnabled, sections[], slashChords[],
-                      // nashvilleNumber, nashvilleAccidental
-  title:     string,  // always coerced to at least "Untitled"
+  title:     string,  // song identity (shared across all arrangements)
+  artist:    string,
   createdAt: number,  // Date.now() at creation
-  updatedAt: number   // Date.now() at each save
+  updatedAt: number,  // Date.now() at each save
+  // Denormalized summary of the most recent arrangement — powers the library
+  // card without a per-song version read:
+  versionCount:       number,
+  latestVersionId:    string,
+  latestVersionLabel: string
+}
+
+users/{uid}/songs/{songId}/versions/{versionId} = {
+  label:    string,  // human name: "Version 1", "Pop", "2024" …
+  number:   number,  // monotonic ordering — highest number = latest
+  ...projectData(),  // the FULL arrangement: key, sections[], pdfOptions, …
+  createdAt: number,
+  updatedAt: number
 }
 ```
+
+> One song can hold many arrangements (versions), each with its own partiture
+> (`sections[]`, key, PDF options, …). Opening a song loads the arrangement with
+> the highest `number`. Legacy flat documents — written before this model, where
+> the whole project lived in the song doc — are upgraded lazily on read/write:
+> the arrangement moves to `versions/v1` and the song doc is reduced to metadata.
 
 ## Checklist before go-live
 

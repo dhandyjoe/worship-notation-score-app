@@ -1662,6 +1662,35 @@ html[data-theme="dark"] .howto-item-text code {
    transform: translateY(12px) scale(0.98);
    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* Wider variant used by the version dialogs (Create New Version / Version
+   Details) so the version-name and YouTube fields have room to breathe. */
+.confirm-dialog-card.version-dialog-card {
+   width: min(600px, 94vw);
+   max-height: 84vh;
+   align-items: stretch;
+   text-align: left;
+}
+/* Version dialogs: header icon on the LEFT, title + subtitle on the RIGHT. */
+.vd-dialog-head {
+   display: flex;
+   align-items: center;
+   gap: 14px;
+   width: 100%;
+}
+.vd-dialog-head .confirm-dialog-icon {
+   flex: 0 0 auto;
+}
+.vd-dialog-head-text {
+   flex: 1;
+   min-width: 0;
+   text-align: left;
+}
+.vd-dialog-head-text .confirm-dialog-title {
+   margin: 0;
+}
+.vd-dialog-head-text .confirm-dialog-desc {
+   margin: 3px 0 0;
+}
 .confirm-dialog.is-open .confirm-dialog-card {
    transform: translateY(0) scale(1);
 }
@@ -3748,6 +3777,227 @@ html[data-theme="dark"] .cloud-auth-primary {
 .account-popover-item[hidden] {
    display: none;
 }
+.account-popover-item:disabled {
+   opacity: 0.45;
+   cursor: not-allowed;
+   background: transparent;
+}
+.account-popover-item:disabled:hover,
+.account-popover-item:disabled:focus-visible {
+   background: transparent;
+}
+/* ---- Version switcher (editor topbar pill + arrangements popover) ---- */
+.version-switcher {
+   position: relative;
+}
+.version-switcher-btn {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+}
+.version-switcher-btn:focus-visible {
+   outline: 2px solid var(--green);
+   outline-offset: 2px;
+}
+.version-switcher-caret {
+   font-size: 10px;
+   opacity: 0.7;
+}
+.version-popover {
+   width: 280px;
+   right: auto;
+   left: 0;
+   transform-origin: top left;
+}
+.version-popover-head {
+   padding: 8px 10px 4px;
+   font-size: 11px;
+   font-weight: 800;
+   letter-spacing: 0.08em;
+   text-transform: uppercase;
+   color: var(--muted);
+}
+.version-list {
+   display: flex;
+   flex-direction: column;
+   gap: 2px;
+   margin: 4px 0 6px;
+   max-height: 240px;
+   overflow-y: auto;
+}
+.version-list-empty {
+   padding: 10px;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.version-list-item {
+   display: flex;
+   align-items: center;
+   gap: 2px;
+   padding: 2px;
+   border-radius: 12px;
+   transition: background 0.15s ease;
+}
+.version-list-item.is-current {
+   background: rgba(31, 112, 74, 0.1);
+}
+.version-item-switch {
+   flex: 1;
+   min-width: 0;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 8px;
+   padding: 7px 8px;
+   border: none;
+   border-radius: 9px;
+   background: transparent;
+   color: var(--ink);
+   font: inherit;
+   font-size: 13px;
+   font-weight: 600;
+   text-align: left;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.version-item-switch:hover,
+.version-item-switch:focus-visible {
+   background: var(--soft);
+   outline: none;
+}
+.version-list-item.is-current .version-item-switch {
+   color: var(--dark-green);
+}
+.version-item-label {
+   min-width: 0;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+}
+.version-item-current {
+   flex: 0 0 auto;
+   font-size: 11px;
+   font-weight: 700;
+   color: var(--green);
+}
+.version-item-pending {
+   flex: 0 0 auto;
+   width: 9px;
+   height: 9px;
+   border-radius: 50%;
+   background: #f5a623;
+   box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.5);
+   animation: saveUnsavedPulse 2s ease-out infinite;
+}
+.version-item-edit {
+   flex: none;
+   width: 28px;
+   height: 28px;
+   display: grid;
+   place-items: center;
+   border: none;
+   border-radius: 8px;
+   background: transparent;
+   color: var(--muted);
+   font-size: 13px;
+   cursor: pointer;
+   opacity: 0.45;
+   transition:
+      opacity 0.15s ease,
+      background 0.15s ease,
+      color 0.15s ease;
+}
+.version-list-item:hover .version-item-edit,
+.version-item-edit:focus-visible {
+   opacity: 1;
+}
+.version-item-edit:hover,
+.version-item-edit:focus-visible {
+   background: var(--soft);
+   color: var(--ink);
+}
+.account-popover-item.is-version-danger {
+   color: #b42318;
+}
+.account-popover-item.is-version-danger:hover,
+.account-popover-item.is-version-danger:focus-visible {
+   background: rgba(180, 35, 24, 0.1);
+}
+/* ---- Version details dialog: fields, YouTube preview, danger action ---- */
+.vd-fields {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+   margin: 4px 0 2px;
+}
+.vd-youtube .new-song-name-input {
+   font-family: inherit;
+}
+.vd-youtube-preview {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   margin-top: 10px;
+}
+.vd-youtube-preview[hidden] {
+   display: none;
+}
+.vd-youtube-thumb {
+   width: 160px;
+   height: 90px;
+   border-radius: 8px;
+   object-fit: cover;
+   border: 1px solid var(--line);
+   background: #000;
+   cursor: pointer;
+   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+   transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+}
+.vd-youtube-thumb:hover {
+   transform: scale(1.03);
+   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+.vd-youtube-preview .icon-button {
+   color: var(--muted);
+}
+.vd-delete-row {
+   justify-content: flex-start;
+   margin-top: 18px;
+}
+.button.button-danger {
+   background: #b42318;
+   color: #fff;
+}
+.button.button-danger:hover {
+   filter: brightness(0.95);
+}
+/* ---- Version list: YouTube indicator + gallery card watch chip ---- */
+.version-item-yt {
+   font-size: 10px;
+   margin-left: 4px;
+   color: var(--green);
+   opacity: 0.9;
+}
+.song-card-yt {
+   display: inline-grid;
+   place-items: center;
+   width: 24px;
+   height: 24px;
+   border-radius: 50%;
+   background: #ff0033;
+   color: #fff;
+   font-size: 11px;
+   text-decoration: none;
+   flex: 0 0 auto;
+   transition: transform 0.15s ease;
+}
+.song-card-yt:hover {
+   transform: translateY(-1px);
+}
 
 /* ---- Editor header: Back affordance + document breadcrumb ---- */
 .topbar-nav {
@@ -3996,8 +4246,10 @@ html[data-theme="dark"] .topbar-help-btn {
 .cloud-gallery-searchbar {
    flex: 0 0 auto;
    display: flex;
-   flex-direction: column;
+   flex-wrap: wrap;
    align-items: center;
+   justify-content: center;
+   gap: 12px;
    padding: 14px clamp(20px, 4vw, 56px) 6px;
 }
 /* Live library count — now the standalone subtitle under the centered title. */
@@ -4193,6 +4445,52 @@ html[data-theme="dark"] .topbar-help-btn {
    color: #fff;
    background: #4f46e5;
    border-color: #fff;
+}
+/* Mode is expressed by the whole card: a subtle tinted background + a faint
+   ♪ / # watermark (kept behind the text so the card stays readable). */
+.song-card.is-chords {
+   background: #eef7f1;
+}
+.song-card.is-numbers {
+   background: #f2efff;
+}
+.song-card.is-numbers::before {
+   background: radial-gradient(circle, color-mix(in srgb, #4f46e5 26%, transparent), transparent 70%);
+}
+/* Faint mode glyph used as a background watermark. */
+.song-card-mode-mark {
+   position: absolute;
+   top: 8px;
+   right: 12px;
+   z-index: -1;
+   font-size: 96px;
+   line-height: 1;
+   font-weight: 800;
+   pointer-events: none;
+   user-select: none;
+   opacity: 0.07;
+   color: var(--green);
+}
+.song-card.is-numbers .song-card-mode-mark {
+   color: #4f46e5;
+}
+/* Dark theme overrides for the mode tints. */
+html[data-theme="dark"] .song-card.is-chords {
+   background: #132a20;
+}
+html[data-theme="dark"] .song-card.is-numbers {
+   background: #1c1a33;
+}
+html[data-theme="dark"] .song-card-mode-mark {
+   opacity: 0.09;
+}
+/* Version-count chip: "3 versions" — uniform font-size, count emphasised. */
+.song-card-chip.is-version {
+   font-weight: 600;
+}
+.song-card-chip.is-version strong {
+   font-weight: 800;
+   letter-spacing: -0.01em;
 }
 .song-card-title {
    margin: 4px 0 3px;
@@ -4994,6 +5292,60 @@ html[data-theme="dark"] .beat-menu-item.is-danger:hover {
 .mode-picker-close:hover {
    color: var(--ink);
    background: rgba(0, 0, 0, 0.04);
+}
+/* Version name input in the New Song / add-first-version dialog. */
+.new-song-name {
+   margin: 18px 0 2px;
+}
+.new-song-name-label {
+   display: block;
+   font-size: 11px;
+   text-transform: uppercase;
+   letter-spacing: 0.08em;
+   font-weight: 800;
+   color: var(--muted);
+   margin: 0 0 7px;
+}
+.new-song-name-label em {
+   font-style: normal;
+   text-transform: none;
+   letter-spacing: 0;
+   font-weight: 600;
+   color: var(--muted);
+}
+.new-song-name-input {
+   width: 100%;
+   min-height: 46px;
+   padding: 10px 14px;
+   border: 1.5px solid var(--line);
+   border-radius: 10px;
+   background: var(--surface);
+   color: var(--ink);
+   font: 600 15px inherit;
+   outline: none;
+   transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease;
+}
+.new-song-name-input:focus-visible {
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px rgba(35, 122, 80, 0.14);
+}
+.new-song-name-input.is-invalid {
+   border-color: #c9403a;
+   box-shadow: 0 0 0 3px rgba(201, 64, 58, 0.14);
+}
+.new-song-name-hint {
+   font-size: 12px;
+   line-height: 1.45;
+   color: var(--muted);
+   margin: 7px 0 0;
+}
+.new-song-name-error {
+   font-size: 12.5px;
+   font-weight: 700;
+   color: #c9403a;
+   margin: 7px 0 0;
 }
 .mode-picker-grid {
    display: grid;

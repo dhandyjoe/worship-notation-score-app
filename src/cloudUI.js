@@ -2,9 +2,9 @@
 //
 // Kept separate from events.js so the cloud feature is self-contained. It talks
 // to Firebase only through cloud.js, and to the editor only through injected
-// callbacks (getProject / applyProject / getCloudId / setCloudId). This keeps
-// the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260904-marginnarrow4";
+// callbacks (getProject / applyProject / getCloudContext / setCloudContext). This
+// keeps the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
+import { $, toast } from "./dom.js?v=20260927-dirty";
 import {
    isConfigured,
    onAuth,
@@ -15,27 +15,47 @@ import {
    signUpWithEmail,
    signOutUser,
    friendlyAuthError,
-   saveSong,
    listSongs,
    loadSong,
+   loadSongMeta,
+   loadVersion,
+   listVersions,
+   createSong,
+   updateSongMeta,
+   saveVersion,
+   updateLatestVersion,
+   deleteVersion,
+   composeSong,
    deleteSong,
    duplicateSong,
-} from "./cloud.js?v=20260904-marginnarrow4";
+} from "./cloud.js?v=20260927-dirty";
 
 // Injected editor bridge (set in init).
-import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260904-marginnarrow4";
+import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260927-dirty";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=20260927-dirty";
 
 let bridge = {
    getProject: () => ({}),
    applyProject: () => {},
-   getCloudId: () => null,
-   setCloudId: () => {},
+   getCloudContext: () => null,
+   setCloudContext: () => {},
+   getPendingVersionDetails: () => null,
+   setPendingVersionDetails: () => {},
+   markDirty: () => {},
    openPdfOptions: () => {},
    hasUnsavedChanges: () => false,
    markSaved: () => {},
    isPlaying: () => false,
    stopPlayback: () => {},
 };
+
+// Distinguish Firestore permission errors (security rules) from real data
+// errors, so the UI can point users at the rules instead of a generic failure.
+function isFirestorePermissionsError(error) {
+   const code = String(error?.code || "");
+   const message = String(error?.message || error || "");
+   return code === "permission-denied" || /Missing or insufficient permissions/i.test(message);
+}
 
 let cachedSongs = []; // last-fetched list (for client-side search filtering)
 
@@ -316,8 +336,10 @@ async function guardUnsavedThen(proceed) {
       if (!saved) return false;
    }
    // "discard" (or a successful save) → proceed. Clear the flag either way so we
-   // don't re-prompt if nothing else changes.
+   // don't re-prompt if nothing else changes. A staged version-details edit is
+   // also dropped (it is only persisted via Save to Cloud).
    bridge.markSaved();
+   bridge.setPendingVersionDetails(null);
    proceed();
    return true;
 }
@@ -326,8 +348,9 @@ async function guardUnsavedThen(proceed) {
 // Hash routing
 // ----------------------------------------------------------------------
 // My Songs is the home screen and the editor is a sub-page, so each gets a
-// real URL: #/songs (home) and #/song/:cloudId (editor, or #/song/new for an
-// unsaved draft). That makes the browser Back button and page reloads behave
+// real URL: #/songs (home) and #/song/:songId[/v/:versionId] (editor, or
+// #/song/new for an unsaved draft, or #/song/:songId/new for a song that still
+// has no versions). That makes the browser Back button and page reloads behave
 // the way the visual hierarchy promises. All screen changes go through
 // navigate() → applyRoute(), so the URL is always the single source of truth.
 // ======================================================================
@@ -343,8 +366,12 @@ let lastHash = "";
 let importInFlight = false;
 
 function editorRoute() {
-   const id = bridge.getCloudId();
-   return id ? `#/song/${encodeURIComponent(id)}` : "#/song/new";
+   const ctx = bridge.getCloudContext() || {};
+   if (ctx.songId && ctx.versionId) {
+      return `#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(ctx.versionId)}`;
+   }
+   if (ctx.songId) return `#/song/${encodeURIComponent(ctx.songId)}/new`;
+   return "#/song/new";
 }
 
 function parseRoute(hash) {
@@ -356,6 +383,17 @@ function parseRoute(hash) {
       const q = raw.indexOf("?");
       const params = new URLSearchParams(q >= 0 ? raw.slice(q + 1) : "");
       return { name: "import", payload: params.get("d") || null };
+   }
+   // Specific version route: #/song/:songId/v/:versionId.
+   const versioned = raw.match(/^\/song\/([^/]+)\/v\/([^/]+)$/);
+   if (versioned) {
+      return { name: "editor", id: decodeURIComponent(versioned[1]), versionId: decodeURIComponent(versioned[2]) };
+   }
+   // Add-first-version route: #/song/:songId/new — a song that currently has no
+   // versions (last one deleted) opens here so the user can add one.
+   const addVersion = raw.match(/^\/song\/([^/]+)\/new$/);
+   if (addVersion && addVersion[1] !== "new") {
+      return { name: "editor", id: decodeURIComponent(addVersion[1]), versionId: null, addVersion: true };
    }
    const song = raw.match(/^\/song\/(.+)$/);
    if (song) return { name: "editor", id: song[1] === "new" ? null : decodeURIComponent(song[1]) };
@@ -406,9 +444,10 @@ function applyRoute() {
    // The contextual "Back to editor" button only makes sense when a document is
    // actually open, otherwise home would offer a dead end.
    const resume = $("#backToEditorBtn");
-   if (resume) resume.hidden = route.name !== "home" || !bridge.getCloudId();
+   if (resume) resume.hidden = route.name !== "home" || !(bridge.getCloudContext()?.songId);
    // Remember where we are so the hashchange guard can detect an editor→home
    // transition triggered by the browser Back button (see the init listener).
+   syncVersionPill();
    lastRoute = route;
    lastHash = location.hash;
 }
@@ -536,9 +575,10 @@ async function routeOnLoad() {
       applyRoute();
       return;
    }
-   // A reload on #/song/:id should reopen that song, not silently drop to home.
+   // A reload on #/song/:id[/v/:versionId] should reopen that song, not
+   // silently drop to home.
    if (route.name === "editor" && route.id) {
-      openSongInEditor(route.id);
+      openSongInEditor(route.id, route.versionId);
       return;
    }
    // Blank/unknown hash (or #/song/new with nothing loaded) → normalise to home
@@ -641,27 +681,40 @@ function setGalleryState(state) {
 function cardMarkup(song) {
    const title = escapeHtml(song.title || "Untitled");
    const creator = escapeHtml(song.artist || "Unknown");
-   const key = escapeHtml(song.key || "—");
-   const meter = escapeHtml(song.meter || "—");
+   const key = escapeHtml(song.latestKey || song.key || "");
+   const meter = escapeHtml(song.latestMeter || song.meter || "");
    const sectionCount = Array.isArray(song.sections) ? song.sections.length : 0;
    const updated = song.updatedAt ? new Date(song.updatedAt).toLocaleDateString() : "";
-   const mode = song.editorMode === "numbers" ? "numbers" : "chords";
-   // Match the edit page's editor-mode badge glyphs: ♪ for Chord Chart, # for Numbers.
+   // Versioned songs carry the denormalized latest summary on the metadata;
+   // legacy flat song objects (and the test seeds) still render via sections.
+   const versioned = typeof song.versionCount === "number";
+   const detail = versioned
+      ? (updated ? `updated ${escapeHtml(updated)}` : "")
+      : `${sectionCount} section${sectionCount === 1 ? "" : "s"}${updated ? ` · updated ${escapeHtml(updated)}` : ""}`;
+   const mode = (song.latestEditorMode || song.editorMode) === "numbers" ? "numbers" : "chords";
+   // Match the edit page's editor-mode glyphs: ♪ for Chord Chart, # for Numbers.
    const modeGlyph = mode === "numbers" ? "#" : "\u266A";
    const modeTitle = mode === "numbers" ? "Nashville Number" : "Chord Chart";
+   const keyChip = key ? `<span class="song-card-chip"><small>Key</small> ${key}</span>` : "";
+   const meterChip = meter ? `<span class="song-card-chip"><small>Time</small> ${meter}</span>` : "";
+   // Show the number of arrangements (number-first), with the count emphasised.
+   const versionLabel = versioned
+      ? `<span class="song-card-chip is-version" title="Arrangements"><strong>${song.versionCount}</strong> version${song.versionCount === 1 ? "" : "s"}</span>`
+      : "";
    return `
-      <article class="song-card" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
+      <article class="song-card is-${mode}" role="listitem" tabindex="0" data-id="${escapeHtml(song.cloudId)}"
                aria-label="${escapeHtml(title)} by ${creator}">
+         <span class="song-card-mode-mark" aria-hidden="true">${modeGlyph}</span>
          <h3 class="song-card-title">${title}</h3>
          <div class="song-card-creator">${creator}</div>
          <div class="song-card-detail">
-            ${sectionCount} section${sectionCount === 1 ? "" : "s"}${updated ? ` · updated ${escapeHtml(updated)}` : ""}
+            ${detail}
          </div>
          <div class="song-card-dock">
             <div class="song-card-meta">
-               <span class="song-card-chip"><small>Key</small> ${key}</span>
-               <span class="song-card-chip"><small>Time</small> ${meter}</span>
-               <span class="song-card-mode-icon is-${mode}" title="${modeTitle}" aria-label="Mode: ${modeTitle}">${modeGlyph}</span>
+               ${keyChip}
+               ${meterChip}
+               ${versionLabel}
             </div>
             <div class="song-card-actions">
                <button class="song-card-action is-edit" type="button" data-act="edit" data-label="Edit" title="Edit" aria-label="Edit ${title}">✎</button>
@@ -800,7 +853,7 @@ async function refreshSongs() {
       applyFilter();
    } catch (error) {
       setGalleryState("empty");
-      toast("Could not load your songs");
+      toast(isFirestorePermissionsError(error) ? "Could not load — check Firestore security rules" : "Could not load your songs");
    }
 }
 
@@ -829,16 +882,724 @@ function openGallery() {
    navigate(HOME_ROUTE);
 }
 
-async function openSongInEditor(cloudId) {
+// ======================================================================
+// New Song / add-first-version dialog (version name + mode picker)
+// ======================================================================
+// The dialog is a single #newSongDialog instance; listeners are installed once
+// (initNewSongDialog) and openNewSongDialog only flips it open with fresh copy,
+// so multiple opens can never stack duplicate handlers.
+let newSongDialogResolve = null; // current open promise (null = dialog closed)
+
+function closeNewSongDialog(result) {
+   const resolve = newSongDialogResolve;
+   newSongDialogResolve = null;
+   const dialog = $("#newSongDialog");
+   if (!dialog) {
+      resolve?.(null);
+      return;
+   }
+   dialog.classList.remove("is-open");
+   setTimeout(() => {
+      dialog.hidden = true;
+      resolve?.(result);
+   }, 260);
+}
+
+/**
+ * Open the version-name + mode dialog. Resolves with { mode, label } when the
+ * user picks a mode card with a non-empty version name, or null on cancel.
+ * The version name is REQUIRED (Logic 1): picking a card with an empty name
+ * shows an inline error and keeps the dialog open.
+ */
+function openNewSongDialog({ title = "New Song", desc = "", defaultLabel = "Version 1" } = {}) {
+   const dialog = $("#newSongDialog");
+   if (!dialog) return Promise.resolve(null);
+   const nameInput = $("#newSongVersionName");
+   const nameError = $("#newSongVersionError");
+   // Re-opening the dialog resolves any previous pending open as cancelled.
+   if (newSongDialogResolve) {
+      const previous = newSongDialogResolve;
+      newSongDialogResolve = null;
+      previous(null);
+   }
+   const nameLabel = $("#newSongTitle");
+   const nameDesc = $("#newSongDesc");
+   if (nameLabel) nameLabel.textContent = title;
+   if (nameDesc) nameDesc.textContent = desc;
+   if (nameInput) {
+      nameInput.value = defaultLabel;
+      nameInput.classList.remove("is-invalid");
+      nameInput.oninput = () => {
+         if (nameError) nameError.hidden = true;
+         nameInput.classList.remove("is-invalid");
+      };
+   }
+   if (nameError) nameError.hidden = true;
+   return new Promise((resolve) => {
+      newSongDialogResolve = resolve;
+      dialog.hidden = false;
+      void dialog.offsetHeight;
+      setTimeout(() => dialog.classList.add("is-open"), 20);
+      setTimeout(() => nameInput?.focus(), 60);
+   });
+}
+
+// Install the dialog's once-only listeners (mode cards, dismiss + Escape).
+function initNewSongDialog() {
+   const dialog = $("#newSongDialog");
+   const nameInput = $("#newSongVersionName");
+   const nameError = $("#newSongVersionError");
+   if (!dialog) return;
+   dialog.querySelectorAll(".mode-card").forEach((card) => {
+      card.addEventListener("click", () => {
+         const mode = card.dataset.mode;
+         if (!["chords", "numbers"].includes(mode)) return;
+         const label = (nameInput?.value || "").trim();
+         if (!label) {
+            if (nameError) nameError.hidden = false;
+            nameInput?.classList.add("is-invalid");
+            nameInput?.focus();
+            return;
+         }
+         closeNewSongDialog({ mode, label });
+      });
+   });
+   dialog.addEventListener("click", (event) => {
+      if (event.target.closest("[data-mode-dismiss]")) closeNewSongDialog(null);
+   });
+   document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && newSongDialogResolve) closeNewSongDialog(null);
+   });
+}
+
+/** Fresh blank project for a chosen writing mode (extra meta overridable). */
+function blankProject(mode, { title = "New Song", artist = "Artist / Composer" } = {}) {
+   return {
+      format: "chord-sheet",
+      version: 2,
+      title,
+      artist,
+      key: "C",
+      meter: "4/4",
+      sections: [{ name: "Intro", bars: [] }],
+      slashChords: [],
+      editorMode: mode,
+      lyricsEnabled: false, // lyrics start OFF in both modes; users opt in via the toggle
+   };
+}
+
+// ======================================================================
+// Version CRUD in the editor — version pill + popover + dialogs
+//   • #newVersionNameDialog — name a NEW blank version (create flow)
+//   • #versionDetailsDialog — rename / attach YouTube / delete ONE version
+// ======================================================================
+let versionNameDialogResolve = null; // open promise for the new-version name prompt
+let versionDetailsResolve = null;    // open promise for the details dialog
+let versionDetailsTarget = null;     // { songId, versionId } being edited
+let youtubePreviewGeneration = 0;    // guards stale thumbnail onload callbacks
+// Element selectors for the two YouTube fields (create-version + details dialogs).
+const YT_DETAILS_IDS = {
+   preview: "#versionDetailsYoutubePreview",
+   thumb: "#versionDetailsThumb",
+   hint: "#versionDetailsYoutubeHint",
+};
+const YT_NEW_VERSION_IDS = {
+   preview: "#newVersionYoutubePreview",
+   thumb: "#newVersionThumb",
+   hint: "#newVersionYoutubeHint",
+};
+
+function closeVersionNameDialog(label) {
+   const resolve = versionNameDialogResolve;
+   versionNameDialogResolve = null;
+   const dialog = $("#newVersionNameDialog");
+   if (!dialog) return resolve?.(null);
+   dialog.classList.remove("is-open");
+   setTimeout(() => {
+      dialog.hidden = true;
+      resolve?.(label);
+   }, 260);
+}
+
+// Name prompt for creating a new blank arrangement. Resolves with the name, or
+// null on cancel. The name is REQUIRED.
+function openVersionNameDialog({ title = "New Version", desc = "", defaultLabel = "Version 1" } = {}) {
+   const dialog = $("#newVersionNameDialog");
+   if (!dialog) return Promise.resolve(null);
+   const input = $("#newVersionNameInput");
+   const error = $("#newVersionNameError");
+   if (versionNameDialogResolve) {
+      const prev = versionNameDialogResolve;
+      versionNameDialogResolve = null;
+      prev(null);
+   }
+   const titleEl = $("#newVersionNameTitle");
+   const descEl = $("#newVersionNameDesc");
+   if (titleEl) titleEl.textContent = title;
+   if (descEl) descEl.textContent = desc;
+   if (input) {
+      input.value = defaultLabel;
+      input.classList.remove("is-invalid");
+      input.oninput = () => {
+         if (error) error.hidden = true;
+         input.classList.remove("is-invalid");
+      };
+   }
+   if (error) error.hidden = true;
+   // Fresh dialog: start with an empty, optional YouTube field.
+   const ytInput = $("#newVersionYoutube");
+   if (ytInput) ytInput.value = "";
+   syncYoutubePreview("", YT_NEW_VERSION_IDS);
+   return new Promise((resolve) => {
+      versionNameDialogResolve = resolve;
+      dialog.hidden = false;
+      void dialog.offsetHeight;
+      setTimeout(() => dialog.classList.add("is-open"), 20);
+      setTimeout(() => input?.focus(), 60);
+   });
+}
+
+function closeVersionDetailsDialog(result) {
+   const resolve = versionDetailsResolve;
+   versionDetailsResolve = null;
+   versionDetailsTarget = null;
+   const dialog = $("#versionDetailsDialog");
+   if (!dialog) return resolve?.(null);
+   dialog.classList.remove("is-open");
+   setTimeout(() => {
+      dialog.hidden = true;
+      resolve?.(result);
+   }, 260);
+}
+
+/**
+ * Open the "Version details" dialog for one arrangement.
+ * Resolves with { status:'save', label, youtubeUrl, youtubeId },
+ *         or { status:'delete' }, or null on cancel.
+ */
+function openVersionDetailsDialog({ songId, versionId, label = "", youtubeUrl = "", youtubeId = "" }) {
+   const dialog = $("#versionDetailsDialog");
+   if (!dialog) return Promise.resolve(null);
+   if (versionDetailsResolve) {
+      const prev = versionDetailsResolve;
+      versionDetailsResolve = null;
+      prev(null);
+   }
+   versionDetailsTarget = { songId, versionId };
+   const nameInput = $("#versionDetailsName");
+   if (nameInput) {
+      nameInput.value = label || "Version 1";
+      nameInput.classList.remove("is-invalid");
+   }
+   const nameError = $("#versionDetailsNameError");
+   if (nameError) nameError.hidden = true;
+   const initialUrl = youtubeUrl || (youtubeId ? canonicalUrl(youtubeId) : "");
+   const youtubeInput = $("#versionDetailsYoutube");
+   if (youtubeInput) youtubeInput.value = initialUrl;
+   syncYoutubePreview(initialUrl);
+   return new Promise((resolve) => {
+      versionDetailsResolve = resolve;
+      dialog.hidden = false;
+      void dialog.offsetHeight;
+      setTimeout(() => dialog.classList.add("is-open"), 20);
+      setTimeout(() => nameInput?.focus(), 60);
+   });
+}
+
+/**
+ * Live preview + validation for a YouTube field. The thumbnail (and its ✕
+ * remove button) only appear once the link is valid AND the image has fully
+ * loaded. The thumbnail itself is the "open" affordance — clicking it opens the
+ * video on YouTube in a new tab. Shared by the "Create new version" dialog and
+ * the "Version details" dialog (pass `ids` for the latter).
+ */
+function syncYoutubePreview(value, { preview: previewSel, thumb: thumbSel, hint: hintSel } = YT_DETAILS_IDS) {
+   const preview = $(previewSel);
+   const thumb = $(thumbSel);
+   const hint = $(hintSel);
+   const parsed = parseYoutubeUrl(value || "");
+   const gen = ++youtubePreviewGeneration;
+   if (!parsed) {
+      if (preview) preview.hidden = true;
+      if (thumb) {
+         // Never let a stale thumbnail (from a previously opened version) linger.
+         thumb.removeAttribute("src");
+         delete thumb.dataset.ytUrl;
+      }
+      return parsed;
+   }
+   if (thumb) {
+      thumb.dataset.ytUrl = parsed.url;
+      thumb.src = thumbnailUrl(parsed.videoId, "mqdefault");
+   }
+   const show = () => {
+      if (gen === youtubePreviewGeneration && preview) preview.hidden = false;
+   };
+   const hide = () => {
+      if (gen === youtubePreviewGeneration && preview) preview.hidden = true;
+   };
+   if (thumb) {
+      thumb.onload = show;
+      thumb.onerror = hide;
+      if (thumb.complete) show(); // cached image → already decoded
+   }
+   if (hint) hint.hidden = true;
+   return parsed;
+}
+
+function openVersionPopover() {
+   const pill = $("#versionSwitcherBtn");
+   const pop = $("#versionPopover");
+   if (!pop) return;
+   pop.hidden = false;
+   void pop.offsetHeight;
+   pop.classList.add("is-open");
+   pill?.setAttribute("aria-expanded", "true");
+   renderVersionList();
+   // Adding another version needs a saved song — disable the action on drafts.
+   const newBtn = $("#versionNewBtn");
+   if (newBtn) {
+      const canCreate = Boolean((bridge.getCloudContext?.() || {}).songId);
+      newBtn.disabled = !canCreate;
+      newBtn.title = canCreate ? "Add a new arrangement" : "Save your song to cloud first";
+   }
+}
+
+function closeVersionPopover() {
+   const pill = $("#versionSwitcherBtn");
+   const pop = $("#versionPopover");
+   if (!pop) return;
+   pop.classList.remove("is-open");
+   pill?.setAttribute("aria-expanded", "false");
+   setTimeout(() => {
+      pop.hidden = true;
+   }, 160);
+}
+
+// Install the version pill/popover + name & details dialog listeners once.
+function initVersionCrud() {
+   // ---- New-version name prompt ----
+   const nameDialog = $("#newVersionNameDialog");
+   const nameInput = $("#newVersionNameInput");
+   const nameError = $("#newVersionNameError");
+   if (nameDialog && nameInput) {
+      const confirmLabel = () => {
+         const label = (nameInput.value || "").trim();
+         if (!label) {
+            if (nameError) nameError.hidden = false;
+            nameInput.classList.add("is-invalid");
+            nameInput.focus();
+            return;
+         }
+         const ytValue = (ytInput?.value || "").trim();
+         const parsed = ytValue ? syncYoutubePreview(ytValue, YT_NEW_VERSION_IDS) : null;
+         if (ytValue && !parsed) return; // invalid link → block create (hint shown)
+         closeVersionNameDialog({
+            label,
+            youtubeUrl: parsed ? parsed.url : null,
+            youtubeId: parsed ? parsed.videoId : null,
+         });
+      };
+      $("#newVersionNameOk")?.addEventListener("click", confirmLabel);
+      $("#newVersionNameCancel")?.addEventListener("click", () => closeVersionNameDialog(null));
+      nameInput.addEventListener("keydown", (event) => {
+         if (event.key === "Enter") {
+            event.preventDefault();
+            confirmLabel();
+         }
+      });
+      // Optional YouTube link on the new version: live preview + validation.
+      const ytInput = $("#newVersionYoutube");
+      ytInput?.addEventListener("input", () => {
+         const value = ytInput.value.trim();
+         const parsed = syncYoutubePreview(ytInput.value, YT_NEW_VERSION_IDS);
+         const hint = $("#newVersionYoutubeHint");
+         if (hint) hint.hidden = !(value && !parsed);
+      });
+      $("#newVersionThumb")?.addEventListener("click", () => {
+         const url = $("#newVersionThumb")?.dataset.ytUrl;
+         if (url) window.open(url, "_blank", "noopener");
+      });
+      $("#newVersionYoutubeRemove")?.addEventListener("click", () => {
+         if (ytInput) ytInput.value = "";
+         syncYoutubePreview("", YT_NEW_VERSION_IDS);
+      });
+      nameDialog.addEventListener("click", (event) => {
+         if (event.target.closest("[data-newversionname-dismiss]")) closeVersionNameDialog(null);
+      });
+   }
+   document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && versionNameDialogResolve) closeVersionNameDialog(null);
+   });
+
+   // ---- Version details dialog (rename + YouTube + delete) ----
+   const detailsDialog = $("#versionDetailsDialog");
+   const detName = $("#versionDetailsName");
+   const detNameError = $("#versionDetailsNameError");
+   const detYoutube = $("#versionDetailsYoutube");
+   if (detailsDialog) {
+      detailsDialog.addEventListener("click", (event) => {
+         if (event.target.closest("[data-versiondetails-dismiss]")) closeVersionDetailsDialog(null);
+      });
+      detYoutube?.addEventListener("input", () => {
+         const value = detYoutube.value.trim();
+         const parsed = syncYoutubePreview(detYoutube.value);
+         const hint = $("#versionDetailsYoutubeHint");
+         if (hint) hint.hidden = !(value && !parsed);
+      });
+      $("#versionDetailsThumb")?.addEventListener("click", () => {
+         const url = $("#versionDetailsThumb")?.dataset.ytUrl;
+         if (url) window.open(url, "_blank", "noopener");
+      });
+      $("#versionDetailsRemove")?.addEventListener("click", () => {
+         if (detYoutube) detYoutube.value = "";
+         syncYoutubePreview("");
+      });
+      $("#versionDetailsSave")?.addEventListener("click", () => {
+         const label = (detName?.value || "").trim();
+         if (!label) {
+            if (detNameError) detNameError.hidden = false;
+            detName?.classList.add("is-invalid");
+            detName?.focus();
+            return;
+         }
+         const value = (detYoutube?.value || "").trim();
+         const parsed = value ? syncYoutubePreview(value) : null;
+         if (value && !parsed) return; // invalid link → block save (hint shown)
+         closeVersionDetailsDialog({
+            status: "save",
+            label,
+            youtubeUrl: parsed ? parsed.url : null,
+            youtubeId: parsed ? parsed.videoId : null,
+         });
+      });
+      $("#versionDetailsDelete")?.addEventListener("click", () => {
+         closeVersionDetailsDialog({ status: "delete" });
+      });
+   }
+   document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && versionDetailsResolve) closeVersionDetailsDialog(null);
+   });
+
+   // ---- Version pill + popover ----
+   const pill = $("#versionSwitcherBtn");
+   if (pill) {
+      pill.addEventListener("click", () => {
+         if ($("#versionPopover")?.classList.contains("is-open")) closeVersionPopover();
+         else openVersionPopover();
+      });
+   }
+   document.addEventListener("click", (event) => {
+      if ($("#versionPopover")?.classList.contains("is-open") && !event.target.closest(".version-switcher")) {
+         closeVersionPopover();
+      }
+   });
+   document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && $("#versionPopover")?.classList.contains("is-open")) closeVersionPopover();
+   });
+
+   $("#versionNewBtn")?.addEventListener("click", onNewVersion);
+}
+
+// Reflect the current arrangement in the topbar version pill.
+function syncVersionPill() {
+   const wrap = $("#versionSwitcherWrap");
+   if (!wrap) return;
+   const ctx = bridge.getCloudContext?.() || null;
+   // Always show the pill when something is being edited — a saved song (songId)
+   // OR a brand-new draft that already has its first version name.
+   wrap.hidden = !ctx || (!ctx.songId && !ctx.versionLabel);
+   if (wrap.hidden) return;
+   const labelEl = $("#versionSwitcherLabel");
+   if (labelEl) {
+      const pending = bridge.getPendingVersionDetails?.() || null;
+      labelEl.textContent =
+         pending && pending.versionId === ctx.versionId && pending.label
+            ? pending.label
+            : ctx.versionLabel || "Version 1";
+   }
+}
+
+// Populate the popover's list of arrangements (newest first) and bind switching.
+async function renderVersionList() {
+   const listEl = $("#versionList");
+   if (!listEl) return;
+   const ctx = bridge.getCloudContext?.() || null;
+   if (!ctx?.songId) {
+      // Brand-new (unsaved) draft: show the pending first-version name instead
+      // of an empty list, and hint that saving unlocks version management.
+      if (ctx?.versionLabel) {
+         listEl.innerHTML = `<div class="version-list-empty">Current: <strong>${escapeHtml(ctx.versionLabel)}</strong> — save to cloud first to manage versions.</div>`;
+      } else {
+         listEl.innerHTML = `<div class="version-list-empty">Save a song first to manage its versions.</div>`;
+      }
+      return;
+   }
+   const versions = await listVersions(ctx.songId);
+   if (!versions.length) {
+      listEl.innerHTML = `<div class="version-list-empty">No versions yet — create one below.</div>`;
+      return;
+   }
+   listEl.innerHTML = versions
+      .map((v) => {
+         const current = v.versionId === ctx.versionId;
+         const pending = bridge.getPendingVersionDetails?.() || null;
+         const isPending = pending && pending.versionId === v.versionId;
+         const name = escapeHtml((isPending && pending.label) || v.label || "Untitled");
+         const ytIcon = (isPending ? pending.youtubeId : v.youtubeId) ? `<span class="version-item-yt" title="Has YouTube link">▶</span>` : "";
+         const pendingDot = isPending ? `<span class="version-item-pending" title="Pending — save to cloud">●</span>` : "";
+         const currentMark = current ? `<span class="version-item-current">Current</span>` : "";
+         return `
+            <div class="version-list-item${current ? " is-current" : ""}">
+               <button class="version-item-switch" type="button" data-version-id="${escapeHtml(v.versionId)}" title="Open this version">
+                  <span class="version-item-label">${name}${ytIcon}</span>
+                  ${pendingDot}
+                  ${currentMark}
+               </button>
+               <button class="version-item-edit" type="button" data-version-id="${escapeHtml(v.versionId)}" aria-label="Edit details" title="Edit details">✎</button>
+            </div>`;
+      })
+      .join("");
+   listEl.querySelectorAll(".version-item-switch").forEach((btn) => {
+      btn.addEventListener("click", () => selectVersion(btn.dataset.versionId));
+   });
+   listEl.querySelectorAll(".version-item-edit").forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+         event.stopPropagation();
+         editVersionDetails(btn.dataset.versionId);
+      });
+   });
+}
+
+// Switch the editor to another arrangement of the same song.
+async function selectVersion(versionId) {
+   const ctx = bridge.getCloudContext?.() || null;
+   if (!ctx?.songId || versionId === ctx.versionId) {
+      closeVersionPopover();
+      return;
+   }
+   await guardUnsavedThen(async () => {
+      closeVersionPopover();
+      try {
+         const meta = await loadSongMeta(ctx.songId);
+         const version = await loadVersion(ctx.songId, versionId);
+         bridge.applyProject(composeSong(meta, version));
+         bridge.setCloudContext({ songId: ctx.songId, versionId, versionLabel: version.label || "" });
+         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(versionId)}`);
+         syncVersionPill();
+         toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
+      } catch (error) {
+         toast("Could not open that version");
+      }
+   });
+}
+
+// New version… — starts a BLANK arrangement (like a new song), without copying
+// the current score. Guarded so unsaved edits to the current version can be
+// saved (or discarded) before leaving it.
+async function onNewVersion() {
+   const ctx = bridge.getCloudContext?.() || null;
+   closeVersionPopover();
+   if (!ctx?.songId) return;
+   const current = bridge.getProject();
+   const mode = current?.editorMode === "numbers" ? "numbers" : "chords";
+   const blank = blankProject(mode, {
+      title: current?.title || "Song Title",
+      artist: current?.artist || "Artist / Composer",
+   });
+
+   if (!ctx.versionId) {
+      // Add-state: no arrangement exists yet — create the first (blank) one.
+      const input = await openVersionNameDialog({
+         title: "New Version",
+         desc: "Start a new, blank arrangement.",
+         defaultLabel: "Version 1",
+      });
+      if (!input) return;
+      try {
+         const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
+         const created = await saveVersion(ctx.songId, null, payload, { label: input.label });
+         await updateLatestVersion(ctx.songId, created.versionId, created.label, 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
+         bridge.applyProject(blank);
+         bridge.setCloudContext({ songId: ctx.songId, versionId: created.versionId, versionLabel: created.label });
+         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(created.versionId)}`);
+         syncVersionPill();
+         toast(`Version "${created.label}" created`);
+      } catch (error) {
+         toast("Could not create version");
+      }
+      return;
+   }
+
+   // Editing an existing song: guard unsaved edits on the current version, then
+   // create a NEW blank arrangement (no cloning of the current score).
+   await guardUnsavedThen(async () => {
+      try {
+         const count = (await listVersions(ctx.songId)).length;
+         const input = await openVersionNameDialog({
+            title: "New Version",
+            desc: "Start a new, blank arrangement — it will not copy the current score.",
+            defaultLabel: `Version ${count + 1}`,
+         });
+         if (!input) return;
+         const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
+         const created = await saveVersion(ctx.songId, null, payload, { label: input.label });
+         await updateLatestVersion(ctx.songId, created.versionId, created.label, count + 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
+         bridge.applyProject(blank);
+         bridge.setCloudContext({ songId: ctx.songId, versionId: created.versionId, versionLabel: created.label });
+         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(created.versionId)}`);
+         syncVersionPill();
+         toast(`Version "${created.label}" created`);
+      } catch (error) {
+         toast("Could not create version");
+      }
+   });
+}
+
+// Edit details (pencil on a version row) — opens the "Version details" dialog
+// (rename + YouTube + delete) for THAT version and applies the result. Works for
+// any version, not just the currently open one.
+async function editVersionDetails(versionId) {
+   const ctx = bridge.getCloudContext?.() || null;
+   closeVersionPopover();
+   if (!ctx?.songId || !versionId) return;
+   let version;
+   try {
+      version = await loadVersion(ctx.songId, versionId);
+   } catch (error) {
+      toast("Could not open version details");
+      return;
+   }
+   const result = await openVersionDetailsDialog({
+      songId: ctx.songId,
+      versionId,
+      label: version.label || (ctx.versionId === versionId ? ctx.versionLabel : "") || "",
+      youtubeUrl: version.youtubeUrl || "",
+      youtubeId: version.youtubeId || "",
+   });
+   if (!result) return;
+   if (result.status === "delete") {
+      // Deleting the CURRENT version runs the full recompute/add-state flow;
+      // deleting another version just removes it and refreshes the list.
+      if (ctx.versionId === versionId) {
+         onDeleteVersion();
+         return;
+      }
+      try {
+         await deleteVersion(ctx.songId, versionId);
+         // A pending edit of this version is gone with it.
+         const pending = bridge.getPendingVersionDetails?.() || null;
+         if (pending?.versionId === versionId) bridge.setPendingVersionDetails(null);
+         toast("Version deleted");
+      } catch (error) {
+         toast(isFirestorePermissionsError(error) ? "Delete blocked — check Firestore security rules" : "Could not delete version");
+      }
+      return;
+   }
+   // Stage the rename + YouTube edit as PENDING. It is only written to the cloud
+   // together with the next "Save to Cloud" — until then a yellow badge on that
+   // button reminds the user the version details were edited.
+   bridge.setPendingVersionDetails({
+      versionId,
+      label: result.label,
+      youtubeUrl: result.youtubeUrl,
+      youtubeId: result.youtubeId,
+   });
+   bridge.markDirty();
+   // Reflect the edit locally (without touching Firestore yet).
+   if (ctx.versionId === versionId) {
+      bridge.setCloudContext({ songId: ctx.songId, versionId, versionLabel: result.label });
+   }
+   syncVersionPill();
+   renderVersionList();
+   toast("Version details pending — Save to Cloud to persist");
+}
+
+// Delete version… — removes that arrangement. The song itself survives (Opsi A).
+async function onDeleteVersion() {
+   const ctx = bridge.getCloudContext?.() || null;
+   closeVersionPopover();
+   if (!ctx?.songId || !ctx.versionId) return;
+   const confirmed = await openConfirmDialog({
+      title: "Delete version?",
+      message: `Delete version "${ctx.versionLabel || "Version 1"}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      icon: "🗑",
+      danger: true,
+   });
+   if (!confirmed) return;
+   try {
+      const result = await deleteVersion(ctx.songId, ctx.versionId);
+      const meta = await loadSongMeta(ctx.songId);
+      if (result.versionId) {
+         const version = await loadVersion(ctx.songId, result.versionId);
+         bridge.applyProject(composeSong(meta, version));
+         bridge.setCloudContext({ songId: ctx.songId, versionId: result.versionId, versionLabel: version.label || "" });
+         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(result.versionId)}`);
+         toast("Version deleted");
+      } else {
+         // Last arrangement removed → song stays; the editor asks for a first version.
+         bridge.applyProject(
+            blankProject("chords", { title: meta.title || "Song Title", artist: meta.artist || "Artist / Composer" }),
+         );
+         bridge.setCloudContext({ songId: ctx.songId, versionId: null, versionLabel: "" });
+         navigate(`#/song/${encodeURIComponent(ctx.songId)}/new`);
+         toast("Last version deleted — add a new one to continue");
+      }
+      syncVersionPill();
+   } catch (error) {
+      toast("Could not delete version");
+   }
+}
+
+async function openSongInEditor(songId, versionId) {
    // Guarded so replacing the open document (e.g. opening another song while
    // one is already loaded with edits) can't silently discard unsaved work.
    await guardUnsavedThen(async () => {
       try {
-         const song = await loadSong(cloudId);
-         bridge.applyProject(song);
-         bridge.setCloudId(cloudId);
-         navigate(`#/song/${encodeURIComponent(cloudId)}`);
-         toast(`Opened "${song.title || "Untitled"}"`);
+         const meta = await loadSongMeta(songId);
+         if (meta.legacy) {
+            // Firestore rules still deny the versions subcollection: open the
+            // legacy flat arrangement directly so nothing looks lost.
+            bridge.applyProject(meta);
+            bridge.setCloudContext({ songId, versionId: null, versionLabel: "" });
+            navigate(`#/song/${encodeURIComponent(songId)}`);
+            toast(`Opened "${meta.title || "Untitled"}"`);
+            return;
+         }
+         let version = null;
+         if (versionId) {
+            version = await loadVersion(songId, versionId);
+         } else if (meta.latestVersionId) {
+            // Default (Logic 2): open the latest arrangement of the song.
+            version = await loadVersion(songId, meta.latestVersionId);
+         }
+         if (version) {
+            bridge.applyProject(composeSong(meta, version));
+            bridge.setCloudContext({ songId, versionId: version.versionId, versionLabel: version.label || "" });
+            navigate(`#/song/${encodeURIComponent(songId)}/v/${encodeURIComponent(version.versionId)}`);
+            toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
+         } else {
+            // The song has no versions yet (e.g. the last one was deleted) →
+            // require a version name FIRST (Opsi A), then land in the editor in
+            // "add first version" mode.
+            const created = await openNewSongDialog({
+               title: "Add First Version",
+               desc: `"${meta.title || "Untitled"}" has no versions yet. Enter a version name, then pick a writing mode to start.`,
+               defaultLabel: "Version 1",
+            });
+            if (!created) {
+               navigate(HOME_ROUTE);
+               return;
+            }
+            bridge.applyProject(
+               blankProject(created.mode, { title: meta.title || "Song Title", artist: meta.artist || "Artist / Composer" }),
+            );
+            bridge.setCloudContext({ songId, versionId: null, versionLabel: created.label });
+            navigate(`#/song/${encodeURIComponent(songId)}/new`);
+            toast(`Version "${created.label}" ready for "${meta.title || "Untitled"}"`);
+         }
       } catch (error) {
          toast("Could not open that song");
       }
@@ -860,8 +1621,12 @@ async function handleCardAction(act, cloudId, card) {
       try {
          const full = await loadSong(cloudId);
          bridge.applyProject(full);
-         bridge.setCloudId(cloudId);
-         navigate(`#/song/${encodeURIComponent(cloudId)}`);
+         bridge.setCloudContext({ songId: cloudId, versionId: full.versionId || null, versionLabel: full.label || "" });
+         navigate(
+            full.versionId
+               ? `#/song/${encodeURIComponent(cloudId)}/v/${encodeURIComponent(full.versionId)}`
+               : `#/song/${encodeURIComponent(cloudId)}/new`,
+         );
          // Wait for the gallery to finish closing so the dialog can adopt the
          // preview card once the editor layout is settled.
          setTimeout(() => bridge.openPdfOptions(), 340);
@@ -874,11 +1639,12 @@ async function handleCardAction(act, cloudId, card) {
       if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
       try {
          await deleteSong(cloudId);
-         if (bridge.getCloudId() === cloudId) bridge.setCloudId(null);
+         const current = bridge.getCloudContext();
+         if (current?.songId === cloudId) bridge.setCloudContext(null);
          toast("Song deleted");
          await refreshSongs();
       } catch (error) {
-         toast("Could not delete that song");
+         toast(isFirestorePermissionsError(error) ? "Delete blocked — check Firestore security rules" : "Could not delete that song");
       }
    } else if (act === "duplicate") {
       try {
@@ -894,10 +1660,19 @@ async function handleCardAction(act, cloudId, card) {
       // focused), fall back to showing the link so the user can copy manually.
       try {
          const song = await loadSong(cloudId);
-         const link = await buildShareLink(song, `${location.origin}${location.pathname}`);
+         // Strip the version-model meta fields so the shared payload is a clean
+         // self-contained project (the editor imports it as a new song + v1).
+         const project = { ...song };
+         delete project.cloudId;
+         delete project.songId;
+         delete project.versionId;
+         delete project.label;
+         delete project.updatedAt;
+         delete project.hasNoVersions;
+         const link = await buildShareLink(project, `${location.origin}${location.pathname}`);
          const copied = await copyTextToClipboard(link);
          if (copied) {
-            toast("Tautan share berhasil disalin!");
+            toast("Share link copied to clipboard!");
          } else {
             await showShareLinkFallback(link);
          }
@@ -945,8 +1720,8 @@ async function showShareLinkFallback(link) {
       window.prompt("Copy this share link:", link);
       return;
    }
-   if (title) title.textContent = "Salin tautan ini";
-   if (desc) desc.textContent = "Copy otomatis diblokir browser. Silakan pilih tautan di bawah dan salin manual.";
+   if (title) title.textContent = "Copy this link";
+   if (desc) desc.textContent = "Automatic copy was blocked by the browser. Select the link below and copy it manually.";
    input.value = link;
    openModal(dialog);
    setTimeout(() => {
@@ -1077,84 +1852,31 @@ function initGallery() {
       { passive: true },
    );
 
-   // New song: open mode picker dialog first (Chords or Numbers).
-   // Guarded so starting fresh doesn't silently discard unsaved edits.
+   // New song (Logic 1): the user MUST name the version, then pick a mode,
+   // before the editor opens. Guarded so starting fresh doesn't silently
+   // discard unsaved edits.
    $("#newSongBtn")?.addEventListener("click", () => {
       guardUnsavedThen(() => {
-         openModePickerDialog().then((mode) => {
-            if (!mode) return; // user cancelled
-            initNewSong(mode);
+         openNewSongDialog({
+            title: "New Song",
+            desc: "Name the first arrangement, then pick a writing mode to start.",
+            defaultLabel: "Version 1",
+         }).then((result) => {
+            if (!result) return; // user cancelled
+            initNewSong(result.mode, result.label);
          });
       });
    });
 
-   /** Open the mode picker dialog and wait for user selection. */
-   function openModePickerDialog() {
-      const dialog = $("#modePickerDialog");
-      if (!dialog) return Promise.reject(new Error("#modePickerDialog not found"));
-
-      return new Promise((resolve) => {
-         let closeResolve = null;
-
-         const onKey = (event) => {
-            if (event.key === "Escape") closeModal(false);
-         };
-
-         const closeModal = (selectedMode) => {
-            dialog.classList.remove("is-open");
-            document.removeEventListener("keydown", onKey);
-            setTimeout(() => {
-               dialog.hidden = true;
-               resolve(selectedMode);
-            }, 260);
-         };
-
-         // Select a mode card
-         Array.from(dialog.querySelectorAll(".mode-card")).forEach((card) => {
-            card.addEventListener("click", () => {
-               const mode = card.dataset.mode;
-               if (!["chords", "numbers"].includes(mode)) {
-                  console.error("[cloudUI] Invalid mode in dataset:", mode);
-                  return;
-               }
-               closeModal(mode);
-            });
-         });
-
-         // Backdrop or data-mode-dismiss elements close without selection
-         dialog.addEventListener("click", (event) => {
-            if (event.target.closest("[data-mode-dismiss]")) {
-               closeModal(null);
-            }
-         });
-
-         // Close button
-         const closeBtn = $("#modePickerClose");
-         closeBtn?.addEventListener("click", () => closeModal(null));
-
-         // Open modal
-         dialog.hidden = false;
-         void dialog.offsetHeight;
-         setTimeout(() => dialog.classList.add("is-open"), 20);
-      });
-   }
-
-   /** Initialize a blank project with the chosen mode settings. */
-   function initNewSong(mode) {
+   /** Initialize a blank project and land on the edit page (Logic 1). */
+   function initNewSong(mode, versionLabel) {
       const isNumbers = mode === "numbers";
-      bridge.applyProject({
-         format: "chord-sheet",
-         version: 2,
-         title: "New Song",
-         artist: "Artist / Composer",
-         key: "C",
-         meter: "4/4",
-         sections: [{ name: "Intro", bars: [] }],
-         slashChords: [],
-         editorMode: mode,
-         lyricsEnabled: false, // lyrics start OFF in both modes; users opt in via the toggle
-      });
-      bridge.setCloudId(null);
+      bridge.applyProject(blankProject(mode));
+      bridge.setCloudContext({ songId: null, versionId: null, versionLabel });
+      // A brand-new draft exists only in the editor — mark it as unsaved from
+      // the start so the yellow badge on "Save to Cloud" is lit and leaving to
+      // My Songs (or browser back) validates via the unsaved-changes guard.
+      bridge.markDirty();
       navigate("#/song/new");
       toast(`Started a new ${isNumbers ? "Nashville numbers" : "chord chart"} song`);
    }
@@ -1213,7 +1935,7 @@ async function importFromPayload(payload) {
       });
       if (!confirmed) return;
       bridge.applyProject(song);
-      bridge.setCloudId(null);
+      bridge.setCloudContext(null);
       // Go to the editor screen (NOT #/import, which would re-run this flow).
       navigate("#/song/new");
       toast("Song loaded — click Save to Cloud to keep it");
@@ -1237,14 +1959,64 @@ async function saveToCloud() {
    }
    try {
       const project = bridge.getProject();
-      project.cloudId = bridge.getCloudId() || undefined;
-      const id = await saveSong(project);
-      bridge.setCloudId(id);
+      const ctx = bridge.getCloudContext() || {};
+      const title = project.title || "Untitled";
+      const artist = project.artist || "";
+      let nextContext;
+      if (ctx.songId) {
+         const songId = ctx.songId;
+         if (ctx.versionId) {
+            // Editing an existing arrangement: update the version doc in place.
+            await saveVersion(songId, ctx.versionId, project, { label: ctx.versionLabel });
+            nextContext = { songId, versionId: ctx.versionId, versionLabel: ctx.versionLabel };
+         } else {
+            // Song exists but currently has no versions (add-state): this save
+            // becomes its (new) first version.
+            const created = await saveVersion(songId, null, project, { label: ctx.versionLabel || "Version 1" });
+            await updateLatestVersion(songId, created.versionId, created.label, 1, project.editorMode, undefined, project.key, project.meter);
+            nextContext = { songId, versionId: created.versionId, versionLabel: created.label };
+         }
+         await updateSongMeta(songId, {
+            title,
+            artist,
+            latestEditorMode: project.editorMode === "numbers" ? "numbers" : "chords",
+            latestKey: project.key || "",
+            latestMeter: project.meter || "",
+         });
+      } else {
+         // Brand-new song: metadata + its first version are created together.
+         const createdSong = await createSong({ title, artist });
+         const created = await saveVersion(createdSong.songId, null, project, { label: ctx.versionLabel || "Version 1" });
+         await updateLatestVersion(createdSong.songId, created.versionId, created.label, 1, project.editorMode, undefined, project.key, project.meter);
+         nextContext = { songId: createdSong.songId, versionId: created.versionId, versionLabel: created.label };
+      }
+      // Persist any staged version-details edit (name / YouTube link) together
+      // with this "Save to Cloud".
+      const pending = bridge.getPendingVersionDetails?.() || null;
+      if (pending?.versionId && nextContext.songId) {
+         await saveVersion(nextContext.songId, pending.versionId, {
+            youtubeUrl: pending.youtubeUrl,
+            youtubeId: pending.youtubeId,
+         }, { label: pending.label });
+         const versions = await listVersions(nextContext.songId);
+         if (versions[0]?.versionId === pending.versionId) {
+            await updateSongMeta(nextContext.songId, {
+               latestVersionLabel: pending.label,
+               latestYoutubeId: pending.youtubeId || null,
+            });
+         }
+         if (nextContext.versionId === pending.versionId) {
+            nextContext.versionLabel = pending.label;
+         }
+         bridge.setPendingVersionDetails(null);
+      }
+      bridge.setCloudContext(nextContext);
+      syncVersionPill();
       bridge.markSaved();
       toast("Saved to cloud");
       return true;
    } catch (error) {
-      toast("Could not save to cloud");
+      toast(isFirestorePermissionsError(error) ? "Save blocked — check Firestore security rules" : "Could not save to cloud");
       return false;
    }
 }
@@ -1315,7 +2087,7 @@ function initAccountButton() {
       closeAccountMenu();
       try {
          await signOutUser();
-         bridge.setCloudId(null);
+         bridge.setCloudContext(null);
          toast("Signed out");
       } catch (error) {
          toast("Could not sign out");
@@ -1330,6 +2102,8 @@ export function initCloudUI(editorBridge) {
    bridge = { ...bridge, ...editorBridge };
    initLogin();
    initGallery();
+   initNewSongDialog();
+   initVersionCrud();
    initAccountButton();
    // Test hook: the per-card Export .file path can't reach Firebase in headless
    // CI, so expose the pure download helper for the regression suite to exercise.
@@ -1349,6 +2123,12 @@ export function initCloudUI(editorBridge) {
             key: "G",
             meter: "4/4",
             sections: [{ name: "Verse" }, { name: "Chorus" }, { name: "Bridge" }],
+            versionCount: 3,
+            latestVersionId: `v${i}`,
+            latestVersionLabel: `Version ${(i % 3) + 1}`,
+            latestEditorMode: i % 2 ? "numbers" : "chords",
+            latestKey: "G",
+            latestMeter: "4/4",
             updatedAt: Date.now(),
          }));
          renderCards(songs);

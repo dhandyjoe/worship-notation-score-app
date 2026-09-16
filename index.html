@@ -34,8 +34,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260904-marginnarrow4" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260904-marginnarrow4" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260927-dirty" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260927-dirty" />
    </head>
    <body>
       <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
@@ -51,10 +51,29 @@
                <span class="editor-breadcrumb-label">Editing</span>
                <strong class="editor-breadcrumb-title" id="editorSongName">Song Title</strong>
             </span>
-            <button class="topbar-help-btn" id="howToUseBtn" type="button" aria-haspopup="dialog" aria-controls="howToDialog" title="How to edit this score">
-               <span class="topbar-help-icon" aria-hidden="true">?</span>
-               <span class="topbar-help-label">How to edit</span>
-            </button>
+            <!-- Version switcher (next to the song title): manage the arrangements
+                 of the current song. -->
+            <div class="version-switcher" id="versionSwitcherWrap" hidden>
+               <button
+                  class="button button-ghost version-switcher-btn"
+                  id="versionSwitcherBtn"
+                  type="button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  aria-controls="versionPopover"
+                  title="Manage versions of this song"
+               >
+                  <span aria-hidden="true">⧉</span>
+                  <span id="versionSwitcherLabel">Version 1</span>
+                  <span class="version-switcher-caret" aria-hidden="true">▾</span>
+               </button>
+               <div class="account-popover version-popover" id="versionPopover" hidden role="menu" aria-labelledby="versionSwitcherBtn">
+                  <div class="version-popover-head">Versions</div>
+                  <div class="version-list" id="versionList" role="group" aria-label="Choose a version"></div>
+                  <div class="account-popover-sep" role="separator"></div>
+                  <button class="account-popover-item" id="versionNewBtn" type="button" role="menuitem"><span aria-hidden="true">＋</span> New version</button>
+               </div>
+            </div>
          </div>
          <div class="topbar-actions">
             <span class="editor-mode-badge" id="editorModeBadge" title="Editing mode for this song">
@@ -701,18 +720,34 @@
          </div>
       </div>
 
-      <!-- ==================== NEW SONG: MODE PICKER DIALOG ====================
-           Opened by #newSongBtn. Lets the user choose how they want to write
-           the new song: a Chord Progression sheet, or a Number Notation
-           (Nashville) sheet. Each card animates a small preview on hover to
-           telegraph what the mode produces. Driven by cloudUI.js. -->
-      <div class="confirm-dialog mode-picker-dialog" id="modePickerDialog" hidden role="dialog" aria-modal="true" aria-labelledby="modePickerTitle" aria-describedby="modePickerDesc">
+      <!-- ==================== NEW SONG DIALOG: VERSION NAME + MODE ====================
+           Opened by #newSongBtn (and by the "add first version" state when a song
+           has no arrangements yet). The user MUST name the version before the
+           editor opens — the name is stored on the version document at first save.
+           Driven by cloudUI.js. -->
+      <div class="confirm-dialog mode-picker-dialog" id="newSongDialog" hidden role="dialog" aria-modal="true" aria-labelledby="newSongTitle" aria-describedby="newSongDesc">
          <div class="confirm-dialog-backdrop" data-mode-dismiss></div>
          <div class="confirm-dialog-card mode-picker-card" role="document">
-            <button class="mode-picker-close" id="modePickerClose" type="button" aria-label="Close" data-mode-dismiss>&times;</button>
+            <button class="mode-picker-close" id="newSongClose" type="button" aria-label="Close" data-mode-dismiss>&times;</button>
             <div class="confirm-dialog-icon" aria-hidden="true">♪</div>
-            <h2 class="confirm-dialog-title" id="modePickerTitle">How do you want to write this song?</h2>
-            <p class="confirm-dialog-desc" id="modePickerDesc">Pick a writing mode. You can focus on chords, or on number (Nashville) notation — the editor adapts to each.</p>
+            <h2 class="confirm-dialog-title" id="newSongTitle">New Song</h2>
+            <p class="confirm-dialog-desc" id="newSongDesc">Name the first arrangement, then pick a writing mode to start.</p>
+
+            <div class="new-song-name">
+               <label class="new-song-name-label" for="newSongVersionName">Version name <em>(required)</em></label>
+               <input
+                  class="new-song-name-input"
+                  id="newSongVersionName"
+                  type="text"
+                  maxlength="60"
+                  value="Version 1"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-describedby="newSongNameHint newSongVersionError"
+               />
+               <p class="new-song-name-hint" id="newSongNameHint">Each arrangement gets its own name — e.g. “Original”, “Pop”, “2024”.</p>
+               <p class="new-song-name-error" id="newSongVersionError" role="alert" hidden>Version name is required — enter a name to continue.</p>
+            </div>
 
             <div class="mode-picker-grid">
                <!-- Mode 1: Chord Progression -->
@@ -777,6 +812,122 @@
                      </ul>
                   </div>
                </button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== NEW VERSION NAME DIALOG ===========================
+           Small name prompt used when creating a NEW blank version (version pill
+           → "New version…"). The arrangement starts blank (like a New Song) and
+           never copies the current score. Driven by cloudUI.js. -->
+      <div class="confirm-dialog" id="newVersionNameDialog" hidden role="dialog" aria-modal="true" aria-labelledby="newVersionNameTitle">
+         <div class="confirm-dialog-backdrop" data-newversionname-dismiss></div>
+         <div class="confirm-dialog-card version-dialog-card" role="document">
+            <div class="vd-dialog-head">
+               <div class="confirm-dialog-icon" aria-hidden="true">⧉</div>
+               <div class="vd-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="newVersionNameTitle">New Version</h2>
+                  <p class="confirm-dialog-desc" id="newVersionNameDesc">This arrangement will start blank — it will not copy the current score.</p>
+               </div>
+            </div>
+            <div class="vd-fields">
+               <div class="new-song-name">
+                  <label class="new-song-name-label" for="newVersionNameInput">Version name <em>(required)</em></label>
+                  <input
+                     class="new-song-name-input"
+                     id="newVersionNameInput"
+                     type="text"
+                     maxlength="60"
+                     value="Version 1"
+                     autocomplete="off"
+                     spellcheck="false"
+                     aria-describedby="newVersionNameError"
+                  />
+                  <p class="new-song-name-error" id="newVersionNameError" role="alert" hidden>Version name is required — enter a name to continue.</p>
+               </div>
+
+               <div class="vd-youtube">
+                  <label class="new-song-name-label" for="newVersionYoutube">YouTube link <em>(optional)</em></label>
+                  <input
+                     class="new-song-name-input"
+                     id="newVersionYoutube"
+                     type="text"
+                     placeholder="Paste a YouTube link — e.g. https://youtu.be/…"
+                     autocomplete="off"
+                     spellcheck="false"
+                     aria-describedby="newVersionYoutubeHint"
+                  />
+                  <div class="vd-youtube-preview" id="newVersionYoutubePreview" hidden>
+                     <img class="vd-youtube-thumb" id="newVersionThumb" alt="Play this video on YouTube" title="Open on YouTube" />
+                     <button class="icon-button" id="newVersionYoutubeRemove" type="button" aria-label="Remove YouTube link" title="Remove link">✕</button>
+                  </div>
+                  <p class="new-song-name-error" id="newVersionYoutubeHint" role="alert" hidden>That doesn't look like a valid YouTube link.</p>
+               </div>
+            </div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="newVersionNameOk" type="button">Create</button>
+               <button class="button button-ghost" id="newVersionNameCancel" type="button" data-newversionname-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== VERSION DETAILS DIALOG ============================
+           Single-instance modal to manage ONE arrangement: rename it, attach /
+           edit / clear its YouTube link (with live thumbnail preview), or delete
+           the version. Opened from the editor's version pill → "Edit details…".
+           Driven by cloudUI.js. -->
+      <div class="confirm-dialog" id="versionDetailsDialog" hidden role="dialog" aria-modal="true" aria-labelledby="versionDetailsTitle">
+         <div class="confirm-dialog-backdrop" data-versiondetails-dismiss></div>
+         <div class="confirm-dialog-card version-dialog-card" role="document">
+            <div class="vd-dialog-head">
+               <div class="confirm-dialog-icon" aria-hidden="true">⧉</div>
+               <div class="vd-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="versionDetailsTitle">Version details</h2>
+                  <p class="confirm-dialog-desc" id="versionDetailsSub">Manage this arrangement — its name and its YouTube link.</p>
+               </div>
+            </div>
+
+            <div class="vd-fields">
+               <div class="new-song-name">
+                  <label class="new-song-name-label" for="versionDetailsName">Version name <em>(required)</em></label>
+                  <input
+                     class="new-song-name-input"
+                     id="versionDetailsName"
+                     type="text"
+                     maxlength="60"
+                     value="Version 1"
+                     autocomplete="off"
+                     spellcheck="false"
+                     aria-describedby="versionDetailsNameError"
+                  />
+                  <p class="new-song-name-error" id="versionDetailsNameError" role="alert" hidden>Version name is required — enter a name to continue.</p>
+               </div>
+
+               <div class="vd-youtube">
+                  <label class="new-song-name-label" for="versionDetailsYoutube">YouTube link <em>(optional)</em></label>
+                  <input
+                     class="new-song-name-input"
+                     id="versionDetailsYoutube"
+                     type="text"
+                     placeholder="Paste a YouTube link — e.g. https://youtu.be/…"
+                     autocomplete="off"
+                     spellcheck="false"
+                     aria-describedby="versionDetailsYoutubeHint"
+                  />
+                  <div class="vd-youtube-preview" id="versionDetailsYoutubePreview" hidden>
+                     <img class="vd-youtube-thumb" id="versionDetailsThumb" alt="Play this video on YouTube" title="Open on YouTube" />
+                     <button class="icon-button" id="versionDetailsRemove" type="button" aria-label="Remove YouTube link" title="Remove link">✕</button>
+                  </div>
+                  <p class="new-song-name-error" id="versionDetailsYoutubeHint" role="alert" hidden>That doesn't look like a valid YouTube link.</p>
+               </div>
+            </div>
+
+            <div class="confirm-dialog-actions vd-delete-row">
+               <button class="button button-danger" id="versionDetailsDelete" type="button"><span aria-hidden="true">🗑</span> Delete version…</button>
+            </div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="versionDetailsSave" type="button">Save</button>
+               <button class="button button-ghost" id="versionDetailsCancel" type="button" data-versiondetails-dismiss>Cancel</button>
             </div>
          </div>
       </div>
@@ -924,6 +1075,17 @@
                  page title, leaving the search bar visually on its own with room
                  to breathe before the song list. -->
             <div class="cloud-gallery-searchbar">
+               <button
+                  class="topbar-help-btn"
+                  id="howToUseBtn"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-controls="howToDialog"
+                  title="How to edit this score"
+               >
+                  <span class="topbar-help-icon" aria-hidden="true">?</span>
+                  <span class="topbar-help-label">How to edit</span>
+               </button>
                <div class="cloud-search">
                   <span class="cloud-search-icon" aria-hidden="true">⌕</span>
                   <input type="search" id="songSearch" placeholder="Search your songs by title…" aria-label="Search songs by title" />
@@ -954,7 +1116,7 @@
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260904-marginnarrow4"></script>
+      <script type="module" src="src/app.js?v=20260927-dirty"></script>
       <script>
          // Register the PWA service worker for offline support. Skipped in the
          // automated test harness (?test=...) so caching never interferes with
