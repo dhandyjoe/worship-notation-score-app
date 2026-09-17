@@ -17,8 +17,8 @@
 //    "Save as PDF" dialog proposes a meaningful default filename, then restore
 //    the original title afterward.
 
-import { $ } from "./dom.js?v=20260927-dirty";
-import { safeFileName } from "./notation.js?v=20260927-dirty";
+import { $ } from "./dom.js?v=20260923-album11";
+import { safeFileName } from "./notation.js?v=20260923-album11";
 
 // Whether WE added the is-print-layout class for the current print job. We only
 // strip it in afterprint if we added it — this preserves a manual "PDF layout"
@@ -33,13 +33,13 @@ const MID_BAR_CLASS = "pdf-mid-bar";
 
 // Paper width (mm) by id, mirroring PDF_PAPER in src/pdfOptions.js.
 const PDF_PAPER_MM = { a4: 210, letter: 215.9 };
-// TEST ONLY — temporary printable-width override for the EXPORT job only (NOT
-// the on-screen preview/dialog). Probe: lay the .bar-grid rows out at 230mm
-// (even though the A4 paper is 210mm) so more bars fit per printed row, and the
-// overflow past the paper edge gets clipped. The card/header (title, artist,
-// key, time signature) is NOT widened — it stays pinned to the true paper
-// content width, so the header renders exactly like a normal export.
-// Remove when the test is done.
+// Export-only printable-width override (SHIPPED behaviour — see the "wider chord
+// rows" PDF work). The exported .bar-grid rows are laid out at 230mm even though
+// A4 is 210mm wide, so more bars fit per printed row; the overflow past the paper
+// edge is clipped. It applies to the EXPORT job only (never the on-screen
+// preview/dialog). The card/header (title, artist, key, time signature) is NOT
+// widened — it stays pinned to the true paper content width, so the header
+// renders exactly like a normal export.
 const EXPORT_WIDTH_OVERRIDE_MM = { narrow: 230 };
 // Margins are LOCKED to the "narrow" preset (the PDF options dialog no longer
 // offers a margin choice), so there is exactly one entry each:
@@ -67,9 +67,10 @@ export function printContentWidthPx({ forExport = false, allowOverride = true } 
    // user-selectable. The real export uses 0mm side margins (full-bleed paper),
    // the on-screen preview keeps the 7mm narrow sides.
    const sideMM = forExport ? EXPORT_SIDE_MARGIN_MM.narrow : PDF_SIDE_MARGIN_MM.narrow;
-   // TEST ONLY: let the export widen the .bar-grid rows past the paper edge.
-   // Callers that need the TRUE paper content width (e.g. to keep the card /
-   // header unchanged) pass allowOverride:false so this stays out of the way.
+   // Export-only: let the .bar-grid rows widen past the paper edge (see
+   // EXPORT_WIDTH_OVERRIDE_MM above). Callers that need the TRUE paper content
+   // width (e.g. to keep the card / header unchanged) pass allowOverride:false so
+   // this stays out of the way.
    const contentMM =
       forExport && allowOverride
          ? EXPORT_WIDTH_OVERRIDE_MM.narrow

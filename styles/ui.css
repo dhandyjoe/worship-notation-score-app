@@ -1476,6 +1476,19 @@ html[data-theme="dark"] .preview-help-btn {
    overflow-y: auto;
    width: 100%;
 }
+/* Group label inside the help dialog (e.g. "☁ Your cloud library"). The list is
+   long, so it is split into labelled sections instead of one flat run. */
+.howto-group {
+   margin-top: 6px;
+   font-size: 10.5px;
+   font-weight: 800;
+   letter-spacing: 0.09em;
+   text-transform: uppercase;
+   color: var(--muted);
+}
+.howto-group:first-child {
+   margin-top: 0;
+}
 .howto-item {
    display: flex;
    align-items: flex-start;
@@ -2397,7 +2410,11 @@ html[data-theme="dark"] .confirm-dialog-icon {
    .scroll-affordance,
    .site-footer,
    .pdf-options-modal,
-   .toast {
+   .toast,
+   /* App-shell notices must never reach paper. The member read-only banner in
+      particular was printing on the exported score, because the legacy print
+      rule in styles.css only hides .topbar/.intro/.editor-card/.preview-footer. */
+   .album-banner {
       display: none !important;
    }
    .preview-stage {
@@ -4039,10 +4056,11 @@ html[data-theme="dark"] .cloud-auth-primary {
 .topbar-help-btn {
    display: inline-flex;
    align-items: center;
-   gap: 7px;
+   gap: 0;
    flex: 0 0 auto;
-   margin-left: 4px;
-   padding: 7px 13px 7px 8px;
+   margin-left: 0;
+   /* Icon-only: symmetric padding keeps the ? circle optically centered. */
+   padding: 6px;
    border: 1.5px solid color-mix(in srgb, var(--green) 45%, var(--line));
    border-radius: 999px;
    background: color-mix(in srgb, var(--green) 8%, var(--surface));
@@ -4217,6 +4235,13 @@ html[data-theme="dark"] .topbar-help-btn {
    justify-self: end;
    gap: 10px;
    flex-wrap: wrap;
+}
+/* The hidden attribute must always win inside the home toolbar (e.g. #newSongBtn
+   / #attachLinkBtn are hidden on the Albums tab, #backToEditorBtn is hidden until
+   a song is open). Without this, any future rule that sets `display` on .button
+   would silently override the UA [hidden] default and show them anyway. */
+.cloud-gallery-actions > [hidden] {
+   display: none !important;
 }
 /* Hero + search stack. The hero moved here from the editor: only the home
    screen gets to state what the product does. */
@@ -4680,6 +4705,14 @@ html[data-theme="dark"] .song-card-mode-mark {
    color: var(--dark-green);
 }
 .song-card-action.is-export:hover {
+   background: var(--soft);
+   color: var(--dark-green);
+}
+/* Edit album details (name + description) — the same muted-green treatment as the
+   other secondary actions. Deliberately NOT `is-edit`: that class is the phone-only
+   "Open" shortcut, which is hidden on desktop (see above). */
+.song-card-action.is-details:hover,
+.song-card-action.is-details:focus-visible {
    background: var(--soft);
    color: var(--dark-green);
 }
@@ -5751,4 +5784,874 @@ html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge {
 html[data-theme="dark"] body[data-editor-mode="numbers"] .editor-mode-badge-icon {
    background: rgba(129, 140, 248, 0.2);
    color: #b0b4ff;
+}
+/* ======================================================================
+   ALBUM (Fase 3/4) — Albums tab, album cards, album detail, invite UI.
+   Reuses the existing cloud tokens so light/dark stay in sync.
+   ====================================================================== */
+
+/* Home tabs (My Songs | Albums). */
+.home-tabs {
+   flex: 0 0 auto;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 6px;
+   padding: 10px clamp(20px, 4vw, 56px) 12px;
+   border-bottom: 1px solid var(--line);
+   background: var(--surface);
+}
+.home-tab {
+   appearance: none;
+   border: 0;
+   border-radius: 999px;
+   padding: 8px 22px;
+   font: 700 13.5px inherit;
+   color: var(--muted);
+   background: transparent;
+   cursor: pointer;
+   transition: background 0.16s ease, color 0.16s ease;
+}
+.home-tab:hover {
+   color: var(--ink);
+   background: var(--soft);
+}
+.home-tab.is-active,
+.home-tab[aria-selected="true"] {
+   color: #fff;
+   background: var(--green);
+   box-shadow: 0 5px 12px rgba(35, 122, 80, 0.16);
+}
+.home-tab-panel {
+   flex: 1 1 auto;
+   min-height: 0;
+   display: flex;
+   flex-direction: column;
+}
+.home-tab-panel[hidden] {
+   display: none;
+}
+
+/* Albums toolbar above the album card list. */
+.albums-toolbar {
+   flex: 0 0 auto;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   padding: 14px clamp(20px, 4vw, 56px) 6px;
+   flex-wrap: wrap;
+}
+.albums-toolbar-note {
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.albums-list {
+   flex: 1 1 auto;
+   min-width: 0;
+   width: 100%;
+   max-width: 100%;
+   height: 100%;
+   overflow-y: auto;
+   padding: 26px clamp(20px, 5vw, 64px);
+   align-content: start;
+   display: flex;
+   flex-direction: column;
+   gap: 14px;
+   scrollbar-width: thin;
+}
+.albums-list[hidden] {
+   display: none;
+}
+.album-card {
+   display: flex;
+   align-items: center;
+   gap: 16px;
+   width: 100%;
+   padding: 18px 20px;
+   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+   border-radius: var(--radius-md);
+   background: var(--surface);
+   color: var(--ink);
+   font: inherit;
+   text-align: left;
+   cursor: pointer;
+   box-shadow: 0 1px 3px rgba(16, 40, 28, 0.05), 0 9px 26px -14px rgba(16, 40, 28, 0.14);
+   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+}
+.album-card:hover,
+.album-card:focus-visible {
+   transform: translateY(-2px);
+   border-color: color-mix(in srgb, var(--green) 32%, transparent);
+   box-shadow: 0 2px 6px rgba(16, 40, 28, 0.06), 0 18px 34px -16px rgba(16, 40, 28, 0.28);
+   outline: none;
+}
+.album-card-icon {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 44px;
+   height: 44px;
+   border-radius: 13px;
+   background: linear-gradient(135deg, var(--soft), var(--surface));
+   font-size: 21px;
+   color: var(--dark-green);
+}
+.album-card-body {
+   display: flex;
+   flex-direction: column;
+   min-width: 0;
+   gap: 3px;
+   flex: 1 1 auto;
+}
+.album-card-name {
+   font-size: 16.5px;
+   font-weight: 750;
+   letter-spacing: -0.01em;
+   color: var(--ink);
+}
+.album-card-meta {
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.album-card-desc {
+   font-size: 13px;
+   color: var(--muted);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+.album-card-open {
+   flex: 0 0 auto;
+   font-size: 19px;
+   color: var(--muted);
+}
+/* Album detail page-overlay (mirrors .cloud-gallery). */
+.cloud-album {
+   place-items: stretch;
+   padding: 0;
+   grid-template-columns: minmax(0, 1fr);
+   grid-template-rows: minmax(0, 1fr);
+}
+.cloud-album-shell {
+   position: relative;
+   width: 100%;
+   min-width: 0;
+   height: 100%;
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
+   background: var(--app-bg);
+   transform: translateY(14px);
+   opacity: 0;
+   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
+}
+.cloud-album.is-open .cloud-album-shell {
+   transform: translateY(0);
+   opacity: 1;
+}
+.cloud-album-head {
+   flex: 0 0 auto;
+   /* Equal 1fr side columns keep the centered title OPTICALLY centered no
+      matter how wide the back button or the action buttons get. */
+   display: grid;
+   grid-template-columns: 1fr auto 1fr;
+   align-items: center;
+   gap: 18px;
+   padding: 18px clamp(20px, 4vw, 56px);
+   border-bottom: 1px solid var(--line);
+   background: var(--surface);
+}
+.album-back {
+   justify-self: start;
+}
+.cloud-album-heading {
+   min-width: 0;
+   justify-self: center;
+   text-align: center;
+}
+.cloud-album-heading .cloud-modal-title {
+   margin: 0;
+   font-size: clamp(16px, 1.7vw, 20px);
+   font-weight: 750;
+   letter-spacing: -0.01em;
+}
+.cloud-album-heading .cloud-modal-sub {
+   margin: 3px 0 0;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.cloud-album-actions {
+   display: flex;
+   align-items: center;
+   justify-content: flex-end;
+   justify-self: end;
+   gap: 9px;
+   flex-wrap: wrap;
+}
+.cloud-album-searchbar {
+   flex: 0 0 auto;
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   padding: 14px clamp(20px, 4vw, 56px) 6px;
+}
+
+/* Album song list: the SAME carousel as My Songs (two-row zigzag, horizontal
+   scroll only, hidden scrollbars → no vertical scrollbars). */
+.cloud-album-body {
+   position: relative;
+   flex: 1 1 auto;
+   min-height: 0;
+   width: 100%;
+   max-width: 100%;
+   overflow: hidden; /* the scrolling grid lives INSIDE here */
+   display: flex;
+   align-items: flex-start;
+   justify-content: center;
+}
+.cloud-album-cards {
+   /* inherits the shared .cloud-cards carousel styles */
+}
+
+/* Topbar album context pill. */
+.album-pill {
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
+   padding: 5px 10px;
+   border-radius: 999px;
+   border: 1px solid color-mix(in srgb, var(--green) 38%, transparent);
+   background: var(--soft);
+   color: var(--dark-green);
+   font-size: 12px;
+   font-weight: 650;
+}
+.album-pill[hidden] {
+   display: none;
+}
+.album-pill.is-readonly {
+   border-color: color-mix(in srgb, var(--muted) 45%, transparent);
+   background: var(--soft);
+   color: var(--ink);
+}
+
+/* Read-only banner under the topbar (album members in the editor). */
+.album-banner {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   margin: 0;
+   padding: 8px 18px;
+   border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+   border-radius: 10px;
+   background: var(--soft);
+   color: var(--ink);
+   font-size: 12.5px;
+}
+.album-banner[hidden] {
+   display: none;
+}
+.album-banner-icon {
+   flex: 0 0 auto;
+   font-size: 14px;
+}
+.album-banner::before {
+   content: "";
+   flex: 0 0 auto;
+   width: 8px;
+   height: 8px;
+   border-radius: 50%;
+   background: var(--muted);
+}
+/* Join album dialog code input. */
+.album-code-field {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+   margin-top: 14px;
+}
+.album-code-input {
+   font-size: 17px;
+   font-weight: 700;
+   letter-spacing: 0.14em;
+   text-transform: uppercase;
+   text-align: center;
+}
+
+/* New album dialog fields. */
+.album-fields {
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+   margin-top: 4px;
+}
+.album-desc-input {
+   resize: vertical;
+   min-height: 58px;
+   /* Same font as the album name input (matches .new-song-name-input). */
+   font: 600 15px inherit;
+}
+.album-desc-input::placeholder {
+   color: var(--muted);
+}
+
+/* Invite dialog: the big shareable code. */
+.invite-code-box {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 12px;
+   margin: 16px 0 6px;
+   padding: 16px 18px;
+   border: 1px dashed color-mix(in srgb, var(--green) 45%, transparent);
+   border-radius: var(--radius-md);
+   background: var(--soft);
+}
+.invite-code-value {
+   font-size: 24px;
+   font-weight: 800;
+   letter-spacing: 0.16em;
+   color: var(--dark-green);
+   font-variant-numeric: tabular-nums;
+}
+
+/* Add-song dialog: radio list of My Songs. */
+.add-song-list {
+   display: flex;
+   flex-direction: column;
+   gap: 9px;
+   max-height: 260px;
+   overflow-y: auto;
+   margin-top: 10px;
+}
+.add-song-option {
+   display: flex;
+   align-items: center;
+   gap: 11px;
+   padding: 11px 13px;
+   border: 1px solid var(--line);
+   border-radius: 11px;
+   background: var(--surface);
+   cursor: pointer;
+   transition: border-color 0.16s ease, background 0.16s ease;
+}
+.add-song-option:hover {
+   border-color: color-mix(in srgb, var(--green) 34%, transparent);
+   background: var(--soft);
+}
+.add-song-option input[type="radio"] {
+   accent-color: var(--green);
+   width: 17px;
+   height: 17px;
+   margin: 0;
+}
+.add-song-option-text {
+   display: flex;
+   flex-direction: column;
+   gap: 1px;
+   min-width: 0;
+   flex: 1 1 auto;
+}
+.add-song-option-text strong {
+   font-size: 14px;
+   color: var(--ink);
+}
+.add-song-option-text small {
+   font-size: 12px;
+   color: var(--muted);
+}
+
+/* Members dialog list. */
+.member-list {
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+   max-height: 300px;
+   overflow-y: auto;
+   margin-top: 10px;
+}
+.member-row {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   padding: 11px 13px;
+   border: 1px solid var(--line);
+   border-radius: 12px;
+   background: var(--surface);
+}
+.member-avatar {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 34px;
+   height: 34px;
+   border-radius: 50%;
+   background: var(--soft);
+   color: var(--dark-green);
+   font-weight: 800;
+   font-size: 14px;
+}
+.member-who {
+   display: flex;
+   flex-direction: column;
+   gap: 1px;
+   min-width: 0;
+   flex: 1 1 auto;
+}
+.member-who strong {
+   font-size: 14px;
+   color: var(--ink);
+}
+.member-who small {
+   font-size: 12px;
+   color: var(--muted);
+}
+.member-badge {
+   flex: 0 0 auto;
+   padding: 3px 9px;
+   border-radius: 999px;
+   background: var(--soft);
+   color: var(--dark-green);
+   font-size: 11.5px;
+   font-weight: 700;
+}
+.member-controls {
+   display: flex;
+   align-items: center;
+   gap: 7px;
+   flex-wrap: nowrap;
+}
+
+/* Dark theme tweaks for the album UI. */
+html[data-theme="dark"] .home-tab.is-active,
+html[data-theme="dark"] .home-tab[aria-selected="true"] {
+   color: #08130d;
+   background: var(--green);
+}
+html[data-theme="dark"] .album-card {
+   background: #101210;
+   color: #eaf2ea;
+}
+html[data-theme="dark"] .album-card-name {
+   color: #f1f4f2;
+}
+html[data-theme="dark"] .album-card-icon {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .cloud-album-shell,
+html[data-theme="dark"] .cloud-album-head {
+   background: #101210;
+}
+html[data-theme="dark"] .album-pill {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .album-banner {
+   background: #1d211e;
+   color: #dde6dd;
+}
+html[data-theme="dark"] .invite-code-box {
+   background: #1d211e;
+}
+html[data-theme="dark"] .invite-code-value {
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .add-song-option,
+html[data-theme="dark"] .member-row {
+   background: #101210;
+}
+html[data-theme="dark"] .add-song-option-text strong,
+html[data-theme="dark"] .member-who strong {
+   color: #f1f4f2;
+}
+html[data-theme="dark"] .member-avatar {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+html[data-theme="dark"] .member-badge {
+   background: #1d211e;
+   color: #7fd3a4;
+}
+/* Danger ghost buttons in the album header (Delete / Leave). */
+.cloud-album-actions .button.is-danger {
+   color: #b3261e;
+   border: 1px solid color-mix(in srgb, #d96a5f 55%, transparent);
+   background: rgba(255, 240, 238, 0.85);
+}
+.cloud-album-actions .button.is-danger:hover {
+   background: #fdecec;
+   color: #a01f18;
+   border-color: #c9564b;
+}
+html[data-theme="dark"] .cloud-album-actions .button.is-danger {
+   color: #f2b2a9;
+   background: #2a1c1a;
+   border: 1px solid #7c3d37;
+}
+html[data-theme="dark"] .cloud-album-actions .button.is-danger:hover {
+   background: #3a2622;
+   color: #ffd7d0;
+}
+/* Album list card delete affordance (owner cards only). */
+.album-card-delete {
+   flex: 0 0 auto;
+   width: 38px;
+   height: 38px;
+   padding: 0;
+   display: grid;
+   place-items: center;
+   border: 1px solid color-mix(in srgb, #d96a5f 55%, transparent);
+   border-radius: 999px;
+   background: rgba(255, 240, 238, 0.85);
+   color: #b3261e;
+   cursor: pointer;
+   box-shadow: none;
+   transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+.album-card-delete:hover {
+   background: #fdecec;
+   color: #a01f18;
+   border-color: #c9564b;
+}
+.album-card-delete:focus-visible {
+   outline: 2px solid #b3261e;
+   outline-offset: 1px;
+}
+html[data-theme="dark"] .album-card-delete {
+   background: #2a1c1a;
+   color: #f2b2a9;
+   border: 1px solid #7c3d37;
+}
+html[data-theme="dark"] .album-card-delete:hover {
+   background: #3a2622;
+   color: #ffd7d0;
+}
+/* The shared confirm dialog must ALWAYS stack above any other open dialog
+   (#albumMembersDialog, #inviteDialog, home, …) so its prompt is never hidden. */
+#confirmDialog {
+   z-index: 1900;
+}
+
+/* Members list polish. */
+.member-role-chip {
+   flex: 0 0 auto;
+   padding: 3px 10px;
+   border-radius: 999px;
+   background: var(--soft);
+   color: var(--muted);
+   font-size: 11.5px;
+   font-weight: 700;
+   white-space: nowrap;
+}
+.member-role-chip.is-owner {
+   background: linear-gradient(135deg, rgba(184, 232, 92, 0.35), var(--soft));
+   color: var(--dark-green);
+   border: 1px solid color-mix(in srgb, var(--lime) 55%, transparent);
+}
+.member-role-chip.is-member {
+   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.member-you {
+   font-size: 11px;
+   font-weight: 600;
+   color: var(--muted);
+}
+.member-controls {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   flex-wrap: wrap;
+   justify-content: flex-end;
+}
+/* Narrow screens: let the controls wrap under the identity instead of crushing. */
+@media (max-width: 620px) {
+   .member-row {
+      flex-wrap: wrap;
+   }
+   .member-who {
+      flex: 1 1 auto;
+      min-width: 120px;
+   }
+   .member-controls {
+      width: 100%;
+      justify-content: flex-end;
+      margin-top: 2px;
+   }
+   .member-controls .button {
+      padding: 6px 9px;
+      font-size: 11.5px;
+   }
+}
+html[data-theme="dark"] .member-role-chip.is-owner {
+   background: linear-gradient(135deg, rgba(129, 140, 248, 0.3), #1d211e);
+   color: #7fd3a4;
+   border-color: #3d4642;
+}
+html[data-theme="dark"] .member-role-chip.is-member {
+   border-color: var(--line);
+}
+html[data-theme="dark"] .member-you {
+   color: #9fb69f;
+}
+/* Members dialog: wider card so role controls have room to breathe. */
+.confirm-dialog-card.member-dialog-card {
+   width: min(560px, 94vw);
+   max-height: 84vh;
+   min-height: 240px;
+   align-items: stretch;
+   text-align: left;
+}
+#albumMembersDialog .member-row {
+   padding: 13px 15px;
+}
+#albumMembersDialog .member-who strong {
+   font-size: 14.5px;
+}
+#albumMembersDialog .member-controls .button {
+   padding: 7px 11px;
+   font-size: 12px;
+}
+html[data-theme="dark"] #albumMembersDialog .member-row {
+   background: #101210;
+}
+/* Members dialog header: icon on the LEFT + title/subtitle beside it, exactly
+   like the version dialogs. Keep the footer action left-aligned with it. */
+#albumMembersDialog .confirm-dialog-actions {
+   justify-content: flex-end;
+}
+#albumMembersDialog .confirm-dialog-actions .button {
+   min-width: 96px;
+}
+/* ======================================================================
+   ALBUMS PANE (home tab) — the album cards use EXACTLY the My Songs carousel
+   layout (.cloud-cards two-row zigzag + nudge + edge blur), with the search
+   row centered like My Songs' search bar.
+   ====================================================================== */
+.albums-body {
+   position: relative;
+   flex: 1 1 auto;
+   min-height: 0;
+   width: 100%;
+   max-width: 100%;
+   overflow: hidden; /* the scrolling grid lives INSIDE here */
+   display: flex;
+   align-items: flex-start;
+   justify-content: center;
+}
+.albums-body .cloud-cards {
+   /* inherit the shared .cloud-cards carousel styles (2-row grid, zigzag,
+      horizontal scroll, hidden scrollbar) — identical to My Songs */
+}
+.albums-body .cloud-nudge {
+   /* shared .cloud-nudge styling applies automatically */
+}
+
+/* Search + controls row, centered like the My Songs bar. No wheel-scrolling
+   while the pointer hovers this toolbar. */
+.albums-searchbar {
+   justify-content: center;
+   flex-wrap: wrap;
+   overflow: hidden;
+   overscroll-behavior: none;
+}
+.albums-searchbar .cloud-search {
+   width: min(420px, 100%);
+   margin: 0;
+}
+.albums-toolbar-note {
+   align-self: center;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+/* Album cards inside the My Songs-style carousel. */
+.song-card.is-album .song-card-mode-mark {
+   background: linear-gradient(135deg, var(--soft), var(--surface));
+   color: var(--dark-green);
+}
+.song-card.is-album .song-card-title {
+   font-size: 16.5px;
+}
+/* ======================================================================
+   MODERN SKELETON LOADER — shimmer placeholder cards shown while the song /
+   album lists are being fetched from the cloud.
+   ====================================================================== */
+.skeleton-card {
+   --shift: 0px;
+   position: relative;
+   width: 214px;
+   height: 252px;
+   border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+   border-radius: 22px;
+   background: var(--surface);
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+   padding: 20px 20px 16px;
+   pointer-events: none;
+   /* Match the EXACT grid slot of a real card, including the zigzag offset
+      (the .song-card nth-child pattern) so the skeleton overlays the same
+      positions the loaded cards will occupy. */
+   transform: translateY(var(--shift, 0px)) scale(var(--scale, 1));
+}
+.skeleton-card:nth-child(4n + 1),
+.skeleton-card:nth-child(4n + 2) {
+   --shift: -20px;
+}
+.skeleton-card:nth-child(4n + 3),
+.skeleton-card:nth-child(4n + 4) {
+   --shift: 20px;
+}
+.skeleton-card .sk-mark {
+   width: 44px;
+   height: 44px;
+   border-radius: 12px;
+   align-self: flex-start;
+   margin-bottom: 2px;
+}
+.skeleton-card .sk-title {
+   height: 18px;
+   width: 72%;
+   border-radius: 8px;
+}
+.skeleton-card .sk-sub {
+   height: 14px;
+   width: 48%;
+   border-radius: 8px;
+}
+.skeleton-card .sk-detail {
+   height: 14px;
+   width: 64%;
+   border-radius: 8px;
+}
+.skeleton-card .sk-footer {
+   height: 14px;
+   width: 38%;
+   border-radius: 8px;
+   align-self: flex-end;
+}
+.skeleton-card .sk-mark,
+.skeleton-card .sk-title,
+.skeleton-card .sk-sub,
+.skeleton-card .sk-detail,
+.skeleton-card .sk-footer {
+   background: linear-gradient(100deg, var(--soft) 30%, var(--line) 50%, var(--soft) 30%);
+   background-size: 220% 100%;
+   animation: skeleton-shimmer 1.35s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+   from {
+      background-position: 0% 0;
+   }
+   to {
+      background-position: -220% 0;
+   }
+}
+html[data-theme="dark"] .skeleton-card {
+   background: #14160f;
+   border-color: #2a2e28;
+}
+html[data-theme="dark"] .skeleton-card .sk-mark,
+html[data-theme="dark"] .skeleton-card .sk-title,
+html[data-theme="dark"] .skeleton-card .sk-sub,
+html[data-theme="dark"] .skeleton-card .sk-detail,
+html[data-theme="dark"] .skeleton-card .sk-footer {
+   background: linear-gradient(100deg, #23261f 30%, #3a3f36 50%, #23261f 30%);
+   background-size: 220% 100%;
+}
+/* Add-from-My-Songs dialog: wider card + in-dialog search field. */
+.confirm-dialog-card.add-song-dialog-card {
+   width: min(500px, 94vw);
+   max-height: 84vh;
+   align-items: stretch;
+   text-align: left;
+}
+.add-song-search {
+   position: relative;
+   margin: 4px 0 6px;
+}
+.add-song-search .cloud-search-icon {
+   left: 16px;
+   top: 50%;
+   transform: translateY(-50%);
+}
+.add-song-search input {
+   padding-left: 42px;
+}
+#addSongDialog .add-song-list {
+   max-height: 300px;
+}
+/* Album card hover: reveal the description in place of the count/updated line.
+   Longer descriptions (up to ALBUM_DESC_MAX) are clipped with an ellipsis;
+   the full text stays in the tooltip. */
+.song-card.is-album .song-card-desc-text {
+   display: none;
+}
+.song-card.is-album:hover .song-card-desc-text,
+.song-card.is-album:focus-visible .song-card-desc-text {
+   display: -webkit-box;
+   -webkit-line-clamp: 4;
+   -webkit-box-orient: vertical;
+   overflow: hidden;
+   color: var(--muted);
+   font-size: 12px;
+   line-height: 1.4;
+   margin-top: 2px;
+}
+.song-card.is-album:hover .song-card-meta-line,
+.song-card.is-album:focus-visible .song-card-meta-line {
+   display: none;
+}
+html[data-theme="dark"] .song-card.is-album .song-card-desc-text {
+   color: #9fb69f;
+}
+/* ---------------------------------------------------------------------------
+   MEMBER READ-ONLY ALBUM MODE (role = member)
+   A member may only change Key, Time signature, BPM and Transpose. Everything
+   that edits the arrangement is dimmed + inert here. The rules hang off <body>
+   for two reasons: the flag is set once by cloudUI (syncAlbumContextUI), and it
+   survives renderPreview() rebuilding the whole preview. JS ALSO disables the
+   in-preview controls (applyMemberReadOnlyAffordances in events.js) as
+   defence-in-depth — the CSS just makes the state visible.
+
+   Deliberately NOT listed (they stay usable): #keySelect, #timeSignature,
+   #bpmInput, #previewKey, #previewMeter, #transposeDown, #transposeUp,
+   #playBtn, #exportBtn, undo/redo.
+--------------------------------------------------------------------------- */
+body[data-member-readonly="1"] .drop-target,
+body[data-member-readonly="1"] .placed-chord {
+   cursor: default;
+}
+body[data-member-readonly="1"] .ribbon-tabs,
+body[data-member-readonly="1"] .ribbon-panel,
+body[data-member-readonly="1"] .section-menu,
+body[data-member-readonly="1"] .song-meta-lyrics-toggle,
+body[data-member-readonly="1"] .song-meta-chord-above-toggle,
+body[data-member-readonly="1"] #resetSheetBtn,
+body[data-member-readonly="1"] #addSectionBtn,
+body[data-member-readonly="1"] .add-bar,
+body[data-member-readonly="1"] .delete-bar,
+body[data-member-readonly="1"] .copy-bar,
+body[data-member-readonly="1"] .paste-bar,
+body[data-member-readonly="1"] .section-title,
+body[data-member-readonly="1"] .section-lyrics-toggle,
+body[data-member-readonly="1"] .section-chord-above-toggle,
+body[data-member-readonly="1"] .bar-selection-copy {
+   opacity: 0.45;
+   pointer-events: none;
+   cursor: not-allowed;
+}
+/* A locked section title is text, not a rename affordance. */
+body[data-member-readonly="1"] .section-title {
+   cursor: default;
+}
+/* Lyrics / chord-above fields stay selectable + copyable for a reader, so they
+   only look "flat" — events.js sets them readOnly. */
+body[data-member-readonly="1"] .lyric-input,
+body[data-member-readonly="1"] .chord-above-input {
+   cursor: text;
 }

@@ -20,7 +20,14 @@ import {
    MAX_BARS,
 } from "../src/notation.js";
 import { encodeShare, decodeShare, buildShareLink, extractPayloadFromLink, canCompress } from "../src/share.js";
-import { composeSong, isLegacySongDoc } from "../src/cloud.js";
+import {
+   composeSong,
+   isLegacySongDoc,
+   generateInviteCode,
+   normalizeInviteCode,
+   versionCopyPayload,
+} from "../src/cloud.js";
+import { friendlyName } from "../src/identity.js";
 import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "../src/youtube.js";
 
 test("transposeNote wraps around 12 notes and prefers flat spelling", () => {
@@ -752,3 +759,124 @@ test("canonicalUrl and thumbnailUrl helpers", () => {
    assert.equal(thumbnailUrl("abc", "hqdefault"), "https://i.ytimg.com/vi/abc/hqdefault.jpg");
    assert.equal(thumbnailUrl("abc", "bogus"), "https://i.ytimg.com/vi/abc/mqdefault.jpg");
 });
+
+// ---- Member identity (pure helper from identity.js) ----
+// Google sign-in fills Auth.displayName, but email/password sign-up does NOT —
+// so the member list derives a readable name from the email's local part instead
+// of showing a generic "Musician" for everyone.
+
+test("friendlyName prefers the explicit displayName / member name", () => {
+   assert.equal(friendlyName({ displayName: "Dhandy J", email: "x7k2p9@gmail.com" }), "Dhandy J");
+   assert.equal(friendlyName({ name: "Pak Budi", email: "bud@gmail.com" }), "Pak Budi");
+   assert.equal(friendlyName({ displayName: "  Sarah  ", email: "x@y.com" }), "Sarah");
+});
+
+test("friendlyName derives a readable name from the email local part", () => {
+   assert.equal(friendlyName({ email: "dhandy.joe@gmail.com" }), "Dhandy Joe");
+   assert.equal(friendlyName({ email: "sarah_w@example.com" }), "Sarah W");
+   assert.equal(friendlyName({ email: "joe2@gmail.com" }), "Joe");
+   assert.equal(friendlyName({ email: "d.handy-joenathan+team@gmail.com" }), "D Handy Joenathan");
+});
+
+test("friendlyName returns empty for id-like or missing addresses (caller keeps its fallback)", () => {
+   const rejected = ["x7k2p9@gmail.com", "a@b.com", "", "   ", "user_12345678@mail.com", "12345678@mail.com"];
+   for (const email of rejected) {
+      assert.equal(friendlyName({ email }), "", `expected no derived name for ${JSON.stringify(email)}`);
+   }
+   assert.equal(friendlyName(), "");
+   assert.equal(friendlyName({}), "");
+   assert.equal(friendlyName({ email: undefined, name: "" }), "");
+});
+
+test("friendlyName caps the derived name to three words and 28 characters", () => {
+   assert.equal(friendlyName({ email: "one.two.three.four.five@example.com" }), "One Two Three");
+   assert.ok(friendlyName({ email: "abcdefghijklmnopqrstuvwxyz1234@example.com" }).length <= 28);
+});
+
+// ---- Album invite codes (pure helpers from cloud.js) ----
+
+test("generateInviteCode produces XXXX-XXXX from an unambiguous alphabet", () => {
+   for (let i = 0; i < 25; i++) {
+      const code = generateInviteCode();
+      assert.match(code, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/);
+      // I / O / 0 / 1 are excluded so a code read from a photo is never ambiguous.
+      assert.ok(!/[IO01]/.test(code), `code must avoid I/O/0/1: ${code}`);
+   }
+});
+
+test("normalizeInviteCode canonicalises typed codes and rejects the rest", () => {
+   assert.equal(normalizeInviteCode("7fq3-xk2n"), "7FQ3-XK2N");
+   assert.equal(normalizeInviteCode("7fq3xk2n"), "7FQ3-XK2N");
+   assert.equal(normalizeInviteCode("  7FQ3 XK2N "), "7FQ3-XK2N");
+   for (const bad of ["", "ABC", "7FQ3-XK2N9", "abcdefghij", null, undefined]) {
+      assert.equal(normalizeInviteCode(bad), null, `expected null for ${JSON.stringify(bad)}`);
+   }
+});
+
+// ---- Version payload copy (album "Add from My Songs", from cloud.js) ----
+// Every copied version is re-created through saveAlbumVersion, which assigns its
+// own label/number/timestamps — so those transport fields must be stripped while
+// the whole arrangement content is carried over.
+
+test("versionCopyPayload strips transport + version-meta fields", () => {
+   const source = {
+      cloudId: "c1",
+      songId: "s1",
+      versionId: "v1",
+      label: "Version 3",
+      number: 3,
+      createdAt: 1,
+      updatedAt: 2,
+      legacy: true,
+      hasNoVersions: true,
+      title: "Amazing Grace",
+      sections: [{ name: "Verse" }],
+   };
+   const payload = versionCopyPayload(source);
+   const stripped = ["cloudId", "songId", "versionId", "label", "number", "createdAt", "updatedAt", "legacy", "hasNoVersions"];
+   for (const key of stripped) {
+      assert.equal(key in payload, false, `${key} should be stripped from the copy`);
+   }
+   assert.equal(payload.title, "Amazing Grace");
+});
+
+test("versionCopyPayload keeps every content field and never mutates the source", () => {
+   const source = {
+      title: "Amazing Grace",
+      artist: "John Newton",
+      key: "G",
+      meter: "4/4",
+      bpm: 84,
+      editorMode: "numbers",
+      lyricsEnabled: true,
+      chordAboveEnabled: true,
+      youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      youtubeId: "dQw4w9WgXcQ",
+      sections: [{ id: "sec1", name: "Verse", bars: 4, beats: { "0:0": "G" } }],
+      label: "Version 3",
+      number: 3,
+      cloudId: "c1",
+   };
+   const snapshot = structuredClone(source);
+   const payload = versionCopyPayload(source);
+   assert.equal(payload.title, "Amazing Grace");
+   assert.equal(payload.artist, "John Newton");
+   assert.equal(payload.key, "G");
+   assert.equal(payload.meter, "4/4");
+   assert.equal(payload.bpm, 84);
+   assert.equal(payload.editorMode, "numbers");
+   assert.equal(payload.lyricsEnabled, true);
+   assert.equal(payload.chordAboveEnabled, true);
+   assert.equal(payload.youtubeId, "dQw4w9WgXcQ");
+   assert.deepEqual(payload.sections, source.sections);
+   // A fresh object (the caller may add its own label/number on top)...
+   assert.notEqual(payload, source);
+   // ...and the source document is untouched.
+   assert.deepEqual(source, snapshot);
+});
+
+test("versionCopyPayload is safe with missing input", () => {
+   assert.deepEqual(versionCopyPayload(), {});
+   assert.deepEqual(versionCopyPayload({}), {});
+});
+

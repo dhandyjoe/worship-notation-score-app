@@ -1,6 +1,6 @@
 // store.js — single source of truth for app state + palette selection.
 // State is reassigned wholesale on import/reset, so consumers must read via getState().
-import { newSection } from "./notation.js?v=20260927-dirty";
+import { newSection } from "./notation.js?v=20260923-album11";
 
 function defaultState() {
    const first = newSection("Intro");

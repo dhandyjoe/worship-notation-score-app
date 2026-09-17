@@ -15,9 +15,9 @@ import {
    beatValue,
    lyricValue,
    chordAboveValue,
-} from "./notation.js?v=20260927-dirty";
-import { $, prefersTap } from "./dom.js?v=20260927-dirty";
-import { getState } from "./store.js?v=20260927-dirty";
+} from "./notation.js?v=20260923-album11";
+import { $, prefersTap } from "./dom.js?v=20260923-album11";
+import { getState } from "./store.js?v=20260923-album11";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
@@ -327,9 +327,9 @@ export function renderPreview() {
       `<span class="artist-label">Created by:</span> <em class="artist-value">${escapeHTML(artist)}</em>`;
    $("#previewKey").textContent = state.key;
    $("#previewMeter").textContent = state.meter;
-   // The old free-text hint ("Drag a chord…") was replaced by the "How to edit
-   // this score" button + dialog (see index.html / events.js). Guard in case the
-   // element is absent so older markup doesn't throw.
+   // The old free-text hint ("Drag a chord…") was replaced by the "How to use
+   // this score app?" button + dialog (see index.html / events.js). Guard in case
+   // the element is absent so older markup doesn't throw.
    const legacyHint = $("#previewHint");
    if (legacyHint) {
       legacyHint.textContent =

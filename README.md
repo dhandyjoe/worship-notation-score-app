@@ -15,6 +15,12 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 - ♻️ Transpose all chords by semitone (chords + key)
 - 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview
 - 📄 Export to PDF (print) and save/load projects as `.chordsheet.json`
+- 📁 **Albums (Fase 3/4)** — shared albums (e.g. a church praise team) where an
+  owner curates arrangements and every member can read them. Joining is
+  **self-service with an invite code** verified **server-side by Firestore rules**
+  (no password sharing, no links — each musician uses their own account). Members
+  view read-only and can save a private copy; any owner may invite, promote
+  co-owners, or remove members.
 
 ## Running
 
@@ -57,7 +63,7 @@ chord-sheet/
 │   ├── pdfOptions.js   #   PDF layout options modal
 │   ├── dom.js          #   thin browser helpers
 │   ├── cloud.js        #   Firebase wrapper (lazy-loaded auth + Firestore)
-│   ├── cloudUI.js      #   login modal + "My Songs" gallery
+│   ├── cloudUI.js      #   login modal + "My Songs"/"Albums" home + album UI
 │   └── firebase-config.js  # public-safe Firebase web config
 ├── styles/             # Stylesheets
 │   ├── styles.css      #   design tokens (:root variables)
@@ -81,7 +87,7 @@ The JavaScript is split into small, focused ES modules with an acyclic dependenc
 | `src/events.js`   | All user interaction, listeners, import/export, bootstrap | notation, dom, store, render |
 | `src/app.js`      | Entry point (`initEvents()`)                              | events                       |
 | `src/cloud.js`    | Firebase wrapper — lazy-loads auth + Firestore from CDN   | firebase-config              |
-| `src/cloudUI.js`  | Login modal + "My Songs" cloud gallery                    | cloud, dom                   |
+| `src/cloudUI.js`  | Login modal + "My Songs"/"Albums" home + album UI      | cloud, dom                   |
 
 `render.js` never imports `events.js`; instead `events.js` injects its DOM-binding
 hooks via `initRender(...)`, which keeps the module graph free of cycles. The cloud

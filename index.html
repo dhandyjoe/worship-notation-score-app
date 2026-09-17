@@ -34,8 +34,8 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260927-dirty" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260927-dirty" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260923-album11" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260923-album11" />
    </head>
    <body>
       <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
@@ -45,7 +45,7 @@
       <header class="topbar">
          <div class="topbar-nav">
             <button class="button button-ghost editor-back" id="backToSongsBtn" type="button" title="Back to My Songs">
-               <span aria-hidden="true">←</span> My Songs
+               <span aria-hidden="true">←</span> Back
             </button>
             <span class="editor-breadcrumb">
                <span class="editor-breadcrumb-label">Editing</span>
@@ -80,11 +80,22 @@
                <span class="editor-mode-badge-icon" aria-hidden="true"></span>
                <span class="editor-mode-badge-text">Chord Chart</span>
             </span>
+            <span class="album-pill" id="albumPill" hidden>
+               <span class="album-pill-icon" aria-hidden="true">💿</span>
+               <span class="album-pill-text" id="albumPillText">Album</span>
+            </span>
             <button class="button button-save" id="saveCloudBtn" type="button" title="Save this score to your cloud library">
                <span aria-hidden="true">⤒</span> Save to Cloud</button
             ><button class="button button-dark" id="exportBtn" type="button" title="Adjust PDF layout, then export" aria-haspopup="dialog" aria-controls="pdfOptionsModal"><span aria-hidden="true">↗</span> Export .pdf</button>
          </div>
       </header>
+
+      <!-- Read-only notice shown while a MEMBER views an album arrangement.
+           Owners editing an album see a small context pill in the topbar instead. -->
+      <div class="album-banner" id="albumReadOnlyBanner" hidden role="status" aria-live="polite">
+         <span class="album-banner-icon" aria-hidden="true">🛡</span>
+         <span id="albumReadOnlyText">Read-only for your role: you can change Key, Time signature, BPM and transpose. Chords, bars, sections and lyrics are locked — save a private copy to your My Songs to edit them.</span>
+      </div>
 
       <main>
          <div class="workspace ribbon-workspace">
@@ -638,80 +649,86 @@
          </div>
       </div>
 
-      <!-- "How to edit this score" help dialog. Opened by #howToUseBtn in the
-           preview footer. Explains the live-editing model (click a beat to type
-           a chord, right-click / long-press for rhythm splits, etc.) — replacing
-           the old drag-and-drop hint text. Driven by events.js. -->
+      <!-- "How to use this score app?" help dialog. Opened by #howToUseBtn (the ?
+           button in the My Songs search bar; events.js only opens/closes it).
+           It is the single place that explains the WHOLE app: the cloud library +
+           versions, shared albums (including the member read-only rules), writing
+           the score, and paper/playback. This is static markup — keep it in sync
+           whenever a feature ships. -->
       <div class="confirm-dialog howto-dialog" id="howToDialog" hidden role="dialog" aria-modal="true" aria-labelledby="howToDialogTitle" aria-describedby="howToDialogDesc">
          <div class="confirm-dialog-backdrop" data-howto-dismiss></div>
          <div class="confirm-dialog-card howto-dialog-card" role="document">
             <div class="confirm-dialog-icon" aria-hidden="true">🎹</div>
-            <h2 class="confirm-dialog-title" id="howToDialogTitle">How to edit this score</h2>
-            <p class="confirm-dialog-desc" id="howToDialogDesc">Editing happens right on the score — no dragging needed. Here's everything you can do:</p>
+            <h2 class="confirm-dialog-title" id="howToDialogTitle">How to use this score app?</h2>
+            <p class="confirm-dialog-desc" id="howToDialogDesc">From writing a chord chart to sharing it with your worship team — here's everything the app can do.</p>
             <ul class="howto-list">
+               <li class="howto-group">☁ Your cloud library</li>
                <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🎛️</span>
-                  <span class="howto-item-text"><strong>Two writing modes</strong> — when you start a new song you pick a mode (shown as a badge next to the title). <strong>🎸 Chords</strong> is for chord progressions like <code>C</code>, <code>Am7</code>, <code>G/B</code> with live chord suggestions and transpose. <strong>🔢 Numbers</strong> is for Nashville number notation (<code>1</code>–<code>7</code> with high/low octaves) and enables a lyrics field under each beat. The editor adapts its suggestions and controls to the mode you chose.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">＋</span>
-                  <span class="howto-item-text"><strong>Add a chord</strong> — click any empty beat, then type a chord (e.g. <code>C</code>, <code>Am7</code>, <code>G/B</code>). Pick from the live suggestions or press Enter.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">✏️</span>
-                  <span class="howto-item-text"><strong>Edit or replace</strong> — click a beat that already has a chord to retype it. Clear the field and confirm to remove it.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🖱️</span>
-                  <span class="howto-item-text"><strong>Split the rhythm</strong> — right-click a beat (or long-press on touch) to split it into <code>½</code>, <code>⅓</code> or <code>¼</code> beats for faster chord changes.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🎵</span>
-                  <span class="howto-item-text"><strong>Slash chords</strong> — type the bass after a slash, like <code>D/F#</code>, and it's placed as one chord.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🔤</span>
-                  <span class="howto-item-text"><strong>Rename titles &amp; sections</strong> — click the song title, artist, key or a section name to edit it inline.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">➕</span>
-                  <span class="howto-item-text"><strong>Add sections</strong> — use <em>+ Add section</em> below the score to append a new part (Verse, Chorus, Bridge…).</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🎚️</span>
-                  <span class="howto-item-text"><strong>Transpose</strong> — use the key ▲ / ▼ controls to shift every chord up or down a semitone.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">↩️</span>
-                  <span class="howto-item-text"><strong>Undo &amp; Redo</strong> — made a mistake? Use the <em>Undo</em> / <em>Redo</em> buttons below the key info, or press <code>⌘Z</code> / <code>Ctrl+Z</code> to undo and <code>⌘⇧Z</code> / <code>Ctrl+Shift+Z</code> to redo. Up to 50 steps are remembered.</span>
+                  <span class="howto-item-icon" aria-hidden="true">💾</span>
+                  <span class="howto-item-text"><strong>Save to Cloud</strong> — keeps the score in your own account (you sign in once). An <em>amber dot</em> on the button means there are unsaved changes; leaving the editor then asks <em>Save &amp; leave</em> / <em>Leave without saving</em> / <em>Cancel</em>.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">⧉</span>
-                  <span class="howto-item-text"><strong>Copy &amp; paste a bar</strong> — hover a bar and click the <em>copy</em> icon (⧉) to grab all its chords, then click <em>paste</em> (⎘) on another bar to drop them in. Great for repeating chord patterns quickly.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🎼</span>
-                  <span class="howto-item-text"><strong>Add multiple bars at once</strong> — use <em>+ Add bar</em> under a section to extend it. Each new bar follows the section's time signature automatically.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">🎶</span>
-                  <span class="howto-item-text"><strong>Keep a section outline in the PDF</strong> — when you export, every section name is framed in a rounded black outline so parts stay easy to spot on the printed sheet.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">⏱️</span>
-                  <span class="howto-item-text"><strong>Tempo per song</strong> — set each song's own BPM in the box near the play button (▶). It's saved together with the song, so reopening it keeps your exact tempo — every song isn't stuck at 120.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">📄</span>
-                  <span class="howto-item-text"><strong>Per-song PDF options</strong> — in the <em>Export .pdf</em> dialog, chord size, lyric size, beat spacing, paper and margins are saved for each song. Adjusting one song's export never changes another's.</span>
-               </li>
-               <li class="howto-item">
-                  <span class="howto-item-icon" aria-hidden="true">⏹️</span>
-                  <span class="howto-item-text"><strong>Playback &amp; leaving</strong> — if the music is still playing when you tap <em>My Songs</em>, the app asks before you leave; choosing to go will stop the playback automatically.</span>
+                  <span class="howto-item-text"><strong>Versions of a song</strong> — the pill next to the title lists every arrangement of that song: switch between them, add <em>+ New version</em>, rename one, or give one its own YouTube link (✎). Title, artist, key and time signature are shared by all versions of the song.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🔗</span>
-                  <span class="howto-item-text"><strong>Share a song</strong> — from <em>My Songs</em>, click <em>Copy Link</em> (🔗) on any song to copy a share link. Send it to a friend — when they click <em>Attach Link</em> and paste it, the song imports straight into their library.</span>
+                  <span class="howto-item-text"><strong>Share &amp; import</strong> — in <em>My Songs</em>, <em>Copy Link</em> (🔗) on a card puts a share link on your clipboard; anyone who pastes it into <em>Attach Link</em> gets the song in their own library. <em>New Song</em> and <em>Attach Link</em> belong to the My Songs tab (they hide while Albums is open).</span>
+               </li>
+               <li class="howto-group">💿 Albums — share with your team</li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">💿</span>
+                  <span class="howto-item-text"><strong>Create or join</strong> — <em>New Album</em> creates an album with an invite code (rotate it any time from <em>Invite</em>); teammates join with <em>Join with code</em>. Everyone uses their own account, so the album stays curatable. Hover an album card for <em>📝 Edit details</em> to change its name and description (owners only).</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">⭐</span>
+                  <span class="howto-item-text"><strong>Owner vs Member</strong> — an <em>Owner</em> invites people, adds songs, promotes a member to co-owner and can remove songs; a <em>Member</em> only reads. The last owner can never be demoted or removed, so the album can never be left owner-less.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">📥</span>
+                  <span class="howto-item-text"><strong>Add from My Songs</strong> — copies the chosen song into the album <em>together with all of its versions</em>; the album holds its own copy and your library is untouched. <em>New Song</em> inside an album creates a brand-new song there instead.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🛡</span>
+                  <span class="howto-item-text"><strong>Member read-only canvas</strong> — as a member you can still change <em>Key</em>, <em>Time signature</em>, <em>BPM</em> and <em>transpose</em> (handy for rehearsal), while chords, lyrics, bars and sections are locked. Use <em>Save a copy</em> to get your own editable copy in My Songs.</span>
+               </li>
+               <li class="howto-group">🎼 Writing the score</li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎛️</span>
+                  <span class="howto-item-text"><strong>Two writing modes</strong> — a new song starts in <strong>🎸 Chords</strong> (<code>C</code>, <code>Am7</code>, <code>G/B</code> with live suggestions) or <strong>🔢 Numbers</strong> (Nashville <code>1</code>–<code>7</code> with high/low octaves, and a lyrics field under every beat). The mode badge sits next to the title; in Chord Chart mode you can also show letter chords above the numbers.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">＋</span>
+                  <span class="howto-item-text"><strong>Add or change a chord</strong> — click an empty beat and type it (pick a suggestion or press <code>Enter</code>); click a placed chord to retype it, or clear the field and confirm to remove it. Typing a slash sets the bass in one go, like <code>D/F#</code>.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🖱️</span>
+                  <span class="howto-item-text"><strong>Split the rhythm</strong> — right-click a beat (long-press on touch) to split it into <code>½</code>, <code>⅓</code> or <code>¼</code> beats when the chords change faster than the beat.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎵</span>
+                  <span class="howto-item-text"><strong>Bars &amp; sections</strong> — <em>+ Add 1 bar</em> and <em>×</em> live under each section, click a section name to rename it, and <em>+ Add section</em> appends a new part. Copy a bar (⧉) and paste it (⎘) somewhere else, or use a section menu (<em>•••</em>) → <em>Copy bars</em> to grab a whole range at once.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">🎚️</span>
+                  <span class="howto-item-text"><strong>Key, time signature &amp; transpose</strong> — click the key, the time signature or the song title in the header to edit them inline, and use <em>▲ / ▼</em> beside the key to shift every chord up or down a semitone.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">✍️</span>
+                  <span class="howto-item-text"><strong>Lyrics</strong> — turn lyrics on for the song (or for a single section) to get a field under each beat; paste a whole line into the first field to spread the words across the beats, or use <em>Auto-syllable</em> to split a line into singable syllables.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">↩️</span>
+                  <span class="howto-item-text"><strong>Undo &amp; redo</strong> — the <em>Undo</em> / <em>Redo</em> buttons or <code>⌘Z</code> / <code>Ctrl+Z</code> and <code>⌘⇧Z</code> / <code>Ctrl+Shift+Z</code> (50 steps). <code>Alt+1…5</code> switches the toolbar tabs and <code>Esc</code> clears a selected chord.</span>
+               </li>
+               <li class="howto-group">📄 Paper &amp; sound</li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">📄</span>
+                  <span class="howto-item-text"><strong>Export .pdf</strong> — the dialog previews the printed page live; chord size, lyric size, beat spacing, paper and margins are remembered <em>per song</em>, so adjusting one sheet never changes another.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">▶</span>
+                  <span class="howto-item-text"><strong>Playback &amp; tempo</strong> — <em>▶</em> plays the score at the tempo saved with the song (each song keeps its own <em>BPM</em>, not a fixed 120). If it is still playing when you leave, the app asks first and stops it for you.</span>
                </li>
             </ul>
             <div class="confirm-dialog-actions">
@@ -1071,6 +1088,13 @@
                </div>
             </header>
 
+            <div class="home-tabs" role="tablist" aria-label="Library view">
+               <button class="home-tab is-active" id="tabMySongs" type="button" role="tab" aria-selected="true" aria-controls="songsPanel">My Songs</button>
+               <button class="home-tab" id="tabAlbums" type="button" role="tab" aria-selected="false" aria-controls="albumsPanel">Albums</button>
+            </div>
+
+            <div class="home-tab-panel" id="songsPanel">
+
             <!-- Hero copy sits directly under the brand header so it reads as a
                  page title, leaving the search bar visually on its own with room
                  to breathe before the song list. -->
@@ -1081,10 +1105,9 @@
                   type="button"
                   aria-haspopup="dialog"
                   aria-controls="howToDialog"
-                  title="How to edit this score"
+                  title="How to use this score app?"
                >
                   <span class="topbar-help-icon" aria-hidden="true">?</span>
-                  <span class="topbar-help-label">How to edit</span>
                </button>
                <div class="cloud-search">
                   <span class="cloud-search-icon" aria-hidden="true">⌕</span>
@@ -1113,10 +1136,252 @@
                   <span>No songs match your search.</span>
                </div>
             </div>
+            </div><!-- /songsPanel -->
+
+            <div class="home-tab-panel" id="albumsPanel" hidden>
+               <!-- Search + controls row, centered like the My Songs bar. -->
+               <div class="cloud-gallery-searchbar albums-searchbar">
+                  <div class="cloud-search">
+                     <span class="cloud-search-icon" aria-hidden="true">⌕</span>
+                     <input type="search" id="albumSearch" placeholder="Search albums…" aria-label="Search albums" />
+                  </div>
+                  <button class="button button-ghost" id="joinAlbumBtn" type="button" title="Join an album with an invite code"><span aria-hidden="true">🔑</span> Join with code</button>
+                  <button class="button button-primary" id="newAlbumBtn" type="button"><span aria-hidden="true">＋</span> New Album</button>
+               </div>
+               <!-- Album cards, laid out EXACTLY like the My Songs carousel. -->
+               <div class="cloud-gallery-body albums-body">
+                  <button class="cloud-nudge cloud-nudge-left" id="albumsGalleryPrev" type="button" aria-label="Scroll albums left" hidden>‹</button>
+                  <div class="cloud-cards" id="albumsGalleryCards" role="list" tabindex="0" aria-label="Album cards"></div>
+                  <button class="cloud-nudge cloud-nudge-right" id="albumsGalleryNext" type="button" aria-label="Scroll albums right" hidden>›</button>
+                  <div class="cloud-gallery-state" id="albumsLoading" hidden>
+                     <div class="cloud-spinner" aria-hidden="true"></div>
+                     <p>Loading your albums…</p>
+                  </div>
+                  <div class="cloud-gallery-state" id="albumsEmpty" hidden>
+                     <div class="cloud-gallery-state-icon" aria-hidden="true">💿</div>
+                     <p>No albums yet</p>
+                     <span>Create an album to share arrangements with your team, or join one with an invite code.</span>
+                  </div>
+                  <div class="cloud-gallery-state" id="albumsNoResults" hidden>
+                     <div class="cloud-gallery-state-icon" aria-hidden="true">⌕</div>
+                     <p>No matches</p>
+                     <span>No albums match your search.</span>
+                  </div>
+                  <div class="cloud-gallery-state" id="albumsError" hidden>
+                     <div class="cloud-gallery-state-icon" aria-hidden="true">⚠</div>
+                     <p>Could not load albums</p>
+                  </div>
+               </div>
+            </div>
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260927-dirty"></script>
+      <!-- ==================== ALBUM DETAIL =============================
+           Page-like overlay (same visual language as My Songs). Routed via
+           #/albums/{albumId}. Owners manage songs/invite/members; members get a
+           read-only list of the shared arrangements. -->
+      <div class="cloud-modal cloud-album" id="albumModal" hidden role="region" aria-label="Album">
+         <div class="cloud-album-shell">
+            <header class="cloud-album-head">
+               <button class="button button-ghost album-back" id="albumBackBtn" type="button" title="Back to Albums"><span aria-hidden="true">←</span> Albums</button>
+               <div class="cloud-album-heading">
+                  <h1 class="cloud-modal-title" id="albumTitle">Album</h1>
+                  <p class="cloud-modal-sub" id="albumMeta"></p>
+               </div>
+               <div class="cloud-album-actions">
+                  <button class="button button-ghost" id="albumInviteBtn" type="button" title="Invite musicians with a code" hidden><span aria-hidden="true">✉</span> Invite</button>
+                  <button class="button button-ghost" id="albumMembersBtn" type="button" title="Manage members" hidden><span aria-hidden="true">👥</span> Members</button>
+                  <button class="button button-ghost" id="albumAddFromBtn" type="button" title="Copy a song from My Songs" hidden><span aria-hidden="true">＋</span> Add from My Songs</button>
+                  <button class="button button-primary" id="albumNewSongBtn" type="button" title="Create a new song in this album" hidden><span aria-hidden="true">＋</span> New Song</button>
+                  <button class="button button-ghost is-danger" id="albumLeaveBtn" type="button" title="Leave this album" hidden><span aria-hidden="true">⇥</span> Leave</button>
+               </div>
+            </header>
+
+            <div class="cloud-gallery-searchbar cloud-album-searchbar">
+               <div class="cloud-search">
+                  <span class="cloud-search-icon" aria-hidden="true">⌕</span>
+                  <input type="search" id="albumSongSearch" placeholder="Search songs in this album…" aria-label="Search album songs" />
+               </div>
+            </div>
+
+            <div class="cloud-gallery-body cloud-album-body">
+               <button class="cloud-nudge cloud-nudge-left" id="albumSongsGalleryPrev" type="button" aria-label="Scroll album songs left" hidden>‹</button>
+               <div class="cloud-cards cloud-album-cards" id="albumSongCards" role="list" tabindex="0" aria-label="Album songs"></div>
+               <button class="cloud-nudge cloud-nudge-right" id="albumSongsGalleryNext" type="button" aria-label="Scroll album songs right" hidden>›</button>
+               <div class="cloud-gallery-state" id="albumLoading" hidden>
+                  <div class="cloud-spinner" aria-hidden="true"></div>
+                  <p>Loading songs…</p>
+               </div>
+               <div class="cloud-gallery-state" id="albumEmpty" hidden>
+                  <div class="cloud-gallery-state-icon" aria-hidden="true">♪</div>
+                  <p>No songs yet</p>
+                  <span id="albumEmptyHint">Use New Song or Add from My Songs to fill this album.</span>
+               </div>
+               <div class="cloud-gallery-state" id="albumNoResults" hidden>
+                  <div class="cloud-gallery-state-icon" aria-hidden="true">⌕</div>
+                  <p>No matches</p>
+                  <span>No songs match your search.</span>
+               </div>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== JOIN ALBUM =============================
+           Self-service join: the member types an invite code. Firestore rules
+           verify the code server-side (member doc carries it only for the write). -->
+      <div class="confirm-dialog" id="joinAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="joinAlbumTitle" aria-describedby="joinAlbumDesc">
+         <div class="confirm-dialog-backdrop" data-joinalbum-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">🔑</div>
+            <h2 class="confirm-dialog-title" id="joinAlbumTitle">Join an album</h2>
+            <p class="confirm-dialog-desc" id="joinAlbumDesc">Enter the invite code your music leader shared — you will get read-only access to the album's arrangements.</p>
+            <div class="album-code-field">
+               <input class="new-song-name-input album-code-input" id="joinAlbumCode" type="text" placeholder="ABCD-1234" autocomplete="off" spellcheck="false" maxlength="9" aria-describedby="joinAlbumError" />
+               <p class="new-song-name-error" id="joinAlbumError" role="alert" hidden></p>
+            </div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="joinAlbumOk" type="button">Join album</button>
+               <button class="button button-ghost" id="joinAlbumCancel" type="button" data-joinalbum-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== NEW ALBUM ============================= -->
+      <div class="confirm-dialog" id="newAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="newAlbumTitle" aria-describedby="newAlbumSub">
+         <div class="confirm-dialog-backdrop" data-newalbum-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">💿</div>
+            <h2 class="confirm-dialog-title" id="newAlbumTitle">New Album</h2>
+            <p class="confirm-dialog-desc" id="newAlbumSub">Create a shared album — you become the owner and can invite musicians with a code.</p>
+            <div class="album-fields">
+               <div class="new-song-name">
+                  <label class="new-song-name-label" for="newAlbumName">Album name <em>(required)</em></label>
+                  <input class="new-song-name-input" id="newAlbumName" type="text" placeholder="Input album name" maxlength="80" autocomplete="off" aria-describedby="newAlbumNameError" />
+                  <p class="new-song-name-error" id="newAlbumNameError" role="alert" hidden>Album name is required.</p>
+               </div>
+               <div class="new-song-name">
+                  <label class="new-song-name-label" for="newAlbumDesc">Description <em>(optional)</em></label>
+                  <textarea class="new-song-name-input album-desc-input" id="newAlbumDesc" rows="2" maxlength="500" placeholder="Input album description"></textarea>
+               </div>
+            </div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="newAlbumOk" type="button">Create album</button>
+               <button class="button button-ghost" id="newAlbumCancel" type="button" data-newalbum-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== EDIT ALBUM (name + description) ===============
+           Opened by the pencil (📝) action on an album card — owners only. Writes
+           the album document in place via updateAlbum(); songs, members and invite
+           codes are never touched. Driven by cloudUI.js. -->
+      <div class="confirm-dialog" id="editAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="editAlbumTitle" aria-describedby="editAlbumSub">
+         <div class="confirm-dialog-backdrop" data-editalbum-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">📝</div>
+            <h2 class="confirm-dialog-title" id="editAlbumTitle">Edit album</h2>
+            <p class="confirm-dialog-desc" id="editAlbumSub">Change the album name and description. Songs, members and the invite code stay as they are.</p>
+            <div class="album-fields">
+               <div class="new-song-name">
+                  <label class="new-song-name-label" for="editAlbumName">Album name <em>(required)</em></label>
+                  <input class="new-song-name-input" id="editAlbumName" type="text" placeholder="Input album name" maxlength="80" autocomplete="off" aria-describedby="editAlbumNameError" />
+                  <p class="new-song-name-error" id="editAlbumNameError" role="alert" hidden>Album name is required.</p>
+               </div>
+               <div class="new-song-name">
+                  <label class="new-song-name-label" for="editAlbumDesc">Description <em>(optional)</em></label>
+                  <textarea class="new-song-name-input album-desc-input" id="editAlbumDesc" rows="2" maxlength="500" placeholder="Input album description"></textarea>
+               </div>
+            </div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="editAlbumOk" type="button">Save changes</button>
+               <button class="button button-ghost" id="editAlbumCancel" type="button" data-editalbum-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== INVITE DIALOG =============================
+           Shows the current invite code (owners only). No share link by design:
+           the flow is self-service — members type the code in the Albums tab. -->
+      <div class="confirm-dialog" id="inviteDialog" hidden role="dialog" aria-modal="true" aria-labelledby="inviteDialogTitle" aria-describedby="inviteDialogDesc">
+         <div class="confirm-dialog-backdrop" data-invite-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">✉</div>
+            <h2 class="confirm-dialog-title" id="inviteDialogTitle">Invite musicians</h2>
+            <p class="confirm-dialog-desc" id="inviteDialogDesc">Share this code with your team. They join from <strong>Albums → Join with code</strong> using their own account.</p>
+            <div class="invite-code-box">
+               <strong class="invite-code-value" id="inviteCodeValue">ABCD-1234</strong>
+               <button class="button button-ghost button-small" id="inviteCodeCopy" type="button">Copy code</button>
+            </div>
+            <div class="confirm-dialog-actions confirm-dialog-actions-stacked">
+               <button class="button button-ghost" id="inviteCodeRotate" type="button" title="Old codes stop working immediately">Create new code</button>
+               <button class="button button-primary" id="inviteDialogClose" type="button" data-invite-dismiss>Done</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== ADD SONG TO ALBUM =============================
+           Owner copies an existing My Songs song (all arrangements) into the album. -->
+      <div class="confirm-dialog" id="addSongDialog" hidden role="dialog" aria-modal="true" aria-labelledby="addSongTitle" aria-describedby="addSongDesc">
+         <div class="confirm-dialog-backdrop" data-addsong-dismiss></div>
+         <div class="confirm-dialog-card add-song-dialog-card" role="document">
+            <div class="vd-dialog-head">
+               <div class="confirm-dialog-icon" aria-hidden="true">⧉</div>
+               <div class="vd-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="addSongTitle">Add from My Songs</h2>
+                  <p class="confirm-dialog-desc" id="addSongDesc">Choose a song from your library — all of its arrangements are copied into this album.</p>
+               </div>
+            </div>
+            <div class="add-song-search">
+               <span class="cloud-search-icon" aria-hidden="true">⌕</span>
+               <input class="new-song-name-input" id="addSongSearch" type="search" placeholder="Search songs…" aria-label="Search songs to add" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="add-song-list" id="addSongList" role="listbox" aria-label="My songs"></div>
+            <p class="new-song-name-error" id="addSongEmpty" role="alert" hidden>Your library is empty — save a song first, or create one directly in the album.</p>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="addSongOk" type="button">Add song</button>
+               <button class="button button-ghost" id="addSongCancel" type="button" data-addsong-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== ALBUM MEMBERS =============================
+           Owners see the member list and can promote (co-owner) or demote and
+           remove members. Members see only the list read-only. -->
+      <div class="confirm-dialog" id="albumMembersDialog" hidden role="dialog" aria-modal="true" aria-labelledby="albumMembersTitle" aria-describedby="albumMembersDesc">
+         <div class="confirm-dialog-backdrop" data-albummembers-dismiss></div>
+         <div class="confirm-dialog-card member-dialog-card" role="document">
+            <div class="vd-dialog-head">
+               <div class="confirm-dialog-icon" aria-hidden="true">👥</div>
+               <div class="vd-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="albumMembersTitle">Members</h2>
+                  <p class="confirm-dialog-desc" id="albumMembersDesc">Owners and co-owners can add songs and manage membership.</p>
+               </div>
+            </div>
+            <div class="member-list" id="memberList" role="list" aria-label="Album members"></div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="albumMembersClose" type="button" data-albummembers-dismiss>Done</button>
+            </div>
+         </div>
+      </div>
+
+      <!-- ==================== CHOOSE ALBUM =============================
+           Shown when "New Song" is used from the Albums tab and the user owns
+           more than one album — pick which album the song goes straight into. -->
+      <div class="confirm-dialog" id="chooseAlbumDialog" hidden role="dialog" aria-modal="true" aria-labelledby="chooseAlbumTitle" aria-describedby="chooseAlbumDesc">
+         <div class="confirm-dialog-backdrop" data-choosealbum-dismiss></div>
+         <div class="confirm-dialog-card" role="document">
+            <div class="confirm-dialog-icon" aria-hidden="true">💿</div>
+            <h2 class="confirm-dialog-title" id="chooseAlbumTitle">New song in which album?</h2>
+            <p class="confirm-dialog-desc" id="chooseAlbumDesc">The song will be created directly inside the album you choose — it will not be saved to My Songs.</p>
+            <div class="add-song-list" id="chooseAlbumList" role="listbox" aria-label="Your albums"></div>
+            <div class="confirm-dialog-actions">
+               <button class="button button-primary" id="chooseAlbumOk" type="button">Continue</button>
+               <button class="button button-ghost" id="chooseAlbumCancel" type="button" data-choosealbum-dismiss>Cancel</button>
+            </div>
+         </div>
+      </div>
+
+      <script type="module" src="src/app.js?v=20260923-album11"></script>
       <script>
          // Register the PWA service worker for offline support. Skipped in the
          // automated test harness (?test=...) so caching never interferes with

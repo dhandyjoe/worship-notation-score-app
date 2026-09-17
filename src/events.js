@@ -29,10 +29,10 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260927-dirty";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260927-dirty";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260927-dirty";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260927-dirty";
+} from "./notation.js?v=20260923-album11";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260923-album11";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260923-album11";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260923-album11";
 import {
    getState,
    setState,
@@ -40,33 +40,50 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260927-dirty";
+} from "./store.js?v=20260923-album11";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260927-dirty";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260927-dirty";
-import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260927-dirty";
-import { initCloudUI } from "./cloudUI.js?v=20260927-dirty";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260927-dirty";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260927-dirty";
-import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260927-dirty";
+} from "./render.js?v=20260923-album11";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260923-album11";
+import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260923-album11";
+import { initCloudUI } from "./cloudUI.js?v=20260923-album11";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260923-album11";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260923-album11";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260923-album11";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Which cloud document is currently open in the editor:
-//   { songId, versionId, versionLabel } — or null for an unsaved local draft.
+//   { songId, versionId, versionLabel, scope, albumId, albumName, role }
+//   — or null for an unsaved local draft.
+// NOTE: the album fields (scope/albumId/albumName/role) MUST survive this
+// normalization. cloudUI reads them to decide WHERE a save writes (album vs
+// My Songs), which versions to list/edit (albums/{id}/songs/{id}/versions vs
+// users/{uid}/songs/{id}/versions), the topbar pill/label, and the member
+// read-only lock. Dropping them here silently redirects every album action to
+// the My Songs path (empty version list, stray songs created in the library).
 let currentCloudContext = null;
 function setCloudContext(next) {
-   currentCloudContext = next
-      ? {
-           songId: next.songId || null,
-           versionId: next.versionId || null,
-           versionLabel: next.versionLabel || "",
-        }
-      : null;
+   if (!next) {
+      currentCloudContext = null;
+      return;
+   }
+   currentCloudContext = {
+      songId: next.songId || null,
+      versionId: next.versionId || null,
+      versionLabel: next.versionLabel || "",
+      ...(next.scope === "album" && next.albumId
+         ? {
+              scope: "album",
+              albumId: next.albumId,
+              albumName: next.albumName || "",
+              role: next.role || null,
+           }
+         : { scope: next.scope || null, albumId: null, albumName: "", role: next.role || null }),
+   };
 }
 // Staged "version details" edit (version name / YouTube link) that the user has
 // changed in the details dialog but not yet persisted. It is written to
@@ -316,8 +333,41 @@ function commitChordToBeat(sectionId, slot, value) {
    save();
    flashDropTarget(sectionId, slot);
 }
+// ---------------------------------------------------------------------------
+// MEMBER READ-ONLY CANVAS (album role = member)
+// A member may ONLY change Key, Time signature, BPM and Transpose. Every other
+// mutation — chords/Nashville numbers, lyrics, chord-above, rhythm/duration,
+// bars, sections, copy/paste, rename, reset, palette edits, load-file — is
+// refused here. One helper is called at the top of every mutating handler, and
+// applyMemberReadOnlyAffordances() disables the edit affordances in the DOM so
+// the UI matches the rule.
+// ---------------------------------------------------------------------------
+function memberReadOnly() {
+   return document.body?.dataset?.memberReadonly === "1";
+}
+let lastMemberLockToast = 0;
+// Explain the refusal, at most once every 4s so a click storm can't spam toasts.
+function toastMemberLocked() {
+   if (!memberReadOnly()) return false;
+   const now = Date.now();
+   if (now - lastMemberLockToast > 4000) {
+      lastMemberLockToast = now;
+      toast(
+         "This album arrangement is read-only for you — only Key, Time signature, BPM and Transpose can be changed.",
+      );
+   }
+   return true;
+}
+// Guard helper. Usage: `if (blockedForMember()) return;` — returns true when the
+// action must be refused (and shows the explanation).
+function blockedForMember() {
+   if (!memberReadOnly()) return false;
+   toastMemberLocked();
+   return true;
+}
 // Open the editor on a beat element, wiring commit + Tab navigation callbacks.
 function openBeatEditor(beat, { selectQuery = true } = {}) {
+   if (blockedForMember()) return;
    const sectionId = beat.dataset.section;
    const slot = beat.dataset.slot;
    const section = findSection(sectionId);
@@ -346,6 +396,8 @@ function applyDuration(beat, durationValue) {
 // Remove a subdivision from a base-level beat, keeping the first child chord and
 // merging child lyrics (mirrors the duration-line click handler below).
 function removeDurationAt(beat) {
+   // Members may only change Key / Time / BPM / Transpose.
+   if (blockedForMember()) return;
    // Block all editing while in bar-selection mode.
    if (isSelectionActiveFor(beat.dataset.section)) return;
    const section = findSection(beat.dataset.section);
@@ -375,6 +427,8 @@ function removeDurationAt(beat) {
 }
 // Open the rhythm menu for a beat at the given viewport point.
 function openRhythmMenu(beat, x, y) {
+   // Rhythm subdivisions are an arrangement edit — refused for members.
+   if (blockedForMember()) return;
    // Block the rhythm menu entirely while in bar-selection mode.
    if (isSelectionActiveFor(beat.dataset.section)) return;
    closeChordEditor();
@@ -414,6 +468,50 @@ function openRhythmMenu(beat, x, y) {
 }
 
 // ---- Preview binding (re-run after every renderPreview) ----
+// Reflect member read-only mode in the DOM. Called at the END of bindPreview() —
+// i.e. after every render — because renderPreview() rebuilds these controls, so
+// the disabled state has to be re-applied with them (no MutationObserver needed).
+// The controls that live OUTSIDE the preview (ribbon / footer / toolbars) are
+// covered by the `body[data-member-readonly="1"]` rules in styles/ui.css.
+function applyMemberReadOnlyAffordances() {
+   const locked = memberReadOnly();
+   const lockedSelector = [
+      ".add-bar",
+      ".delete-bar",
+      ".copy-bar",
+      ".paste-bar",
+      ".select-bars",
+      ".copy-section",
+      ".paste-section",
+      ".delete-section",
+      ".bar-selection-copy",
+      ".section-lyrics-toggle",
+      ".section-chord-above-toggle",
+      ".section-title",
+   ].join(",");
+   document.querySelectorAll(lockedSelector).forEach((el) => {
+      // Only ever DISABLE here — never force-enable, because some controls carry
+      // their own disabled state (e.g. ".delete-section" is rendered disabled
+      // when it is the last section, ".paste-*" depend on the clipboard).
+      if (locked) {
+         if (typeof el.disabled === "boolean") el.disabled = true;
+         else el.setAttribute("aria-disabled", "true");
+         if (el.dataset.readonlyTitle === undefined) el.dataset.readonlyTitle = el.title || "";
+         el.title = "Read-only for your role — only Key, Time signature, BPM and Transpose can be changed";
+      } else if (el.dataset.readonlyTitle !== undefined) {
+         el.title = el.dataset.readonlyTitle;
+         delete el.dataset.readonlyTitle;
+         el.removeAttribute("aria-disabled");
+      }
+   });
+   // Lyric / chord-above fields stay focusable (select & copy is genuinely useful
+   // for a reader) but cannot be typed into.
+   document.querySelectorAll(".lyric-input, .chord-above-input").forEach((el) => {
+      el.readOnly = locked;
+      el.setAttribute("aria-readonly", locked ? "true" : "false");
+   });
+}
+
 function bindPreview() {
    const state = getState();
    document.querySelectorAll(".drop-target").forEach((beat) => {
@@ -425,6 +523,13 @@ function bindPreview() {
       beat.addEventListener("dragleave", () => beat.classList.remove("dragover"));
       beat.addEventListener("drop", (event) => {
          event.preventDefault();
+         // Dropping a chord onto a beat is an arrangement edit.
+         if (blockedForMember()) {
+            event.stopPropagation();
+            beat.classList.remove("dragover");
+            document.body.classList.remove("is-dragging");
+            return;
+         }
          event.stopPropagation();
          let item;
          try {
@@ -466,6 +571,11 @@ function bindPreview() {
             if (!Number.isNaN(bar)) {
                handleBarSelectionClick(beat.dataset.section, bar, event.shiftKey);
             }
+            event.stopPropagation();
+            return;
+         }
+         // Members cannot place/replace chords from the palette nor type them.
+         if (blockedForMember()) {
             event.stopPropagation();
             return;
          }
@@ -530,6 +640,9 @@ function bindPreview() {
    document.querySelectorAll(".placed-chord").forEach((chord) => {
       const removeOrReplace = (event) => {
          event.stopPropagation();
+         // Members in an album cannot modify placed chords (the toast explains
+         // which controls are still available to them).
+         if (blockedForMember()) return;
          // Block all editing while in bar-selection mode.
          if (isSelectionActiveFor(chord.closest(".drop-target")?.dataset.section)) return;
          const beat = chord.closest(".drop-target"),
@@ -583,6 +696,8 @@ function bindPreview() {
    document.querySelectorAll(".nested-duration-line").forEach((line) =>
       line.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Removing a nested subdivision is an arrangement edit.
+         if (blockedForMember()) return;
          // Block all editing while in bar-selection mode.
          if (isSelectionActiveFor(line.dataset.section)) return;
          const section = findSection(line.dataset.section),
@@ -615,6 +730,8 @@ function bindPreview() {
    document.querySelectorAll(".duration-line").forEach((line) =>
       line.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Removing a rhythm subdivision is an arrangement edit.
+         if (blockedForMember()) return;
          const group = line.closest(".beat-group"),
             section = findSection(group.dataset.section),
             baseSlot = group.dataset.baseSlot;
@@ -646,6 +763,12 @@ function bindPreview() {
    document.querySelectorAll(".lyric-input").forEach((input) => {
       input.addEventListener("click", (event) => event.stopPropagation());
       input.addEventListener("input", () => {
+         // Lyrics are part of the arrangement → read-only for members. The
+         // re-render restores the committed value instead of the typed text.
+         if (blockedForMember()) {
+            renderPreview();
+            return;
+         }
          const section = findSection(input.dataset.section);
          if (!section) return;
          // Block lyric edits while in bar-selection mode.
@@ -658,6 +781,9 @@ function bindPreview() {
          save();
       });
       input.addEventListener("blur", () => {
+         // Silent guard (no toast): nothing was typed, so don't re-commit the
+         // value just to mark the document dirty.
+         if (memberReadOnly()) return;
          const section = findSection(input.dataset.section);
          if (!section) return;
          input.value = input.value.trim();
@@ -678,6 +804,10 @@ function bindPreview() {
          target?.select();
       });
       input.addEventListener("paste", (event) => {
+         if (memberReadOnly()) {
+            event.preventDefault();
+            return;
+         }
          const pasted = event.clipboardData?.getData("text") || "",
             words = pasted.trim().split(/\s+/).filter(Boolean);
          if (words.length < 2) return;
@@ -707,6 +837,11 @@ function bindPreview() {
    document.querySelectorAll(".chord-above-input").forEach((input) => {
       input.addEventListener("click", (event) => event.stopPropagation());
       input.addEventListener("input", () => {
+         // Chord-above letters are part of the arrangement → read-only for members.
+         if (blockedForMember()) {
+            renderPreview();
+            return;
+         }
          const section = findSection(input.dataset.section);
          if (!section) return;
          if (isSelectionActiveFor(input.dataset.section)) {
@@ -718,6 +853,8 @@ function bindPreview() {
          save();
       });
       input.addEventListener("blur", () => {
+         // Silent guard — see the lyric-input blur guard above.
+         if (memberReadOnly()) return;
          const section = findSection(input.dataset.section);
          if (!section) return;
          input.value = input.value.trim();
@@ -742,6 +879,8 @@ function bindPreview() {
    document.querySelectorAll(".section-lyrics-toggle").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Per-section display/edit toggles are arrangement edits.
+         if (blockedForMember()) return;
          const section = findSection(button.dataset.section);
          if (!section) return;
          section.lyricsEnabled = section.lyricsEnabled === false;
@@ -754,6 +893,8 @@ function bindPreview() {
    document.querySelectorAll(".section-chord-above-toggle").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Per-section display/edit toggles are arrangement edits.
+         if (blockedForMember()) return;
          const section = findSection(button.dataset.section);
          if (!section) return;
          section.chordAboveEnabled = section.chordAboveEnabled === false;
@@ -765,6 +906,8 @@ function bindPreview() {
    );
    document.querySelectorAll(".add-bar").forEach((button) =>
       button.addEventListener("click", () => {
+         // Adding bars changes the arrangement — refused for members.
+         if (blockedForMember()) return;
          const section = findSection(button.dataset.section);
          if (!section) return;
          section.bars += 1;
@@ -778,6 +921,8 @@ function bindPreview() {
    document.querySelectorAll(".delete-bar").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Deleting a bar changes the arrangement — refused for members.
+         if (blockedForMember()) return;
          const section = findSection(button.dataset.section),
             bar = Number(button.dataset.bar);
          if (!section) return;
@@ -825,6 +970,8 @@ function bindPreview() {
    document.querySelectorAll(".delete-section").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Deleting a section changes the arrangement — refused for members.
+         if (blockedForMember()) return;
          if (state.sections.length <= 1) {
             toast("At least one section must remain");
             return;
@@ -849,32 +996,40 @@ function bindPreview() {
    document.querySelectorAll(".copy-section").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Copy/paste of sections & bars is an arrangement edit tool.
+         if (blockedForMember()) return;
          copySection(button.dataset.section);
       }),
    );
    document.querySelectorAll(".paste-section").forEach((button) => {
-      button.disabled = !hasClipboard("section");
+      button.disabled = !hasClipboard("section") || memberReadOnly();
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         if (blockedForMember()) return;
          pasteSection(button.dataset.section);
       });
    });
    document.querySelectorAll(".copy-bar").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Copy/paste of sections & bars is an arrangement edit tool.
+         if (blockedForMember()) return;
          copyBar(button.dataset.section, Number(button.dataset.bar));
       }),
    );
    document.querySelectorAll(".paste-bar").forEach((button) => {
-      button.disabled = !hasClipboard("bar") && !hasClipboard("bars");
+      button.disabled = (!hasClipboard("bar") && !hasClipboard("bars")) || memberReadOnly();
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         if (blockedForMember()) return;
          pasteBar(button.dataset.section, Number(button.dataset.bar));
       });
    });
    document.querySelectorAll(".select-bars").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // "Copy bars" (range selection) is an arrangement edit tool.
+         if (blockedForMember()) return;
          // Close the ••• menu, then enter selection mode for this section.
          button.closest(".section-menu")?.removeAttribute("open");
          beginBarSelection(button.dataset.section);
@@ -883,6 +1038,7 @@ function bindPreview() {
    document.querySelectorAll(".bar-selection-copy").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         if (blockedForMember()) return;
          copySelectedBars();
       }),
    );
@@ -898,6 +1054,8 @@ function bindPreview() {
    document.querySelectorAll(".section-title").forEach((button) =>
       button.addEventListener("click", (event) => {
          event.stopPropagation();
+         // Renaming a section is an arrangement edit — refused for members.
+         if (blockedForMember()) return;
          state.activeId = button.dataset.section;
          state.editingId = button.dataset.section;
          syncEditor();
@@ -907,6 +1065,9 @@ function bindPreview() {
    );
    document.querySelectorAll(".section-title-input").forEach((input) => {
       const commit = () => {
+         // Silent guard: members can't reach the rename input (the button is
+         // disabled), so never commit a change on their behalf.
+         if (memberReadOnly()) return;
          const section = findSection(input.dataset.section);
          if (!section) return; // bug fix: guard against section removed during blur
          section.name = input.value.trim() || "Untitled section";
@@ -936,6 +1097,9 @@ function bindPreview() {
          renderPreview();
       }),
    );
+   // Re-apply the member read-only affordances: renderPreview() just rebuilt the
+   // section/bar controls, so disabled states have to be restored with them.
+   applyMemberReadOnlyAffordances();
 }
 
 // ---- Viewport / zoom / print layout ----
@@ -1222,14 +1386,16 @@ function pasteBars(sectionId, bar) {
 }
 
 // Enable/disable any paste affordances based on clipboard contents.
+// Members can never paste (arrangement edit tool), so the read-only flag is part
+// of the condition here — single source of truth for the paste buttons.
 function updatePasteButtons() {
    document.querySelectorAll(".paste-section").forEach((btn) => {
-      btn.disabled = !hasClipboard("section");
+      btn.disabled = !hasClipboard("section") || memberReadOnly();
    });
    document.querySelectorAll(".paste-bar").forEach((btn) => {
       // Single-bar paste-bar buttons accept both a single copied bar and a
       // multi-bar range (range = insert; single = overwrite).
-      btn.disabled = !hasClipboard("bar") && !hasClipboard("bars");
+      btn.disabled = (!hasClipboard("bar") && !hasClipboard("bars")) || memberReadOnly();
    });
 }
 function projectData() {
@@ -1339,6 +1505,10 @@ function applyProject(project) {
 
 // ---- Inline meta editing (title/artist/key/meter) ----
 function beginMetaEdit(kind) {
+   // Title / artist are sheet metadata, and a member may only change Key / Time
+   // signature / BPM / Transpose — refuse here too, so no future call site can
+   // bypass the guards on #previewTitle / #previewArtist.
+   if ((kind === "title" || kind === "artist") && blockedForMember()) return;
    const state = getState();
    const config = {
       title: { target: "#previewTitle", source: "#songTitle", type: "text" },
@@ -1447,18 +1617,25 @@ function bindControlListeners() {
    });
    $("#chordRootPicker").addEventListener("click", (event) => {
       if (!event.target.dataset.root) return;
+      // Palette tools exist to write chords — not available to members.
+      if (blockedForMember()) return;
       clearPaletteSelection();
       getState().chordRoot = event.target.dataset.root;
       renderControls();
       save();
    });
    $("#customChordInput").addEventListener("input", (event) => {
+      if (blockedForMember()) {
+         renderControls();
+         return;
+      }
       clearPaletteSelection();
       getState().customChord = event.target.value;
       renderCustomChord();
       save();
    });
    $("#addSlashBtn").addEventListener("click", () => {
+      if (blockedForMember()) return;
       const chord = `${$("#slashRoot").value}${$("#slashQuality").value}/${$("#slashBass").value}`;
       const slashChords = getState().slashChords;
       if (!slashChords.includes(chord)) slashChords.push(chord);
@@ -1469,6 +1646,7 @@ function bindControlListeners() {
    $("#nashvilleRootPicker").addEventListener("click", (event) => {
       const button = event.target.closest(".nashville-key");
       if (!button) return;
+      if (blockedForMember()) return;
       clearPaletteSelection();
       getState().nashvilleNumber = button.dataset.number;
       renderControls();
@@ -1476,11 +1654,13 @@ function bindControlListeners() {
    });
    $("#nashvilleAccidentalPicker").addEventListener("click", (event) => {
       if (event.target.dataset.accidental === undefined) return;
+      if (blockedForMember()) return;
       clearPaletteSelection();
       getState().nashvilleAccidental = event.target.dataset.accidental;
       renderControls();
       save();
    });
+   // Transpose stays available to members (matched by the album role rules).
    $("#transposeDown").addEventListener("click", () => transposeSheet(-1));
    $("#transposeUp").addEventListener("click", () => transposeSheet(1));
 
@@ -1524,9 +1704,19 @@ function bindControlListeners() {
    });
 
 
+   // Undo/Redo stay available to members: the history stack is cleared whenever a
+   // project is loaded (applyProject → clearHistory), so undo can only move
+   // between the album document as loaded and the edits a member is allowed to
+   // make (Key / Time / BPM / Transpose). It can never introduce bars, sections
+   // or chords the member couldn't create in the first place.
    $("#undoBtn")?.addEventListener("click", () => undoSheet());
    $("#redoBtn")?.addEventListener("click", () => redoSheet());
    $("#lyricsEnabled").addEventListener("change", (event) => {
+      // The lyrics switch changes the document — owner-only.
+      if (blockedForMember()) {
+         event.target.checked = getState().lyricsEnabled;
+         return;
+      }
       getState().lyricsEnabled = event.target.checked;
       renderControls();
       renderPreview();
@@ -1536,11 +1726,19 @@ function bindControlListeners() {
    // Global lyrics toggle in the topbar (mirrors the hidden ribbon switch, which
    // remains the source of truth so renderControls keeps both in sync).
    $("#lyricsEnabledTop")?.addEventListener("change", (event) => {
+      if (blockedForMember()) {
+         event.target.checked = getState().lyricsEnabled;
+         return;
+      }
       const ribbonToggle = $("#lyricsEnabled");
       ribbonToggle.checked = event.target.checked;
       ribbonToggle.dispatchEvent(new Event("change"));
    });
    $("#chordAboveEnabledTop")?.addEventListener("change", (event) => {
+      if (blockedForMember()) {
+         event.target.checked = getState().chordAboveEnabled;
+         return;
+      }
       const ribbonToggle = $("#chordAboveEnabled");
       if (ribbonToggle) {
          ribbonToggle.checked = event.target.checked;
@@ -1549,6 +1747,10 @@ function bindControlListeners() {
    });
    // Chord-above (Chord Chart mode): a letter chord row above each number.
    $("#chordAboveEnabled")?.addEventListener("change", (event) => {
+      if (blockedForMember()) {
+         event.target.checked = getState().chordAboveEnabled;
+         return;
+      }
       getState().chordAboveEnabled = event.target.checked;
       renderControls();
       renderPreview();
@@ -1578,17 +1780,24 @@ function bindControlListeners() {
    );
    $("#previewViewport").addEventListener("scroll", updateViewportOverflow, { passive: true });
    $("#previewTitle").addEventListener("click", (event) => {
-      if (!event.target.matches("input")) beginMetaEdit("title");
+      if (event.target.matches("input")) return;
+      // Title / artist are part of the sheet — read-only for members.
+      if (blockedForMember()) return;
+      beginMetaEdit("title");
    });
    $("#previewArtist").addEventListener("click", (event) => {
-      if (!event.target.matches("input")) beginMetaEdit("artist");
+      if (event.target.matches("input")) return;
+      if (blockedForMember()) return;
+      beginMetaEdit("artist");
    });
+   // Key & time signature remain editable for members (see the album role rules).
    $("#previewKey").addEventListener("click", (event) => {
       if (!event.target.matches("select")) beginMetaEdit("key");
    });
    $("#previewMeter").addEventListener("click", (event) => {
       if (!event.target.matches("select")) beginMetaEdit("meter");
    });
+   // Time signature & BPM stay editable for members — no guard here.
    $("#timeSignature").addEventListener("change", (event) => {
       getState().meter = event.target.value;
       renderPreview();
@@ -1596,10 +1805,18 @@ function bindControlListeners() {
       toast(`Preview updated to ${getState().meter}`);
    });
    $("#songTitle").addEventListener("input", () => {
+      if (memberReadOnly()) {
+         renderPreview();
+         return;
+      }
       renderPreview();
       save();
    });
    $("#artist").addEventListener("input", () => {
+      if (memberReadOnly()) {
+         renderPreview();
+         return;
+      }
       renderPreview();
       save();
    });
@@ -1608,6 +1825,8 @@ function bindControlListeners() {
       toast("Selection cleared");
    });
    $("#addSectionBtn").addEventListener("click", () => {
+      // Adding a section is an arrangement edit — refused for members.
+      if (blockedForMember()) return;
       const currentState = getState();
       if (currentState.sections.length >= MAX_SECTIONS) {
          toast(`Maximum of ${MAX_SECTIONS} sections reached`);
@@ -1622,6 +1841,8 @@ function bindControlListeners() {
       toast("New section added");
    });
    $("#resetSheetBtn").addEventListener("click", () => {
+      // Wiping the whole score is never available to a member.
+      if (blockedForMember()) return;
       if (!window.confirm("Reset the entire score to its default state?")) return;
       resetState();
       clearPaletteSelection();
@@ -1635,7 +1856,8 @@ function bindControlListeners() {
       save();
       toast("Score reset to default");
    });
-   // "How to edit this score" help dialog (replaces the old drag-and-drop hint).
+   // "How to use this score app?" help dialog (single source of truth for what
+   // the app can do: cloud library + versions, shared albums, editing, export).
    // Explains the click-to-type / right-click-for-rhythm live-editing model.
    {
       const howToDialog = $("#howToDialog");
@@ -1670,6 +1892,11 @@ function bindControlListeners() {
    }
    $("#saveBtn")?.addEventListener("click", downloadProject);
    $("#projectFileInput")?.addEventListener("change", async (event) => {
+      // Loading a project file REPLACES the open document — not a member action.
+      if (blockedForMember()) {
+         event.target.value = "";
+         return;
+      }
       const file = event.target.files[0];
       if (!file) return;
       try {
@@ -1699,8 +1926,14 @@ function bindControlListeners() {
       },
    });
    // PDF options are part of each song's document (per-song PDF options), so
-   // tweaking them marks the song as having unsaved changes.
-   window.addEventListener("chordsheet:pdfoptionschange", () => setDirty(true));
+   // tweaking them marks the song as having unsaved changes. For a MEMBER they
+   // are export-only (nothing can be written back to the album), so skip the
+   // flag — otherwise adjusting an export layout would light the unsaved badge
+   // and trigger the "Save a copy?" prompt when leaving.
+   window.addEventListener("chordsheet:pdfoptionschange", () => {
+      if (memberReadOnly()) return;
+      setDirty(true);
+   });
    window.addEventListener(
       "scroll",
       () => {
@@ -1768,6 +2001,8 @@ function bindAutoSyllable() {
    };
 
    const run = () => {
+      // Auto-syllable writes lyrics into beats — refused for members.
+      if (blockedForMember()) return;
       const state = getState();
       const text = input.value.trim();
       if (!text) {

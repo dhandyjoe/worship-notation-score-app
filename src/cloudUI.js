@@ -4,7 +4,8 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudContext / setCloudContext). This
 // keeps the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260927-dirty";
+import { $, toast } from "./dom.js?v=20260923-album11";
+import { friendlyName } from "./identity.js?v=20260923-album11";
 import {
    isConfigured,
    onAuth,
@@ -28,11 +29,37 @@ import {
    composeSong,
    deleteSong,
    duplicateSong,
-} from "./cloud.js?v=20260927-dirty";
+   createAlbum,
+   updateAlbum,
+   deleteAlbum,
+   getAlbum,
+   listAlbums,
+   listAlbumSongs,
+   loadAlbumSong,
+   loadAlbumSongMeta,
+   updateAlbumSongMeta,
+   saveToAlbum,
+   deleteAlbumSong,
+   addSongToAlbum,
+   copyAlbumSongToMySongs,
+   listAlbumVersions,
+   loadAlbumVersion,
+   saveAlbumVersion,
+   updateAlbumLatestVersion,
+   deleteAlbumVersion,
+   getInviteCode,
+   rotateInviteCode,
+   joinAlbum,
+   listMembers,
+   setMemberRole,
+   removeMember,
+   leaveAlbum,
+   normalizeInviteCode,
+} from "./cloud.js?v=20260923-album11";
 
 // Injected editor bridge (set in init).
-import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260927-dirty";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=20260927-dirty";
+import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260923-album11";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=20260923-album11";
 
 let bridge = {
    getProject: () => ({}),
@@ -286,12 +313,23 @@ function openUnsavedChangesDialog() {
 
 // Guarded navigation back to My Songs. If the open document has unsaved cloud
 // changes, ask first; otherwise leave immediately.
+// Where "Back to My Songs" should land: the album detail when the open document
+// is an album arrangement, the My Songs home otherwise.
+function homeTarget() {
+   const ctx = bridge.getCloudContext?.() || null;
+   if (isAlbumCtx(ctx) && ctx.albumId) return `#/albums/${encodeURIComponent(ctx.albumId)}`;
+   // Robustness: even if the context was lost, a URL that is an album editor
+   // route must still land back on the album's song list.
+   const route = parseRoute(location.hash);
+   if (route.name === "editor" && route.albumId) return `#/albums/${encodeURIComponent(route.albumId)}`;
+   return HOME_ROUTE;
+}
 async function leaveEditorToHome() {
    // If audio is still playing, confirm before leaving so the user isn't
-   // surprised the sound cuts out when they land on My Songs. Playback is
-   // stopped automatically on confirmation.
+   // surprised the sound cuts out when they land on the album / My Songs.
+   // Playback is stopped automatically on confirmation.
    if (!(await confirmStopPlayback())) return;
-   await guardUnsavedThen(() => navigate(HOME_ROUTE));
+   await guardUnsavedThen(() => navigate(homeTarget()));
 }
 
 // If playback is currently active, ask the user before stopping it. Returns
@@ -365,8 +403,44 @@ let lastHash = "";
 // isn't re-triggered by the navigate() that runs after a successful load.
 let importInFlight = false;
 
+// ===== Album (Fase 3/4) UI state =====
+let homeTab = "songs"; // active home tab: "songs" | "albums"
+let pendingHomeTab = "songs"; // tab to activate when showing the home screen
+let currentAlbum = null; // { ..., role } being viewed in #albumModal
+let cachedAlbums = []; // albums of the current user (Albums tab)
+let cachedAlbumSongs = []; // songs of the open album (for search filtering)
+let albumSelectedSongId = null; // candidate song in #addSongDialog
+// Album scope currently open in the editor. Kept SEPARATELY from the cloud
+// context so the save direction stays correct even if the context (or the URL)
+// has been overwritten by a version switch / New Version flow. The cloud
+// context remains the primary source of truth; this is the safety net.
+let activeAlbumCtx = null; // { albumId, albumName, role } | null
+function setActiveAlbumCtx(next) {
+   activeAlbumCtx = next && next.albumId ? { albumId: next.albumId, albumName: next.albumName || "", role: next.role || null } : null;
+}
+
 function editorRoute() {
    const ctx = bridge.getCloudContext() || {};
+   // Album-scoped arrangements use #/album/... routes.
+   if (ctx.scope === "album" && ctx.albumId) {
+      if (!ctx.songId) return `#/album/${encodeURIComponent(ctx.albumId)}/new`;
+      return ctx.versionId
+         ? `#/album/${encodeURIComponent(ctx.albumId)}/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(ctx.versionId)}`
+         : `#/album/${encodeURIComponent(ctx.albumId)}/${encodeURIComponent(ctx.songId)}`;
+   }
+   // Safety net: never downgrade an album editor URL to a My Songs URL. If the
+   // hash still says "#/album/..." AND the open document is still that album song
+   // (no songId yet, or the same id), keep the album route — otherwise a stray My
+   // Songs URL would make the next "Save to Cloud" write into the user's library.
+   const route = parseRoute(location.hash);
+   if (route.name === "editor" && route.albumId && (!ctx.songId || ctx.songId === route.id)) {
+      const songId = ctx.songId || route.id || null;
+      const versionId = ctx.versionId ?? route.versionId ?? null;
+      if (!songId) return `#/album/${encodeURIComponent(route.albumId)}/new`;
+      return versionId
+         ? `#/album/${encodeURIComponent(route.albumId)}/${encodeURIComponent(songId)}/v/${encodeURIComponent(versionId)}`
+         : `#/album/${encodeURIComponent(route.albumId)}/${encodeURIComponent(songId)}`;
+   }
    if (ctx.songId && ctx.versionId) {
       return `#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(ctx.versionId)}`;
    }
@@ -397,6 +471,22 @@ function parseRoute(hash) {
    }
    const song = raw.match(/^\/song\/(.+)$/);
    if (song) return { name: "editor", id: song[1] === "new" ? null : decodeURIComponent(song[1]) };
+   // Album routes (Fase 3/4).
+   const albumVersioned = raw.match(/^\/album\/([^/]+)\/([^/]+)\/v\/([^/]+)$/);
+   if (albumVersioned) {
+      return { name: "editor", albumId: decodeURIComponent(albumVersioned[1]), id: decodeURIComponent(albumVersioned[2]), versionId: decodeURIComponent(albumVersioned[3]) };
+   }
+   const albumAddVersion = raw.match(/^\/album\/([^/]+)\/([^/]+)\/new$/);
+   if (albumAddVersion) {
+      return { name: "editor", albumId: decodeURIComponent(albumAddVersion[1]), id: decodeURIComponent(albumAddVersion[2]), versionId: null, addVersion: true };
+   }
+   const albumSongNew = raw.match(/^\/album\/([^/]+)\/new$/);
+   if (albumSongNew) return { name: "editor", albumId: decodeURIComponent(albumSongNew[1]), id: null };
+   const albumSong = raw.match(/^\/album\/([^/]+)\/([^/]+)$/);
+   if (albumSong) return { name: "editor", albumId: decodeURIComponent(albumSong[1]), id: decodeURIComponent(albumSong[2]) };
+   const albumDetail = raw.match(/^\/albums\/([^/]+)$/);
+   if (albumDetail) return { name: "album-detail", id: decodeURIComponent(albumDetail[1]) };
+   if (raw === "/albums" || raw === "/albums/") return { name: "albums" };
    return { name: "home" };
 }
 
@@ -434,9 +524,21 @@ function applyRoute() {
       return;
    }
    if (route.name === "home") {
+      pendingHomeTab = "songs";
+      closeModal($("#albumModal"));
       showGalleryScreen();
+   } else if (route.name === "albums") {
+      pendingHomeTab = "albums";
+      closeModal($("#albumModal"));
+      showGalleryScreen("albums");
+   } else if (route.name === "album-detail") {
+      openAlbumDetail(route.id);
+      lastRoute = route;
+      lastHash = location.hash;
+      return;
    } else {
       closeModal(modal);
+      closeModal($("#albumModal"));
    }
    // Home covers the whole viewport, so lock the page behind it — otherwise the
    // editor underneath still shows its own scrollbar on the right.
@@ -457,6 +559,11 @@ const escapeHtml = (s) =>
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
    );
 
+// Display names are derived by identity.js → friendlyName() (imported at the top):
+// Auth displayName when present (Google), otherwise a readable name from the email
+// local part. Callers keep their own fallback ("Musician" in the member list, the
+// email in the account menu).
+
 // Whether a "Save to cloud" action can actually complete right now. The unsaved
 // guard and the dirty badge both hinge on this: there's no point prompting to
 // save (or nagging with a badge) when Firebase isn't configured or nobody is
@@ -465,15 +572,19 @@ function cloudSaveAvailable() {
    return isConfigured() && (!!getCurrentUser() || TEST_MODE);
 }
 
-// #4 dirty indicator: toggle the "unsaved changes" state on the Save to Cloud
-// button. Only surface it when cloud save is actually available, otherwise the
-// badge would nag about an action the user can't complete.
+// #4 dirty indicator: toggle the "unsaved changes" state on the Save button.
+// Only surface it when cloud save is actually available, otherwise the badge
+// would nag about an action the user can't complete.
+// The badge (amber dot) rides the top-right corner of the button, and the
+// accessible label follows the ACTIVE scope ("Save to Album" inside an album,
+// "Save a copy" for members) so the hint never contradicts the visible text.
 function updateSaveButtonDirty(dirty) {
    const btn = $("#saveCloudBtn");
    if (!btn) return;
    const show = !!dirty && cloudSaveAvailable();
    btn.classList.toggle("is-unsaved", show);
-   btn.setAttribute("aria-label", show ? "Save to Cloud (unsaved changes)" : "Save to Cloud");
+   const label = btn.dataset.saveLabel || "Save to Cloud";
+   btn.setAttribute("aria-label", show ? `${label} (unsaved changes)` : label);
 }
 
 // ======================================================================
@@ -484,15 +595,19 @@ function reflectAuth(user) {
    const avatar = $("#accountAvatar");
    const label = $("#accountLabel");
    if (btn) {
+      // One derived name for the whole account UI: Auth displayName when present
+      // (Google), otherwise a readable name from the email's local part — an
+      // email/password account has no displayName at all.
+      const accountName = friendlyName(user || {}) || user?.email || "";
       if (user) {
          btn.classList.add("is-authed");
-         const initial = (user.displayName || user.email || "?").trim().charAt(0).toUpperCase();
+         const initial = (accountName || "?").trim().charAt(0).toUpperCase();
          if (user.photoURL) {
             avatar.innerHTML = `<img src="${escapeHtml(user.photoURL)}" alt="" referrerpolicy="no-referrer" />`;
          } else {
             avatar.textContent = initial || "●";
          }
-         label.textContent = user.displayName || user.email || "Account";
+         label.textContent = accountName || "Account";
          btn.title = "Your account";
       } else {
          btn.classList.remove("is-authed");
@@ -505,7 +620,7 @@ function reflectAuth(user) {
       const pName = $("#accountPopoverName");
       const pEmail = $("#accountPopoverEmail");
       if (pAvatar) pAvatar.innerHTML = avatar.innerHTML;
-      if (pName) pName.textContent = user ? user.displayName || user.email || "Signed in" : "Not signed in";
+      if (pName) pName.textContent = user ? accountName || "Signed in" : "Not signed in";
       if (pEmail) {
          const email = user ? user.email || "" : "";
          pEmail.textContent = email;
@@ -577,8 +692,18 @@ async function routeOnLoad() {
    }
    // A reload on #/song/:id[/v/:versionId] should reopen that song, not
    // silently drop to home.
+   if (route.name === "editor" && route.albumId) {
+      if (route.id) openAlbumSongInEditor(route.albumId, route.id, route.versionId);
+      else openAlbumNewSongFlow(route.albumId, { replaceHistory: true });
+      return;
+   }
    if (route.name === "editor" && route.id) {
       openSongInEditor(route.id, route.versionId);
+      return;
+   }
+   // Album gallery/detail routes loaded directly (address bar / reload).
+   if (route.name === "albums" || route.name === "album-detail") {
+      applyRoute();
       return;
    }
    // Blank/unknown hash (or #/song/new with nothing loaded) → normalise to home
@@ -839,7 +964,10 @@ function applyFilter() {
 }
 
 async function refreshSongs() {
-   setGalleryState("loading");
+   // Modern skeleton loader: shimmer cards while the library is being fetched.
+   setGalleryState("skeleton");
+   renderSkeletonCards($("#songCards"));
+   updateNudgeVisibility();
    try {
       cachedSongs = await listSongs();
       // The hero copy is static; the live library count goes in its own slot so
@@ -857,19 +985,50 @@ async function refreshSongs() {
    }
 }
 
+// Switch which home tab is visible (My Songs vs Albums) without navigating.
+function setHomeTab(tab) {
+   const isAlbums = tab === "albums";
+   homeTab = isAlbums ? "albums" : "songs";
+   const songsPanel = $("#songsPanel");
+   const albumsPanel = $("#albumsPanel");
+   const btnSongs = $("#tabMySongs");
+   const btnAlbums = $("#tabAlbums");
+   if (songsPanel) songsPanel.hidden = homeTab !== "songs";
+   if (albumsPanel) albumsPanel.hidden = homeTab !== "albums";
+   if (btnSongs) {
+      btnSongs.classList.toggle("is-active", homeTab === "songs");
+      btnSongs.setAttribute("aria-selected", homeTab === "songs" ? "true" : "false");
+   }
+   if (btnAlbums) {
+      btnAlbums.classList.toggle("is-active", homeTab === "albums");
+      btnAlbums.setAttribute("aria-selected", homeTab === "albums" ? "true" : "false");
+   }
+   // "New Song" and "Attach Link" are MY SONGS actions (starting your own score /
+   // importing someone else's share link). Album songs are created from inside the
+   // album itself (album detail → New Song), and the Albums tab carries its own
+   // actions (New Album / Join with code), so both buttons are hidden there.
+   const newSongBtn = $("#newSongBtn");
+   const attachLinkBtn = $("#attachLinkBtn");
+   if (newSongBtn) newSongBtn.hidden = isAlbums;
+   if (attachLinkBtn) attachLinkBtn.hidden = isAlbums;
+}
+
 // Render the home screen (gallery). Called by the router; use navigate(HOME_ROUTE)
-// from UI handlers so the URL stays in sync.
-async function showGalleryScreen() {
+// from UI handlers so the URL stays in sync. `tab` selects which pane shows.
+async function showGalleryScreen(tab) {
    // Gallery requires auth.
    if (!getCurrentUser() && !TEST_MODE) {
       showLoginPage();
       toast("Sign in to view your library");
       return;
    }
+   if (tab) pendingHomeTab = tab;
    openModal($("#mySongsModal"));
+   setHomeTab(pendingHomeTab);
    const search = $("#songSearch");
    if (search) search.value = "";
    await refreshSongs();
+   if (pendingHomeTab === "albums" && !TEST_MODE) await refreshAlbums();
    // The screen fades in from hidden; card widths read as 0 until visible, so
    // recompute edge blur + nudge visibility once real dimensions are committed.
    setTimeout(() => {
@@ -1303,6 +1462,8 @@ function initVersionCrud() {
 
 // Reflect the current arrangement in the topbar version pill.
 function syncVersionPill() {
+   // Album context drives topbar pill/banner/save-button labels (Fase 3/4).
+   if (typeof syncAlbumContextUI === "function") syncAlbumContextUI();
    const wrap = $("#versionSwitcherWrap");
    if (!wrap) return;
    const ctx = bridge.getCloudContext?.() || null;
@@ -1335,11 +1496,12 @@ async function renderVersionList() {
       }
       return;
    }
-   const versions = await listVersions(ctx.songId);
+   const versions = await listVersionsFor(ctx);
    if (!versions.length) {
       listEl.innerHTML = `<div class="version-list-empty">No versions yet — create one below.</div>`;
       return;
    }
+   const canEditDetails = !(isAlbumCtx(ctx) && ctx.role !== "owner");
    listEl.innerHTML = versions
       .map((v) => {
          const current = v.versionId === ctx.versionId;
@@ -1349,6 +1511,9 @@ async function renderVersionList() {
          const ytIcon = (isPending ? pending.youtubeId : v.youtubeId) ? `<span class="version-item-yt" title="Has YouTube link">▶</span>` : "";
          const pendingDot = isPending ? `<span class="version-item-pending" title="Pending — save to cloud">●</span>` : "";
          const currentMark = current ? `<span class="version-item-current">Current</span>` : "";
+         const editBtn = canEditDetails
+            ? `<button class="version-item-edit" type="button" data-version-id="${escapeHtml(v.versionId)}" aria-label="Edit details" title="Edit details">✎</button>`
+            : "";
          return `
             <div class="version-list-item${current ? " is-current" : ""}">
                <button class="version-item-switch" type="button" data-version-id="${escapeHtml(v.versionId)}" title="Open this version">
@@ -1356,7 +1521,7 @@ async function renderVersionList() {
                   ${pendingDot}
                   ${currentMark}
                </button>
-               <button class="version-item-edit" type="button" data-version-id="${escapeHtml(v.versionId)}" aria-label="Edit details" title="Edit details">✎</button>
+               ${editBtn}
             </div>`;
       })
       .join("");
@@ -1381,11 +1546,11 @@ async function selectVersion(versionId) {
    await guardUnsavedThen(async () => {
       closeVersionPopover();
       try {
-         const meta = await loadSongMeta(ctx.songId);
-         const version = await loadVersion(ctx.songId, versionId);
+         const meta = await loadSongMetaFor(ctx);
+         const version = await loadVersionFor(ctx, versionId);
          bridge.applyProject(composeSong(meta, version));
-         bridge.setCloudContext({ songId: ctx.songId, versionId, versionLabel: version.label || "" });
-         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(versionId)}`);
+         bridge.setCloudContext(nextCtx(ctx, { versionId, versionLabel: version.label || "" }));
+         navigate(ctxEditorUrl({ ...ctx, versionId }));
          syncVersionPill();
          toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
       } catch (error) {
@@ -1418,11 +1583,11 @@ async function onNewVersion() {
       if (!input) return;
       try {
          const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
-         const created = await saveVersion(ctx.songId, null, payload, { label: input.label });
-         await updateLatestVersion(ctx.songId, created.versionId, created.label, 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
+         const created = await saveVersionFor(ctx, null, payload, { label: input.label });
+         await updateLatestFor(ctx, created.versionId, created.label, 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
          bridge.applyProject(blank);
-         bridge.setCloudContext({ songId: ctx.songId, versionId: created.versionId, versionLabel: created.label });
-         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(created.versionId)}`);
+         bridge.setCloudContext(nextCtx(ctx, { versionId: created.versionId, versionLabel: created.label }));
+         navigate(ctxEditorUrl({ ...ctx, versionId: created.versionId }));
          syncVersionPill();
          toast(`Version "${created.label}" created`);
       } catch (error) {
@@ -1435,7 +1600,7 @@ async function onNewVersion() {
    // create a NEW blank arrangement (no cloning of the current score).
    await guardUnsavedThen(async () => {
       try {
-         const count = (await listVersions(ctx.songId)).length;
+         const count = (await listVersionsFor(ctx)).length;
          const input = await openVersionNameDialog({
             title: "New Version",
             desc: "Start a new, blank arrangement — it will not copy the current score.",
@@ -1443,11 +1608,11 @@ async function onNewVersion() {
          });
          if (!input) return;
          const payload = { ...blank, youtubeUrl: input.youtubeUrl, youtubeId: input.youtubeId };
-         const created = await saveVersion(ctx.songId, null, payload, { label: input.label });
-         await updateLatestVersion(ctx.songId, created.versionId, created.label, count + 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
+         const created = await saveVersionFor(ctx, null, payload, { label: input.label });
+         await updateLatestFor(ctx, created.versionId, created.label, count + 1, blank.editorMode, input.youtubeId, blank.key, blank.meter);
          bridge.applyProject(blank);
-         bridge.setCloudContext({ songId: ctx.songId, versionId: created.versionId, versionLabel: created.label });
-         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(created.versionId)}`);
+         bridge.setCloudContext(nextCtx(ctx, { versionId: created.versionId, versionLabel: created.label }));
+         navigate(ctxEditorUrl({ ...ctx, versionId: created.versionId }));
          syncVersionPill();
          toast(`Version "${created.label}" created`);
       } catch (error) {
@@ -1465,7 +1630,7 @@ async function editVersionDetails(versionId) {
    if (!ctx?.songId || !versionId) return;
    let version;
    try {
-      version = await loadVersion(ctx.songId, versionId);
+      version = await loadVersionFor(ctx, versionId);
    } catch (error) {
       toast("Could not open version details");
       return;
@@ -1486,7 +1651,7 @@ async function editVersionDetails(versionId) {
          return;
       }
       try {
-         await deleteVersion(ctx.songId, versionId);
+         await deleteVersionFor(ctx, versionId);
          // A pending edit of this version is gone with it.
          const pending = bridge.getPendingVersionDetails?.() || null;
          if (pending?.versionId === versionId) bridge.setPendingVersionDetails(null);
@@ -1497,8 +1662,8 @@ async function editVersionDetails(versionId) {
       return;
    }
    // Stage the rename + YouTube edit as PENDING. It is only written to the cloud
-   // together with the next "Save to Cloud" — until then a yellow badge on that
-   // button reminds the user the version details were edited.
+   // together with the next "Save" — until then a yellow badge on that button
+   // reminds the user the version details were edited.
    bridge.setPendingVersionDetails({
       versionId,
       label: result.label,
@@ -1508,11 +1673,11 @@ async function editVersionDetails(versionId) {
    bridge.markDirty();
    // Reflect the edit locally (without touching Firestore yet).
    if (ctx.versionId === versionId) {
-      bridge.setCloudContext({ songId: ctx.songId, versionId, versionLabel: result.label });
+      bridge.setCloudContext(nextCtx(ctx, { versionId, versionLabel: result.label }));
    }
    syncVersionPill();
    renderVersionList();
-   toast("Version details pending — Save to Cloud to persist");
+   toast("Version details pending — save to persist");
 }
 
 // Delete version… — removes that arrangement. The song itself survives (Opsi A).
@@ -1530,21 +1695,21 @@ async function onDeleteVersion() {
    });
    if (!confirmed) return;
    try {
-      const result = await deleteVersion(ctx.songId, ctx.versionId);
-      const meta = await loadSongMeta(ctx.songId);
+      const result = await deleteVersionFor(ctx, ctx.versionId);
+      const meta = await loadSongMetaFor(ctx);
       if (result.versionId) {
-         const version = await loadVersion(ctx.songId, result.versionId);
+         const version = await loadVersionFor(ctx, result.versionId);
          bridge.applyProject(composeSong(meta, version));
-         bridge.setCloudContext({ songId: ctx.songId, versionId: result.versionId, versionLabel: version.label || "" });
-         navigate(`#/song/${encodeURIComponent(ctx.songId)}/v/${encodeURIComponent(result.versionId)}`);
+         bridge.setCloudContext(nextCtx(ctx, { versionId: result.versionId, versionLabel: version.label || "" }));
+         navigate(ctxEditorUrl({ ...ctx, versionId: result.versionId }));
          toast("Version deleted");
       } else {
          // Last arrangement removed → song stays; the editor asks for a first version.
          bridge.applyProject(
             blankProject("chords", { title: meta.title || "Song Title", artist: meta.artist || "Artist / Composer" }),
          );
-         bridge.setCloudContext({ songId: ctx.songId, versionId: null, versionLabel: "" });
-         navigate(`#/song/${encodeURIComponent(ctx.songId)}/new`);
+         bridge.setCloudContext(nextCtx(ctx, { versionId: null, versionLabel: "" }));
+         navigate(ctxEditorUrl({ ...ctx, versionId: null }));
          toast("Last version deleted — add a new one to continue");
       }
       syncVersionPill();
@@ -1636,7 +1801,16 @@ async function handleCardAction(act, cloudId, card) {
       return;
    }
    if (act === "delete") {
-      if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+      // Themed confirm (identical to the album delete dialog).
+      const confirmed = await openConfirmDialog({
+         title: "Delete song?",
+         message: `Delete "${title}"? This cannot be undone.`,
+         confirmLabel: "Delete",
+         cancelLabel: "Cancel",
+         icon: "🗑",
+         danger: true,
+      });
+      if (!confirmed) return;
       try {
          await deleteSong(cloudId);
          const current = bridge.getCloudContext();
@@ -1855,7 +2029,15 @@ function initGallery() {
    // New song (Logic 1): the user MUST name the version, then pick a mode,
    // before the editor opens. Guarded so starting fresh doesn't silently
    // discard unsaved edits.
+   // Fallback: this button is hidden while the ALBUMS tab is active (see
+   // setHomeTab) because album songs are created from inside the album. The
+   // branch stays as a safety net in case the button is ever exposed there again
+   // — it would then create the song DIRECTLY inside an album, not in My Songs.
    $("#newSongBtn")?.addEventListener("click", () => {
+      if (homeTab === "albums") {
+         openAlbumNewSongFromHome();
+         return;
+      }
       guardUnsavedThen(() => {
          openNewSongDialog({
             title: "New Song",
@@ -1947,6 +2129,40 @@ async function importFromPayload(payload) {
 // ======================================================================
 // Save to Cloud (topbar)
 // ======================================================================
+// Persist a staged "version details" edit (rename / YouTube link) in the scope
+// of the OPEN document: an album version is written to
+// albums/{id}/songs/{id}/versions and a My Songs version to
+// users/{uid}/songs/{id}/versions. Shared by BOTH branches of saveToCloud so a
+// rename can never land in the wrong library, and the denormalized latest-*
+// fields on the parent doc follow along.
+async function persistPendingVersionDetails(ctx) {
+   const pending = bridge.getPendingVersionDetails?.() || null;
+   if (!pending?.versionId || !ctx?.songId) return null;
+   const payload = { youtubeUrl: pending.youtubeUrl, youtubeId: pending.youtubeId };
+   if (isAlbumCtx(ctx)) {
+      await saveAlbumVersion(ctx.albumId, ctx.songId, pending.versionId, payload, { label: pending.label });
+      const versions = await listAlbumVersions(ctx.albumId, ctx.songId);
+      if (versions[0]?.versionId === pending.versionId) {
+         await updateAlbumSongMeta(ctx.albumId, ctx.songId, {
+            latestVersionLabel: pending.label,
+            latestYoutubeId: pending.youtubeId || null,
+         });
+      }
+   } else {
+      await saveVersion(ctx.songId, pending.versionId, payload, { label: pending.label });
+      const versions = await listVersions(ctx.songId);
+      if (versions[0]?.versionId === pending.versionId) {
+         await updateSongMeta(ctx.songId, {
+            latestVersionLabel: pending.label,
+            latestYoutubeId: pending.youtubeId || null,
+         });
+      }
+   }
+   if (ctx.versionId === pending.versionId) ctx.versionLabel = pending.label;
+   bridge.setPendingVersionDetails(null);
+   return pending;
+}
+
 async function saveToCloud() {
    if (!isConfigured()) {
       toast("Cloud is not configured yet");
@@ -1960,6 +2176,78 @@ async function saveToCloud() {
    try {
       const project = bridge.getProject();
       const ctx = bridge.getCloudContext() || {};
+      // Album scope (Fase 3/4): an OWNER saves in place; a MEMBER can only save a
+      // private copy to their own library (the album itself stays read-only).
+      // Deteksi album BERLAPIS — context → memo modul → URL saat ini — supaya
+      // konteks album tidak pernah "hilang" hanya karena ctx/URL tertimpa oleh
+      // alur lain (ganti versi, New Version, dst.). Selama sebuah album terbuka,
+      // save TIDAK BOLEH jatuh ke cabang My Songs (apalagi membuat lagu baru di
+      // My Songs).
+      const route = parseRoute(location.hash);
+      const activeAlbumId =
+         (ctx.scope === "album" && ctx.albumId)
+            ? ctx.albumId
+            : activeAlbumCtx?.albumId
+               ? activeAlbumCtx.albumId
+               : route.name === "editor" && route.albumId
+                  ? route.albumId
+                  : null;
+      if (activeAlbumId) {
+         // Ambil role & nama album yang LIVE dari Firestore (bukan ctx.role yang
+         // bisa basi/hilang) sebelum memutuskan arah penyimpanan.
+         let role = ctx.role || activeAlbumCtx?.role || null;
+         let albumName = ctx.albumName || activeAlbumCtx?.albumName || "Album";
+         try {
+            const album = await getAlbum(activeAlbumId);
+            role = album.role;
+            albumName = album.name || albumName;
+         } catch (error) {
+            toast("Could not load the album — please try again");
+            return false;
+         }
+         if (role === "owner") {
+            const next = await saveToAlbum(activeAlbumId, project, { songId: ctx.songId, versionId: ctx.versionId, versionLabel: ctx.versionLabel });
+            const albumContext = { ...next, scope: "album", albumId: activeAlbumId, albumName, role: "owner" };
+            // A staged version-details edit (rename / YouTube link) is persisted in
+            // ALBUM scope here — never through the My Songs helpers.
+            await persistPendingVersionDetails(albumContext);
+            bridge.setCloudContext(albumContext);
+            setActiveAlbumCtx(albumContext);
+            syncVersionPill();
+            bridge.markSaved();
+            toast("Saved to album");
+            return true;
+         }
+         const confirmed = await openConfirmDialog({
+            title: "Save a copy to My Songs?",
+            message: "You are viewing an album arrangement (read-only). Save a private copy to your own library so you can edit it freely.",
+            confirmLabel: "Save a copy",
+            cancelLabel: "Cancel",
+            icon: "⧉",
+         });
+         if (!confirmed) return false;
+         try {
+            const copied = await copyAlbumSongToMySongs(activeAlbumId, ctx.songId, { preferVersionId: ctx.versionId || undefined });
+            // The editor now owns the user's private COPY: move the context AND the
+            // URL to My Songs, so later saves no longer target the album.
+            bridge.setCloudContext({ songId: copied.songId, versionId: copied.versionId, versionLabel: copied.versionLabel });
+            setActiveAlbumCtx(null);
+            if (copied.songId) {
+               navigate(
+                  copied.versionId
+                     ? `#/song/${encodeURIComponent(copied.songId)}/v/${encodeURIComponent(copied.versionId)}`
+                     : `#/song/${encodeURIComponent(copied.songId)}/new`,
+               );
+            }
+            syncVersionPill();
+            bridge.markSaved();
+            toast("Copied to your library");
+            return true;
+         } catch (error) {
+            toast("Could not copy that song");
+            return false;
+         }
+      }
       const title = project.title || "Untitled";
       const artist = project.artist || "";
       let nextContext;
@@ -1985,32 +2273,24 @@ async function saveToCloud() {
          });
       } else {
          // Brand-new song: metadata + its first version are created together.
+         // Final assertion: reaching here with an album still in scope (context,
+         // memo or URL) must be impossible — fail loudly instead of silently
+         // creating a stray song in My Songs.
+         if (ctx.albumId || activeAlbumCtx?.albumId || (route.name === "editor" && route.albumId)) {
+            throw new Error("Album save salah arah diblokir — pastikan lagu dibuka dari Album.");
+         }
          const createdSong = await createSong({ title, artist });
          const created = await saveVersion(createdSong.songId, null, project, { label: ctx.versionLabel || "Version 1" });
          await updateLatestVersion(createdSong.songId, created.versionId, created.label, 1, project.editorMode, undefined, project.key, project.meter);
          nextContext = { songId: createdSong.songId, versionId: created.versionId, versionLabel: created.label };
       }
       // Persist any staged version-details edit (name / YouTube link) together
-      // with this "Save to Cloud".
-      const pending = bridge.getPendingVersionDetails?.() || null;
-      if (pending?.versionId && nextContext.songId) {
-         await saveVersion(nextContext.songId, pending.versionId, {
-            youtubeUrl: pending.youtubeUrl,
-            youtubeId: pending.youtubeId,
-         }, { label: pending.label });
-         const versions = await listVersions(nextContext.songId);
-         if (versions[0]?.versionId === pending.versionId) {
-            await updateSongMeta(nextContext.songId, {
-               latestVersionLabel: pending.label,
-               latestYoutubeId: pending.youtubeId || null,
-            });
-         }
-         if (nextContext.versionId === pending.versionId) {
-            nextContext.versionLabel = pending.label;
-         }
-         bridge.setPendingVersionDetails(null);
-      }
+      // with this "Save to Cloud" — scope-aware (My Songs here, album earlier).
+      await persistPendingVersionDetails(nextContext);
       bridge.setCloudContext(nextContext);
+      // This document is a My Songs song from now on: drop any album memo so a
+      // later save can never be redirected into an album by stale state.
+      setActiveAlbumCtx(null);
       syncVersionPill();
       bridge.markSaved();
       toast("Saved to cloud");
@@ -2088,6 +2368,7 @@ function initAccountButton() {
       try {
          await signOutUser();
          bridge.setCloudContext(null);
+         setActiveAlbumCtx(null);
          toast("Signed out");
       } catch (error) {
          toast("Could not sign out");
@@ -2098,6 +2379,1260 @@ function initAccountButton() {
 // ======================================================================
 // Public init
 // ======================================================================
+// ======================================================================
+// ALBUM (Fase 3/4) — Albums tab, detail, join/invite/members + editor scope.
+// ======================================================================
+let albumInviteResolve = null; // invite dialog promise (null = closed)
+let albumJoinResolve = null;
+let newAlbumResolve = null;
+let addSongResolve = null;
+let membersResolve = null;
+let chooseAlbumResolve = null; // New-Song-in-Album chooser promise
+let chosenAlbumId = null;
+
+function setAlbumsState(state) {
+   // "loading" | "skeleton" | "empty" | "no-results" | "error" | "ready"
+   const list = $("#albumsGalleryCards");
+   const load = $("#albumsLoading");
+   const empty = $("#albumsEmpty");
+   const err = $("#albumsError");
+   const none = $("#albumsNoResults");
+   if (list) list.hidden = state !== "ready" && state !== "skeleton";
+   if (load) load.hidden = state !== "loading";
+   if (empty) empty.hidden = state !== "empty";
+   if (err) err.hidden = state !== "error";
+   if (none) none.hidden = state !== "no-results";
+}
+
+// Modern skeleton loader: shimmer placeholder cards shown while the library /
+// albums are still being fetched. Replaced by the real cards on success.
+const SKELETON_COUNT = 10;
+function renderSkeletonCards(track, count = SKELETON_COUNT) {
+   if (!track) return;
+   track.innerHTML = Array.from({ length: count }, () => `
+      <div class="skeleton-card" aria-hidden="true">
+         <span class="sk-mark"></span>
+         <span class="sk-title"></span>
+         <span class="sk-sub"></span>
+         <span class="sk-detail"></span>
+         <span class="sk-footer"></span>
+      </div>`).join("");
+}
+
+// Album cards use the SAME visual language as song cards (shares .song-card
+// + .cloud-cards CSS → identical carousel look as the My Songs list).
+// Recommended max characters for an album description shown on card hover;
+// longer descriptions are truncated with an ellipsis (…).
+const ALBUM_DESC_MAX = 500;
+
+function albumCardMarkup(album) {
+   const title = escapeHtml(album.name || "Untitled Album");
+   const roleLabel = album.role === "owner" ? "Owner" : "Member · read-only";
+   const count = `${album.songCount} song${album.songCount === 1 ? "" : "s"}`;
+   const updated = album.updatedAt ? new Date(album.updatedAt).toLocaleDateString() : "";
+   const detail = `updated ${escapeHtml(updated)}`;
+   const actions = album.role === "owner"
+      ? `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Open" title="Open album" aria-label="Open album ${title}">✎</button>
+         <button class="song-card-action is-details" type="button" data-act="details" data-label="Edit details" title="Edit album name &amp; description" aria-label="Edit details of ${title}">📝</button>
+         <button class="song-card-action is-delete" type="button" data-act="delete" data-label="Delete" title="Delete album" aria-label="Delete album ${title}">🗑</button>`
+      : `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Open" title="Open album" aria-label="Open album ${title}">✎</button>`;
+   // Description (revealed on hover/focus). If it reaches the max length the UI
+   // shows an ellipsis; the FULL text stays available as a tooltip.
+   const fullDesc = String(album.description || "").trim();
+   const descSpan = fullDesc
+      ? `<span class="song-card-desc-text" title="${escapeHtml(fullDesc)}">${escapeHtml(fullDesc.length > ALBUM_DESC_MAX ? `${fullDesc.slice(0, ALBUM_DESC_MAX)}…` : fullDesc)}</span>`
+      : "";
+   const metaLine = `<span class="song-card-meta-line">${escapeHtml(count)}${updated ? ` · ${detail}` : ""}</span>`;
+   return `
+      <article class="song-card is-album" role="listitem" tabindex="0" data-album-id="${escapeHtml(album.albumId)}"
+         aria-label="Open album ${title}">
+         <span class="song-card-mode-mark" aria-hidden="true">💿</span>
+         <h3 class="song-card-title">${title}</h3>
+         <div class="song-card-creator">${escapeHtml(roleLabel)}</div>
+         <div class="song-card-detail">${descSpan}${metaLine}</div>
+         <div class="song-card-dock">
+            <div class="song-card-meta">
+               <span class="song-card-chip is-version" title="Songs in this album"><small>Songs</small><strong>${album.songCount}</strong></span>
+            </div>
+            <div class="song-card-actions">${actions}</div>
+         </div>
+      </article>`;
+}
+
+function renderAlbums(list) {
+   const grid = $("#albumsGalleryCards");
+   if (!grid) return;
+   grid.innerHTML = (list || []).map(albumCardMarkup).join("");
+   updateAlbumEdgeBlur();
+   updateAlbumNudgeVisibility();
+}
+
+// Carousel helpers (shared by the Albums tab AND the Album-detail song list) —
+// mirrors of the My Songs updateEdgeBlur / updateNudgeVisibility / nudgeCarousel.
+function nudgeVisFor(track, prev, next) {
+   if (!track || !prev || !next) return;
+   const overflow = track.scrollWidth - track.clientWidth;
+   const many = overflow > 4;
+   prev.hidden = !many || track.scrollLeft <= 2;
+   next.hidden = !many || track.scrollLeft >= overflow - 2;
+}
+function edgeBlurFor(track) {
+   if (!track) return;
+   const cards = track.querySelectorAll(".song-card");
+   if (!cards.length) return;
+   if (window.matchMedia("(max-width: 680px)").matches) {
+      cards.forEach((card) => {
+         card.style.setProperty("--blur", "0px");
+         card.style.setProperty("--scale", "1");
+         card.style.opacity = "";
+         card.classList.remove("is-dim");
+         card.setAttribute("aria-hidden", "false");
+         card.tabIndex = 0;
+      });
+      return;
+   }
+   const view = track.getBoundingClientRect();
+   const mid = view.left + view.width / 2;
+   cards.forEach((card) => {
+      const r = card.getBoundingClientRect();
+      const dist = Math.abs(r.left + r.width / 2 - mid);
+      const t = Math.min(1, Math.max(0, dist - CLEAR_BAND) / BLUR_SPAN);
+      card.style.setProperty("--blur", t <= 0 ? "0px" : `${(t * 4).toFixed(2)}px`);
+      card.style.setProperty("--scale", `${(1 - t * 0.08).toFixed(3)}`);
+      card.style.opacity = `${(1 - t * 0.45).toFixed(3)}`;
+      const active = t <= 0.04;
+      card.classList.toggle("is-dim", !active);
+      card.setAttribute("aria-hidden", active ? "false" : "true");
+      card.tabIndex = active ? 0 : -1;
+   });
+}
+let activeAlbumScrollTimer = 0;
+function nudgeFor(track, dir, refresh) {
+   if (!track) return;
+   const card = track.querySelector(".song-card");
+   const step = ((card ? card.offsetWidth : 210) + 28) * 1.4;
+   const max = track.scrollWidth - track.clientWidth;
+   const from = track.scrollLeft;
+   const to = Math.max(0, Math.min(max, from + dir * step));
+   if (activeAlbumScrollTimer) clearInterval(activeAlbumScrollTimer);
+   const start = Date.now();
+   const dur = 300;
+   const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+   activeAlbumScrollTimer = setInterval(() => {
+      const t = Math.min(1, (Date.now() - start) / dur);
+      track.scrollLeft = from + (to - from) * easeOut(t);
+      if (refresh) refresh();
+      if (t >= 1) {
+         clearInterval(activeAlbumScrollTimer);
+         activeAlbumScrollTimer = 0;
+      }
+   }, 16);
+}
+
+// Albums tab carousel.
+function updateAlbumNudgeVisibility() {
+   nudgeVisFor($("#albumsGalleryCards"), $("#albumsGalleryPrev"), $("#albumsGalleryNext"));
+}
+function updateAlbumEdgeBlur() {
+   edgeBlurFor($("#albumsGalleryCards"));
+}
+function nudgeAlbumsCarousel(dir) {
+   nudgeFor($("#albumsGalleryCards"), dir, () => {
+      updateAlbumEdgeBlur();
+      updateAlbumNudgeVisibility();
+   });
+}
+// Album-detail song list carousel.
+function updateAlbumSongNudgeVisibility() {
+   nudgeVisFor($("#albumSongCards"), $("#albumSongsGalleryPrev"), $("#albumSongsGalleryNext"));
+}
+function updateAlbumSongEdgeBlur() {
+   edgeBlurFor($("#albumSongCards"));
+}
+function nudgeAlbumSongsCarousel(dir) {
+   nudgeFor($("#albumSongCards"), dir, () => {
+      updateAlbumSongEdgeBlur();
+      updateAlbumSongNudgeVisibility();
+   });
+}
+
+// Client-side filter over cachedAlbums — same behaviour as the My Songs search.
+function applyAlbumFilter() {
+   const term = ($("#albumSearch")?.value || "").trim().toLowerCase();
+   const filtered = term
+      ? cachedAlbums.filter(
+           (a) =>
+              (a.name || "").toLowerCase().includes(term) ||
+              (a.description || "").toLowerCase().includes(term),
+        )
+      : cachedAlbums;
+   if (!cachedAlbums.length) {
+      setAlbumsState("empty");
+      renderAlbums([]);
+      return;
+   }
+   if (!filtered.length) {
+      setAlbumsState("no-results");
+      renderAlbums([]);
+      return;
+   }
+   setAlbumsState("ready");
+   renderAlbums(filtered);
+}
+
+async function refreshAlbums() {
+   setAlbumsState("skeleton");
+   renderSkeletonCards($("#albumsGalleryCards"));
+   updateAlbumNudgeVisibility();
+   try {
+      cachedAlbums = await listAlbums();
+      applyAlbumFilter();
+   } catch (error) {
+      setAlbumsState("error");
+      const code = String(error?.code || "");
+      const message = String(error?.message || error || "");
+      console.error(`[cloudUI] listAlbums failed [code=${code}]`, error);
+      const indexHint = /requires an index|failed.precondition|index/i.test(message) && !/permission/i.test(message)
+         ? " Firebase Console → Firestore → Indexes → create the suggested index."
+         : "";
+      toast(
+         `Could not load albums${isFirestorePermissionsError(error) ? " — check Firestore security rules." : " — check your connection and the Firestore security rules."}${indexHint}`,
+      );
+   }
+}
+
+function albumSongCardMarkup(song, role) {
+   const key = escapeHtml(song.latestKey || song.key || "");
+   const meter = escapeHtml(song.latestMeter || song.meter || "");
+   const counts = typeof song.versionCount === "number" ? `${song.versionCount} version${song.versionCount === 1 ? "" : "s"}` : "";
+   const isOwner = role === "owner";
+   const actions = isOwner
+      ? `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Edit" title="Edit" aria-label="Edit ${escapeHtml(song.title)}">✎</button>
+         <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${escapeHtml(song.title)} as PDF">↗</button>
+         <button class="song-card-action is-delete" type="button" data-act="delete" data-label="Remove" title="Remove from album" aria-label="Remove ${escapeHtml(song.title)} from album">🗑</button>`
+      : `<button class="song-card-action is-edit" type="button" data-act="edit" data-label="Open" title="Open" aria-label="Open ${escapeHtml(song.title)}">✎</button>
+         <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${escapeHtml(song.title)} as PDF">↗</button>
+         <button class="song-card-action is-duplicate" type="button" data-act="copy" data-label="Save a copy" title="Save a copy to My Songs" aria-label="Save a copy of ${escapeHtml(song.title)}">⧉</button>`;
+   return `
+      <article class="song-card is-${(song.latestEditorMode || song.editorMode) === "numbers" ? "numbers" : "chords"}" role="listitem" tabindex="0"
+         data-id="${escapeHtml(song.cloudId)}" aria-label="${escapeHtml(song.title)}">
+         <span class="song-card-mode-mark" aria-hidden="true">${(song.latestEditorMode || song.editorMode) === "numbers" ? "#" : "♪"}</span>
+         <h3 class="song-card-title">${escapeHtml(song.title)}</h3>
+         <div class="song-card-creator">${escapeHtml(song.artist || "Unknown")}</div>
+         <div class="song-card-detail">${escapeHtml(counts)}</div>
+         <div class="song-card-dock">
+            <div class="song-card-meta">
+               ${key ? `<span class="song-card-chip"><small>Key</small> ${key}</span>` : ""}
+               ${meter ? `<span class="song-card-chip"><small>Time</small> ${meter}</span>` : ""}
+            </div>
+            <div class="song-card-actions">${actions}</div>
+         </div>
+      </article>`;
+}
+
+function setAlbumListState(state) {
+   // "loading" | "empty" | "no-results" | "ready"
+   const list = $("#albumSongCards");
+   const load = $("#albumLoading");
+   const empty = $("#albumEmpty");
+   const none = $("#albumNoResults");
+   if (list) list.hidden = state !== "ready";
+   if (load) load.hidden = state !== "loading";
+   if (empty) empty.hidden = state !== "empty";
+   if (none) none.hidden = state !== "no-results";
+}
+
+function renderAlbumSongs(list) {
+   const track = $("#albumSongCards");
+   if (!track) return;
+   const role = currentAlbum?.role || "member";
+   track.innerHTML = list.map((song) => albumSongCardMarkup(song, role)).join("");
+   setAlbumListState(list.length ? "ready" : "empty");
+   updateAlbumSongEdgeBlur();
+   updateAlbumSongNudgeVisibility();
+   if (currentAlbum?.role === "member") {
+      const hint = $("#albumEmptyHint");
+      if (hint) hint.textContent = "No songs here yet — check back soon, or ask an owner to add arrangements.";
+   }
+}
+
+function applyAlbumSongFilter() {
+   const term = ($("#albumSongSearch")?.value || "").trim().toLowerCase();
+   const filtered = term ? cachedAlbumSongs.filter((s) => (s.title || "").toLowerCase().includes(term)) : cachedAlbumSongs;
+   if (!cachedAlbumSongs.length) {
+      setAlbumListState("empty");
+      renderAlbumSongs([]);
+      return;
+   }
+   if (!filtered.length) {
+      setAlbumListState("no-results");
+      renderAlbumSongs([]);
+      return;
+   }
+   setAlbumListState("ready");
+   renderAlbumSongs(filtered);
+}
+
+async function refreshAlbumSongs() {
+   setAlbumListState("loading");
+   try {
+      cachedAlbumSongs = await listAlbumSongs(currentAlbum.albumId);
+      applyAlbumSongFilter();
+   } catch (error) {
+      setAlbumListState("empty");
+      toast(isFirestorePermissionsError(error) ? "Could not load songs — check Firestore security rules" : "Could not load songs");
+   }
+}
+
+function renderAlbumHeader() {
+   const title = $("#albumTitle");
+   const meta = $("#albumMeta");
+   if (title) title.textContent = currentAlbum.name;
+   if (meta) {
+      const roleLabel = currentAlbum.role === "owner" ? "Owner" : "Member";
+      const date = currentAlbum.createdAt ? new Date(currentAlbum.createdAt).toLocaleDateString() : "";
+      meta.textContent = `${currentAlbum.songCount} song${currentAlbum.songCount === 1 ? "" : "s"} · ${roleLabel}${currentAlbum.role === "member" ? " · read-only" : ""}${date ? ` · created ${date}` : ""}`;
+   }
+   const isOwner = currentAlbum.role === "owner";
+   const invite = $("#albumInviteBtn");
+   const addFrom = $("#albumAddFromBtn");
+   const newSong = $("#albumNewSongBtn");
+   const leave = $("#albumLeaveBtn");
+   const members = $("#albumMembersBtn");
+   if (invite) invite.hidden = !isOwner;
+   if (addFrom) addFrom.hidden = !isOwner;
+   if (newSong) newSong.hidden = !isOwner;
+   if (leave) leave.hidden = isOwner; // owners leave via the Members management
+   if (members) members.hidden = false; // everyone may view the member list
+}
+
+async function openAlbumDetail(albumId) {
+   const modal = $("#albumModal");
+   if (!modal) return;
+   closeModal($("#mySongsModal"));
+   openModal(modal);
+   document.documentElement.dataset.screen = "album-detail";
+   currentAlbum = null;
+   cachedAlbumSongs = [];
+   try {
+      currentAlbum = await getAlbum(albumId);
+   } catch (error) {
+      toast("Could not open that album");
+      navigate("#/albums");
+      return;
+   }
+   renderAlbumHeader();
+   const search = $("#albumSongSearch");
+   if (search) search.value = "";
+   await refreshAlbumSongs();
+}
+
+function albumEditorUrl(albumId, songId, versionId) {
+   if (!songId) return `#/album/${encodeURIComponent(albumId)}/new`;
+   return versionId
+      ? `#/album/${encodeURIComponent(albumId)}/${encodeURIComponent(songId)}/v/${encodeURIComponent(versionId)}`
+      : `#/album/${encodeURIComponent(albumId)}/${encodeURIComponent(songId)}`;
+}
+
+// ---- Editor scope helpers: route version CRUD to the active scope ----
+function isAlbumCtx(ctx) {
+   return !!ctx && ctx.scope === "album" && !!ctx.albumId;
+}
+async function loadSongMetaFor(ctx) {
+   return isAlbumCtx(ctx) ? loadAlbumSongMeta(ctx.albumId, ctx.songId) : loadSongMeta(ctx.songId);
+}
+async function loadVersionFor(ctx, versionId) {
+   return isAlbumCtx(ctx) ? loadAlbumVersion(ctx.albumId, ctx.songId, versionId) : loadVersion(ctx.songId, versionId);
+}
+async function listVersionsFor(ctx) {
+   return isAlbumCtx(ctx) ? listAlbumVersions(ctx.albumId, ctx.songId) : listVersions(ctx.songId);
+}
+async function saveVersionFor(ctx, versionId, data, opts) {
+   return isAlbumCtx(ctx) ? saveAlbumVersion(ctx.albumId, ctx.songId, versionId, data, opts) : saveVersion(ctx.songId, versionId, data, opts);
+}
+async function deleteVersionFor(ctx, versionId) {
+   return isAlbumCtx(ctx) ? deleteAlbumVersion(ctx.albumId, ctx.songId, versionId) : deleteVersion(ctx.songId, versionId);
+}
+async function updateLatestFor(ctx, versionId, label, count, editorMode, youtubeId, key, meter) {
+   if (isAlbumCtx(ctx)) return updateAlbumLatestVersion(ctx.albumId, ctx.songId, versionId, label, count, editorMode, youtubeId, key, meter);
+   return updateLatestVersion(ctx.songId, versionId, label, count, editorMode, youtubeId, key, meter);
+}
+// Preserve scope fields when updating the cloud context in the editor.
+// `role` matters too: syncAlbumContextUI derives the pill/label/read-only state
+// from it, and saveToCloud prefers the live role from Firestore but falls back
+// to this one when the album read fails.
+function nextCtx(ctx, patch) {
+   if (isAlbumCtx(ctx)) {
+      return {
+         ...ctx,
+         ...patch,
+         scope: "album",
+         albumId: ctx.albumId,
+         albumName: ctx.albumName,
+         role: ctx.role || null,
+      };
+   }
+   return { ...ctx, ...patch };
+}
+// URL for the current version of the active context.
+function ctxEditorUrl(ctx) {
+   if (isAlbumCtx(ctx)) return albumEditorUrl(ctx.albumId, ctx.songId, ctx.versionId);
+   return editorRoute();
+}
+
+// Open an album arrangement in the editor (owner edits in place; a member gets a
+// read-only session + "Save a copy" action).
+async function openAlbumSongInEditor(albumId, songId, versionId) {
+   await guardUnsavedThen(async () => {
+      try {
+         let albumName = currentAlbum?.name || "";
+         let role = currentAlbum?.role || "member";
+         if (!currentAlbum) {
+            try {
+               const a = await getAlbum(albumId);
+               albumName = a.name;
+               role = a.role;
+            } catch {
+               /* fall back to member */
+            }
+         }
+         const meta = await loadAlbumSongMeta(albumId, songId);
+         if (meta.legacy) {
+            bridge.applyProject(meta);
+            bridge.setCloudContext({ scope: "album", albumId, albumName, songId, versionId: null, versionLabel: "", role });
+            navigate(`#/album/${encodeURIComponent(albumId)}/${encodeURIComponent(songId)}`);
+            toast(`Opened "${meta.title || "Untitled"}"`);
+            return;
+         }
+         let version = null;
+         if (versionId) version = await loadAlbumVersion(albumId, songId, versionId);
+         else if (meta.latestVersionId) version = await loadAlbumVersion(albumId, songId, meta.latestVersionId);
+         if (version) {
+            bridge.applyProject(composeSong(meta, version));
+            bridge.setCloudContext({ scope: "album", albumId, albumName, songId, versionId: version.versionId, versionLabel: version.label || "", role });
+            navigate(albumEditorUrl(albumId, songId, version.versionId));
+            toast(`Opened "${meta.title || "Untitled"}" — ${version.label || "Version"}`);
+         } else {
+            // No arrangements yet → require a version name first.
+            const created = await openNewSongDialog({
+               title: "Add First Version",
+               desc: `"${meta.title || "Untitled"}" has no versions yet. Enter a version name, then pick a writing mode to start.`,
+               defaultLabel: "Version 1",
+            });
+            if (!created) {
+               navigate(`#/albums/${encodeURIComponent(albumId)}`);
+               return;
+            }
+            bridge.applyProject(blankProject(created.mode, { title: meta.title || "Song Title", artist: meta.artist || "Artist / Composer" }));
+            bridge.setCloudContext({ scope: "album", albumId, albumName, songId, versionId: null, versionLabel: created.label, role });
+            navigate(albumEditorUrl(albumId, songId, null));
+            toast(`Version "${created.label}" ready for "${meta.title || "Untitled"}"`);
+         }
+      } catch (error) {
+         toast("Could not open that song");
+      }
+   });
+}
+
+// Owner starts a brand-new song DIRECTLY inside the album (no My Songs copy).
+async function openAlbumNewSongFlow(albumId, { replaceHistory } = {}) {
+   let album = currentAlbum;
+   let albumName = currentAlbum?.name || "";
+   let role = currentAlbum?.role || "member";
+   if (!album) {
+      try {
+         album = await getAlbum(albumId);
+         albumName = album.name;
+         role = album.role;
+      } catch {
+         toast("Could not open that album");
+         navigate("#/albums");
+         return;
+      }
+   }
+   const created = await openNewSongDialog({
+      title: "New Song in Album",
+      desc: `This song will be saved directly to "${albumName}" — your own library is not affected.`,
+      defaultLabel: "Version 1",
+   });
+   if (!created) {
+      if (!replaceHistory) navigate(`#/albums/${encodeURIComponent(albumId)}`);
+      else navigate(HOME_ROUTE);
+      return;
+   }
+   bridge.applyProject(blankProject(created.mode));
+   bridge.setCloudContext({ scope: "album", albumId, albumName, songId: null, versionId: null, versionLabel: created.label, role });
+   // A brand-new draft exists only in the editor — mark it unsaved from the start
+   // (exactly like "New Song" in My Songs) so the yellow badge lights up on the
+   // "Save to Album" button and leaving via Back / browser Back / reload runs the
+   // unsaved-changes guard instead of silently dropping the new song.
+   bridge.markDirty();
+   navigate(albumEditorUrl(albumId, null, null));
+   syncAlbumContextUI();
+}
+
+// "New Song" pressed while on the ALBUMS tab: create the song DIRECTLY inside an
+// owned album (never touches My Songs). One owned album → go; several → ask.
+async function openAlbumNewSongFromHome() {
+   await guardUnsavedThen(async () => {
+      let owned = [];
+      try {
+         owned = (await listAlbums()).filter((a) => a.role === "owner");
+      } catch (error) {
+         console.error("[cloudUI] listAlbums failed (New Song in album):", error);
+         toast("Could not load your albums — please try again.");
+         return;
+      }
+      if (!owned.length) {
+         toast("You need an album first — create one, then songs can be saved directly to it.");
+         await openNewAlbumDialog();
+         return;
+      }
+      const album = owned.length === 1 ? owned[0] : await openChooseAlbumDialog(owned);
+      if (!album) return;
+      openAlbumNewSongFlow(album.albumId, { replaceHistory: false });
+   });
+}
+
+// Pick which owned album receives a new song (shown only when owning several).
+function closeChooseAlbumDialog(result) {
+   const resolve = chooseAlbumResolve;
+   chooseAlbumResolve = null;
+   closeModal($("#chooseAlbumDialog"));
+   resolve?.(result);
+}
+function openChooseAlbumDialog(albums) {
+   const d = $("#chooseAlbumDialog");
+   const list = $("#chooseAlbumList");
+   if (!d) return Promise.resolve(null);
+   if (chooseAlbumResolve) { const prev = chooseAlbumResolve; chooseAlbumResolve = null; prev(null); }
+   chosenAlbumId = null;
+   if (list) {
+      list.innerHTML = albums
+         .map(
+            (a, i) => `<label class="add-song-option">
+                 <input type="radio" name="chooseAlbumChoice" value="${escapeHtml(a.albumId)}" ${i === 0 ? "checked" : ""} />
+                 <span class="add-song-option-text">
+                    <strong>${escapeHtml(a.name)}</strong>
+                    <small>${a.songCount} song${a.songCount === 1 ? "" : "s"} · Owner</small>
+                 </span>
+              </label>`,
+         )
+         .join("");
+      list.querySelectorAll('input[name="chooseAlbumChoice"]').forEach((r) =>
+         r.addEventListener("change", () => { chosenAlbumId = r.value; }),
+      );
+      const first = list.querySelector('input[name="chooseAlbumChoice"]');
+      chosenAlbumId = first ? first.value : null;
+   }
+   return new Promise((resolve) => {
+      chooseAlbumResolve = resolve;
+      openModal(d);
+   });
+}
+async function submitChooseAlbum() {
+   const album = chosenAlbumId ? cachedAlbums.find((a) => a.albumId === chosenAlbumId) || { albumId: chosenAlbumId } : null;
+   closeChooseAlbumDialog(album || null);
+}
+
+// Reflect the active album context in the editor topbar: a context pill and (for
+// members) a read-only banner + a "Save a copy" affordance instead of "Save".
+function syncAlbumContextUI() {
+   const ctx = bridge.getCloudContext?.() || null;
+   const isAlbum = isAlbumCtx(ctx);
+   // Keep the album memo in sync with the OPEN document (see activeAlbumCtx):
+   // an album-scoped context arms it, anything else (My Songs song or a fresh
+   // draft) clears it. Doing it here means no call site can forget it.
+   if (isAlbum) setActiveAlbumCtx({ albumId: ctx.albumId, albumName: ctx.albumName, role: ctx.role });
+   else setActiveAlbumCtx(null);
+   // Role yang belum termuat (null) TIDAK boleh diasumsikan sebagai "member":
+   // kalau role hilang, tampilan tetap netral dan saveToCloud akan mengambil
+   // role LIVE dari Firestore saat penyimpanan (owner selalu tersimpan ke Album).
+   const role = ctx?.role || null;
+   const isMember = role === "member";
+   const isOwner = role === "owner";
+   const name = ctx?.albumName || "Album";
+   // Members of an album get a READ-ONLY chord canvas in the editor (events.js
+   // checks this flag on every chord-entry path).
+   document.body.dataset.memberReadonly = isAlbum && isMember ? "1" : "0";
+   const pill = $("#albumPill");
+   const pillText = $("#albumPillText");
+   if (pill && pillText) {
+      pill.hidden = !isAlbum;
+      pillText.textContent = isAlbum ? (isOwner ? `Album: ${name}` : isMember ? `Album (read-only): ${name}` : `Album: ${name}`) : "";
+      pill.classList.toggle("is-readonly", isAlbum && isMember);
+   }
+   const banner = $("#albumReadOnlyBanner");
+   if (banner) banner.hidden = !(isAlbum && isMember);
+   const saveBtn = $("#saveCloudBtn");
+   if (saveBtn) {
+      const label = isAlbum ? (isMember ? "Save a copy" : "Save to Album") : "Save to Cloud";
+      saveBtn.innerHTML = `<span aria-hidden="true">⤒</span> ${label}`;
+      saveBtn.setAttribute("data-save-label", label);
+      saveBtn.title = label;
+   }
+   // Version management is owner-only inside an album.
+   const newVersionBtn = $("#versionNewBtn");
+   if (newVersionBtn) newVersionBtn.hidden = isAlbum && role !== "owner";
+   // Back button keeps the generic "← Back" label (album detail has its own
+// "← Albums" button); the tooltip stays descriptive.
+   const backBtn = $("#backToSongsBtn");
+   if (backBtn) {
+      // Set the whole content explicitly — never touch "a text node", because
+      // the FIRST text node is the whitespace before the arrow (which caused a
+      // duplicate "Back" label).
+      backBtn.innerHTML = `<span aria-hidden="true">←</span> Back`;
+      backBtn.title = isAlbum ? "Back to album songs" : "Back to My Songs";
+   }
+   // The button label just changed ("Save to Album" / "Save a copy"), so refresh
+   // the unsaved-changes badge + its accessible label for the ACTIVE scope.
+   updateSaveButtonDirty(bridge.hasUnsavedChanges?.() ?? false);
+}
+
+// ---- Join album dialog ----
+function closeJoinAlbumDialog(result) {
+   const resolve = albumJoinResolve;
+   albumJoinResolve = null;
+   closeModal($("#joinAlbumDialog"));
+   resolve?.(result);
+}
+function openJoinAlbumDialog() {
+   const d = $("#joinAlbumDialog");
+   const input = $("#joinAlbumCode");
+   const err = $("#joinAlbumError");
+   if (!d) return Promise.resolve(null);
+   if (albumJoinResolve) { const prev = albumJoinResolve; albumJoinResolve = null; prev(null); }
+   if (input) { input.value = ""; input.classList.remove("is-invalid"); }
+   if (err) err.hidden = true;
+   return new Promise((resolve) => {
+      albumJoinResolve = resolve;
+      openModal(d);
+      setTimeout(() => input?.focus(), 60);
+   });
+}
+async function submitJoinAlbum() {
+   const input = $("#joinAlbumCode");
+   const err = $("#joinAlbumError");
+   const code = (input?.value || "").trim();
+   if (!normalizeInviteCode(code)) {
+      if (err) { err.textContent = "Enter an 8-character code like ABCD-1234."; err.hidden = false; }
+      input?.classList.add("is-invalid");
+      return;
+   }
+   try {
+      const result = await joinAlbum(code);
+      closeJoinAlbumDialog(result);
+      toast(result.alreadyMember ? "You are already a member of that album." : "Joined the album!");
+      if (result.albumId) navigate(`#/albums/${encodeURIComponent(result.albumId)}`);
+      else await refreshAlbums();
+   } catch (error) {
+      if (err) { err.textContent = error?.message || "Could not join that album."; err.hidden = false; }
+      input?.classList.add("is-invalid");
+   }
+}
+
+// ---- New album dialog ----
+function closeNewAlbumDialog(result) {
+   const resolve = newAlbumResolve;
+   newAlbumResolve = null;
+   closeModal($("#newAlbumDialog"));
+   resolve?.(result);
+}
+function openNewAlbumDialog() {
+   const d = $("#newAlbumDialog");
+   if (!d) return Promise.resolve(null);
+   if (newAlbumResolve) { const prev = newAlbumResolve; newAlbumResolve = null; prev(null); }
+   const name = $("#newAlbumName");
+   const err = $("#newAlbumNameError");
+   const desc = $("#newAlbumDesc");
+   if (name) { name.value = ""; name.classList.remove("is-invalid"); }
+   if (err) err.hidden = true;
+   if (desc) desc.value = "";
+   return new Promise((resolve) => {
+      newAlbumResolve = resolve;
+      openModal(d);
+      setTimeout(() => name?.focus(), 60);
+   });
+}
+async function submitNewAlbum() {
+   const name = $("#newAlbumName");
+   const err = $("#newAlbumNameError");
+   const desc = $("#newAlbumDesc");
+   const title = (name?.value || "").trim();
+   if (!title) {
+      if (err) err.hidden = false;
+      name?.classList.add("is-invalid");
+      name?.focus();
+      return;
+   }
+   try {
+      const { albumId } = await createAlbum({ name: title, description: desc?.value || "" });
+      closeNewAlbumDialog({ albumId });
+      toast("Album created — invite your team from the Invite button.");
+      navigate(`#/albums/${encodeURIComponent(albumId)}`);
+   } catch (error) {
+      console.error("[cloudUI] createAlbum failed:", error);
+      if (err) { err.textContent = "Could not create the album."; err.hidden = false; }
+      toast(isFirestorePermissionsError(error) ? "Create blocked — check Firestore security rules" : "Could not create the album — try again");
+   }
+}
+
+// ---- Edit album dialog (owners) ----
+// Opened by the pencil action on an album card. This is intentionally its OWN
+// dialog instead of switching the New Album dialog into an "edit" mode, so the
+// create flow (prefill, autofocus, validation, navigation) stays untouched.
+// It prefills the CURRENT values and writes through updateAlbum(); songs,
+// members and invite codes are never touched.
+let editAlbumResolve = null;
+let editAlbumId = null;
+function closeEditAlbumDialog(result) {
+   const resolve = editAlbumResolve;
+   const id = editAlbumId;
+   editAlbumResolve = null;
+   editAlbumId = null;
+   closeModal($("#editAlbumDialog"));
+   resolve?.(result ? { ...result, albumId: id } : null);
+}
+function openEditAlbumDialog(albumId) {
+   const d = $("#editAlbumDialog");
+   if (!d) return Promise.resolve(null);
+   const album = cachedAlbums.find((a) => a.albumId === albumId) || null;
+   if (!album) {
+      toast("Could not open that album for editing");
+      return Promise.resolve(null);
+   }
+   if (editAlbumResolve) { const prev = editAlbumResolve; editAlbumResolve = null; prev(null); }
+   const name = $("#editAlbumName");
+   const err = $("#editAlbumNameError");
+   const desc = $("#editAlbumDesc");
+   if (name) { name.value = album.name || ""; name.classList.remove("is-invalid"); }
+   if (err) err.hidden = true;
+   if (desc) desc.value = album.description || "";
+   editAlbumId = albumId;
+   return new Promise((resolve) => {
+      editAlbumResolve = resolve;
+      openModal(d);
+      setTimeout(() => name?.focus(), 60);
+   });
+}
+async function submitEditAlbum() {
+   const albumId = editAlbumId;
+   if (!albumId) return;
+   const name = $("#editAlbumName");
+   const err = $("#editAlbumNameError");
+   const desc = $("#editAlbumDesc");
+   const title = (name?.value || "").trim();
+   if (!title) {
+      if (err) { err.textContent = "Album name is required."; err.hidden = false; }
+      name?.classList.add("is-invalid");
+      name?.focus();
+      return;
+   }
+   try {
+      await updateAlbum(albumId, { name: title, description: desc?.value || "" });
+      // Keep the album detail view (if it is open in memory) and the card list in
+      // sync — the cards read name/description from cachedAlbums.
+      if (currentAlbum?.albumId === albumId) {
+         currentAlbum.name = title;
+         currentAlbum.description = desc?.value || "";
+         renderAlbumHeader();
+      }
+      closeEditAlbumDialog({ name: title });
+      toast("Album updated");
+      await refreshAlbums();
+   } catch (error) {
+      console.error("[cloudUI] updateAlbum failed:", error);
+      if (err) { err.textContent = "Could not save the album."; err.hidden = false; }
+      toast(
+         isFirestorePermissionsError(error)
+            ? "Save blocked — check Firestore security rules"
+            : "Could not update the album — try again",
+      );
+   }
+}
+
+// ---- Invite dialog (owners) ----
+function closeInviteDialog() {
+   const resolve = albumInviteResolve;
+   albumInviteResolve = null;
+   closeModal($("#inviteDialog"));
+   resolve?.(true);
+}
+async function refreshInviteCodeIntoDialog(andCopy) {
+   try {
+      const code = (await getInviteCode(currentAlbum.albumId)) || null;
+      const value = $("#inviteCodeValue");
+      if (value) value.textContent = code || "—";
+      if (code && andCopy) {
+         const ok = await copyTextToClipboard(code);
+         if (ok) toast("Invite code copied!");
+      }
+   } catch {
+      const value = $("#inviteCodeValue");
+      if (value) value.textContent = "—";
+   }
+}
+async function openInviteDialog() {
+   const d = $("#inviteDialog");
+   if (!d) return;
+   if (albumInviteResolve) { const prev = albumInviteResolve; albumInviteResolve = null; prev(true); }
+   openModal(d);
+   albumInviteResolve = new Promise(() => {});
+   await refreshInviteCodeIntoDialog(false);
+}
+async function rotateInviteInDialog() {
+   if (!currentAlbum) return;
+   const confirmed = await openConfirmDialog({
+      title: "Create a new code?",
+      message: "The current invite code will stop working immediately.",
+      confirmLabel: "Create new code",
+      cancelLabel: "Cancel",
+      icon: "↻",
+   });
+   if (!confirmed) return;
+   try {
+      await rotateInviteCode(currentAlbum.albumId);
+      await refreshInviteCodeIntoDialog(true);
+      toast("New invite code created and copied!");
+   } catch {
+      toast("Could not create a new code");
+   }
+}
+
+// ---- Add song to album dialog (owners) ----
+function closeAddSongDialog(result) {
+   const resolve = addSongResolve;
+   addSongResolve = null;
+   closeModal($("#addSongDialog"));
+   resolve?.(result);
+}
+// All My Songs loaded for the Add dialog (kept for client-side search filtering).
+let addSongDialogSongs = [];
+
+async function openAddSongDialog() {
+   const d = $("#addSongDialog");
+   if (!d) return;
+   if (addSongResolve) { const prev = addSongResolve; addSongResolve = null; prev(null); }
+   albumSelectedSongId = null;
+   const search = $("#addSongSearch");
+   if (search) search.value = "";
+   addSongDialogSongs = await listSongs();
+   applyAddSongFilter();
+   openModal(d);
+}
+
+// Filter the Add-from-My-Songs list by the in-dialog search field.
+function applyAddSongFilter() {
+   const list = $("#addSongList");
+   const empty = $("#addSongEmpty");
+   const term = ($("#addSongSearch")?.value || "").trim().toLowerCase();
+   if (list) list.innerHTML = "";
+   if (!addSongDialogSongs.length) {
+      if (empty) { empty.textContent = "Your library is empty — save a song first, or create one directly in the album."; empty.hidden = false; }
+      return;
+   }
+   const filtered = term
+      ? addSongDialogSongs.filter((s) => (s.title || "").toLowerCase().includes(term) || (s.artist || "").toLowerCase().includes(term))
+      : addSongDialogSongs;
+   if (!filtered.length) {
+      if (empty) { empty.textContent = "No songs match your search."; empty.hidden = false; }
+      return;
+   }
+   if (empty) empty.hidden = true;
+   if (list) {
+      list.innerHTML = filtered
+         .map(
+            (s, i) => `<label class="add-song-option">
+                 <input type="radio" name="addSongChoice" value="${escapeHtml(s.cloudId)}" ${i === 0 ? "checked" : ""} />
+                 <span class="add-song-option-text">
+                    <strong>${escapeHtml(s.title)}</strong>
+                    <small>${escapeHtml(s.artist || "Unknown")}</small>
+                 </span>
+              </label>`,
+         )
+         .join("");
+      list.querySelectorAll('input[name="addSongChoice"]').forEach((r) =>
+         r.addEventListener("change", () => { albumSelectedSongId = r.value; }),
+      );
+      const first = list.querySelector('input[name="addSongChoice"]');
+      albumSelectedSongId = first ? first.value : null;
+   }
+}
+async function submitAddSong() {
+   if (!currentAlbum || !albumSelectedSongId) return;
+   try {
+      const result = await addSongToAlbum(currentAlbum.albumId, albumSelectedSongId);
+      const count = Number(result?.versionCount) || 0;
+      closeAddSongDialog({ added: true });
+      toast(count > 1 ? `Added to the album — ${count} versions copied` : "Song added to the album");
+      await refreshAlbumSongs();
+      renderAlbumHeader();
+   } catch (error) {
+      toast("Could not add that song");
+   }
+}
+
+// ---- Members dialog ----
+function closeMembersDialog() {
+   const resolve = membersResolve;
+   membersResolve = null;
+   closeModal($("#albumMembersDialog"));
+   resolve?.(true);
+}
+async function openMembersDialog() {
+   const d = $("#albumMembersDialog");
+   const list = $("#memberList");
+   const desc = $("#albumMembersDesc");
+   if (!d) return;
+   if (membersResolve) { const prev = membersResolve; membersResolve = null; prev(true); }
+   const isOwner = currentAlbum?.role === "owner";
+   const meUid = getCurrentUser()?.uid;
+   try {
+      const members = await listMembers(currentAlbum.albumId);
+      // Owners first (creation order), then members (join order).
+      const rank = (m) => (m.role === "owner" ? 0 : 1);
+      members.sort((a, b) => rank(a) - rank(b) || Number(a.joinedAt || 0) - Number(b.joinedAt || 0));
+      const ownerCount = members.filter((m) => m.role === "owner").length;
+      const memberCount = members.length - ownerCount;
+      if (desc) {
+         desc.textContent = `${ownerCount} owner${ownerCount === 1 ? "" : "s"}${memberCount ? ` · ${memberCount} member${memberCount === 1 ? "" : "s"}` : ""} — ${isOwner ? "you can change roles and remove members." : "owners can change roles and remove members."}`;
+      }
+      if (list) {
+         list.innerHTML = members
+            .map((m) => {
+               const isOwnerRow = m.role === "owner";
+               const self = m.uid === meUid;
+               const you = self ? `<em class="member-you">(you)</em>` : "";
+               const chip = `<span class="member-role-chip ${isOwnerRow ? "is-owner" : "is-member"}">${isOwnerRow ? "⭐ Owner" : "Member"}</span>`;
+               let controls = "";
+               if (isOwner && !self) {
+                  const roleBtn = isOwnerRow
+                     ? `<button class="button button-ghost button-small" data-member-action="demote" data-uid="${escapeHtml(m.uid)}" type="button" title="Change to a read-only member">↓ Member</button>`
+                     : `<button class="button button-ghost button-small" data-member-action="promote" data-uid="${escapeHtml(m.uid)}" type="button" title="Promote to co-owner">⭐ Co-owner</button>`;
+                  const removeBtn = `<button class="button button-ghost button-small is-danger" data-member-action="remove" data-uid="${escapeHtml(m.uid)}" type="button" title="Remove from album">🗑 Remove</button>`;
+                  controls = `<div class="member-controls">${chip}${roleBtn}${removeBtn}</div>`;
+               } else {
+                  controls = chip;
+               }
+               // Name shown for a member: Auth displayName (Google) → derived from
+               // the email local part (email/password sign-up has no displayName)
+               // → "Musician" as the last resort. The email stays visible below.
+               const derived = friendlyName(m);
+               const memberName = derived || "Musician";
+               const avatarInitial = (derived || m.email || "?").trim().charAt(0).toUpperCase();
+               return `<div class="member-row" data-uid="${escapeHtml(m.uid)}">
+                       <span class="member-avatar" aria-hidden="true">${escapeHtml(avatarInitial)}</span>
+                       <span class="member-who">
+                          <strong>${escapeHtml(memberName)} ${you}</strong>
+                          <small>${escapeHtml(m.email || "—")}</small>
+                       </span>
+                       ${controls}
+                    </div>`;
+            })
+            .join("");
+         list.querySelectorAll("[data-member-action]").forEach((btn) => {
+            btn.addEventListener("click", (event) => {
+               event.stopPropagation();
+               handleMemberAction(btn.dataset.memberAction, btn.dataset.uid, members);
+            });
+         });
+      }
+   } catch (error) {
+      console.error("[cloudUI] listMembers failed:", error);
+      if (desc) desc.textContent = "Could not load members.";
+      if (list) list.innerHTML = "";
+   }
+   openModal(d);
+}
+async function handleMemberAction(action, uid, members) {
+   if (!currentAlbum) return;
+   const member = members.find((m) => m.uid === uid);
+   if (!member) return;
+   const name = member.name || member.email || "this member";
+   let confirmed = false;
+   if (action === "promote") {
+      confirmed = await openConfirmDialog({ title: "Make co-owner?", message: `${name} will get full owner access (edit songs, invite, manage members).`, confirmLabel: "Make co-owner", cancelLabel: "Cancel", icon: "⭐" });
+   } else if (action === "demote") {
+      confirmed = await openConfirmDialog({ title: "Change to member?", message: `${name} will become a read-only member.`, confirmLabel: "Make member", cancelLabel: "Cancel", icon: "↓" });
+   } else if (action === "remove") {
+      confirmed = await openConfirmDialog({ title: "Remove member?", message: `${name} will lose access to this album.`, confirmLabel: "Remove", cancelLabel: "Cancel", icon: "🗑", danger: true });
+   }
+   if (!confirmed) return;
+   try {
+      if (action === "promote") await setMemberRole(currentAlbum.albumId, uid, "owner");
+      else if (action === "demote") await setMemberRole(currentAlbum.albumId, uid, "member");
+      else if (action === "remove") await removeMember(currentAlbum.albumId, uid);
+      toast("Members updated");
+      await openMembersDialog();
+   } catch (error) {
+      toast("Could not update the member");
+   }
+}
+
+// ---- Leave album (members) ----
+async function confirmLeaveAlbum() {
+   if (!currentAlbum) return;
+   const confirmed = await openConfirmDialog({
+      title: "Leave album?",
+      message: `You will lose access to "${currentAlbum.name}". You can join again with an invite code.`,
+      confirmLabel: "Leave album",
+      cancelLabel: "Cancel",
+      icon: "⇥",
+      danger: true,
+   });
+   if (!confirmed) return;
+   try {
+      await leaveAlbum(currentAlbum.albumId);
+      closeModal($("#albumModal"));
+      toast("You left the album");
+      navigate("#/albums");
+   } catch (error) {
+      toast(error?.message || "Could not leave the album");
+   }
+}
+
+// ---- Delete album (owners, from the album list) ----
+async function confirmDeleteAlbum(album) {
+   if (!album?.albumId) return;
+   const confirmed = await openConfirmDialog({
+      title: "Delete album?",
+      message: `"${album.name}" and all its songs will be permanently deleted for everyone.`,
+      confirmLabel: "Delete album",
+      cancelLabel: "Cancel",
+      icon: "🗑",
+      danger: true,
+   });
+   if (!confirmed) return;
+   try {
+      await deleteAlbum(album.albumId);
+      closeModal($("#albumModal"));
+      toast("Album deleted");
+      navigate("#/albums");
+   } catch (error) {
+      toast("Could not delete the album");
+   }
+}
+
+// ---- Wire album UI: tabs, buttons, card grids, dialogs ----
+function initAlbums() {
+   // Home tabs.
+   const tabSongs = $("#tabMySongs");
+   const tabAlbums = $("#tabAlbums");
+   tabSongs?.addEventListener("click", () => navigate("#/songs"));
+   tabAlbums?.addEventListener("click", () => navigate("#/albums"));
+
+   // Albums tab actions.
+   // Prevent wheel-scrolling while the pointer is over the Albums toolbar.
+   document.querySelector(".albums-searchbar")?.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
+   $("#newAlbumBtn")?.addEventListener("click", openNewAlbumDialog);
+   $("#joinAlbumBtn")?.addEventListener("click", openJoinAlbumDialog);
+   $("#albumSearch")?.addEventListener("input", applyAlbumFilter);
+   // Albums tab carousel — same interaction model as the My Songs gallery.
+   const albumsTrack = $("#albumsGalleryCards");
+   albumsTrack?.addEventListener("click", (e) => {
+      const actionBtn = e.target.closest(".song-card-action");
+      const card = e.target.closest(".song-card");
+      if (!card) return;
+      const albumId = card.dataset.albumId;
+      if (actionBtn) {
+         e.stopPropagation();
+         const act = actionBtn.dataset.act;
+         if (act === "edit") navigate(`#/albums/${encodeURIComponent(albumId)}`);
+         else if (act === "details") openEditAlbumDialog(albumId);
+         else if (act === "delete") {
+            const album = cachedAlbums.find((a) => a.albumId === albumId);
+            if (album) confirmDeleteAlbum(album);
+         }
+         return;
+      }
+      // Phones: tap reveals the action overlay; opening is the explicit Edit tap.
+      if (window.matchMedia("(max-width: 680px)").matches) {
+         const wasSelected = card.classList.contains("is-selected");
+         document.querySelectorAll("#albumsGalleryCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+         if (!wasSelected) card.classList.add("is-selected");
+         return;
+      }
+      navigate(`#/albums/${encodeURIComponent(albumId)}`);
+   });
+   // Phones: tapping off a card dismisses its action overlay.
+   $("#albumsPanel")?.addEventListener("click", (e) => {
+      if (!window.matchMedia("(max-width: 680px)").matches) return;
+      if (e.target.closest(".song-card")) return;
+      document.querySelectorAll("#albumsGalleryCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+   });
+   // Keyboard + nudge buttons + live edge-blur (identical to My Songs).
+   albumsTrack?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight") { e.preventDefault(); nudgeAlbumsCarousel(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); nudgeAlbumsCarousel(-1); }
+      else if (e.key === "Enter" || e.key === " ") {
+         const card = e.target.closest(".song-card");
+         if (card) { e.preventDefault(); navigate(`#/albums/${encodeURIComponent(card.dataset.albumId)}`); }
+      }
+   });
+   $("#albumsGalleryPrev")?.addEventListener("click", () => nudgeAlbumsCarousel(-1));
+   $("#albumsGalleryNext")?.addEventListener("click", () => nudgeAlbumsCarousel(1));
+   albumsTrack?.addEventListener("scroll", () => { updateAlbumEdgeBlur(); updateAlbumNudgeVisibility(); }, { passive: true });
+   window.addEventListener("resize", () => { updateAlbumEdgeBlur(); updateAlbumNudgeVisibility(); });
+
+   // Album detail header actions.
+   $("#albumBackBtn")?.addEventListener("click", () => navigate("#/albums"));
+   $("#albumInviteBtn")?.addEventListener("click", openInviteDialog);
+   $("#albumMembersBtn")?.addEventListener("click", openMembersDialog);
+   $("#albumAddFromBtn")?.addEventListener("click", openAddSongDialog);
+   // New Song inside the open album. Guarded like the My Songs "New Song" button
+   // so unsaved edits on the currently open arrangement can't be discarded
+   // silently (a new album song opens as an unsaved draft).
+   $("#albumNewSongBtn")?.addEventListener("click", () => {
+      if (!currentAlbum) return;
+      guardUnsavedThen(() => openAlbumNewSongFlow(currentAlbum.albumId));
+   });
+   $("#albumLeaveBtn")?.addEventListener("click", confirmLeaveAlbum);
+
+   // Album song list (delegated): card opens editor; actions handle the rest.
+   const albumTrack = $("#albumSongCards");
+   const role = () => currentAlbum?.role || "member";
+   albumTrack?.addEventListener("click", (e) => {
+      const actionBtn = e.target.closest(".song-card-action");
+      const card = e.target.closest(".song-card");
+      if (!card) return;
+      if (card.classList.contains("is-dim")) return; // blurred cards aren't interactive
+      if (actionBtn) {
+         e.stopPropagation();
+         const act = actionBtn.dataset.act;
+         if (act === "edit") openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+         else if (act === "pdf") openAlbumSongPdf(card.dataset.id);
+         else if (act === "delete") confirmRemoveAlbumSong(card.dataset.id);
+         else if (act === "copy") copyAlbumSong(card.dataset.id);
+         return;
+      }
+      // Phones: tap reveals the action overlay; opening is the explicit Edit tap.
+      if (window.matchMedia("(max-width: 680px)").matches) {
+         const wasSelected = card.classList.contains("is-selected");
+         document.querySelectorAll("#albumSongCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+         if (!wasSelected) card.classList.add("is-selected");
+         return;
+      }
+      openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+   });
+   // Phones: tapping off a card dismisses its action overlay.
+   $("#albumModal")?.addEventListener("click", (e) => {
+      if (!window.matchMedia("(max-width: 680px)").matches) return;
+      if (e.target.closest(".song-card")) return;
+      document.querySelectorAll("#albumSongCards .song-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+   });
+   // Keyboard + nudge buttons + live edge-blur (identical to the home carousels).
+   albumTrack?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight") { e.preventDefault(); nudgeAlbumSongsCarousel(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); nudgeAlbumSongsCarousel(-1); }
+      else if (e.key === "Enter" || e.key === " ") {
+         const card = e.target.closest(".song-card");
+         if (card && !card.classList.contains("is-dim")) {
+            e.preventDefault();
+            openAlbumSongInEditor(currentAlbum.albumId, card.dataset.id);
+         }
+      }
+   });
+   $("#albumSongsGalleryPrev")?.addEventListener("click", () => nudgeAlbumSongsCarousel(-1));
+   $("#albumSongsGalleryNext")?.addEventListener("click", () => nudgeAlbumSongsCarousel(1));
+   albumTrack?.addEventListener("scroll", () => { updateAlbumSongEdgeBlur(); updateAlbumSongNudgeVisibility(); }, { passive: true });
+   window.addEventListener("resize", () => { updateAlbumSongEdgeBlur(); updateAlbumSongNudgeVisibility(); });
+   $("#albumSongSearch")?.addEventListener("input", applyAlbumSongFilter);
+
+   // Join dialog.
+   $("#joinAlbumOk")?.addEventListener("click", submitJoinAlbum);
+   $("#joinAlbumCancel")?.addEventListener("click", () => closeJoinAlbumDialog(null));
+   $("#joinAlbumDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-joinalbum-dismiss]")) closeJoinAlbumDialog(null); });
+   $("#joinAlbumCode")?.addEventListener("keydown", (e) => { if (e.key === "Enter") submitJoinAlbum(); });
+
+   // New album dialog.
+   $("#newAlbumOk")?.addEventListener("click", submitNewAlbum);
+   $("#newAlbumCancel")?.addEventListener("click", () => closeNewAlbumDialog(null));
+   $("#newAlbumDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-newalbum-dismiss]")) closeNewAlbumDialog(null); });
+
+   // Edit album dialog (album-card pencil action, owners only). Enter in the name
+   // field saves, mirroring the join dialog's code field.
+   $("#editAlbumOk")?.addEventListener("click", submitEditAlbum);
+   $("#editAlbumCancel")?.addEventListener("click", () => closeEditAlbumDialog(null));
+   $("#editAlbumDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-editalbum-dismiss]")) closeEditAlbumDialog(null); });
+   $("#editAlbumName")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submitEditAlbum(); } });
+
+   // Invite dialog.
+   $("#inviteDialogClose")?.addEventListener("click", closeInviteDialog);
+   $("#inviteCodeCopy")?.addEventListener("click", () => refreshInviteCodeIntoDialog(true));
+   $("#inviteCodeRotate")?.addEventListener("click", rotateInviteInDialog);
+   $("#inviteDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-invite-dismiss]")) closeInviteDialog(); });
+
+   // Add-song dialog.
+   $("#addSongSearch")?.addEventListener("input", applyAddSongFilter);
+   $("#addSongOk")?.addEventListener("click", submitAddSong);
+   $("#addSongCancel")?.addEventListener("click", () => closeAddSongDialog(null));
+   $("#addSongDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-addsong-dismiss]")) closeAddSongDialog(null); });
+
+   // Members dialog.
+   $("#albumMembersClose")?.addEventListener("click", closeMembersDialog);
+   $("#albumMembersDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-albummembers-dismiss]")) closeMembersDialog(); });
+
+   // Choose-album dialog (New Song while on the Albums tab).
+   $("#chooseAlbumOk")?.addEventListener("click", submitChooseAlbum);
+   $("#chooseAlbumCancel")?.addEventListener("click", () => closeChooseAlbumDialog(null));
+   $("#chooseAlbumDialog")?.addEventListener("click", (e) => { if (e.target.closest("[data-choosealbum-dismiss]")) closeChooseAlbumDialog(null); });
+
+   // Global: Escape closes album dialogs.
+   document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (albumJoinResolve) closeJoinAlbumDialog(null);
+      else if (newAlbumResolve) closeNewAlbumDialog(null);
+      else if (editAlbumResolve) closeEditAlbumDialog(null);
+      else if (addSongResolve) closeAddSongDialog(null);
+      else if (membersResolve) closeMembersDialog();
+      else if (chooseAlbumResolve) closeChooseAlbumDialog(null);
+   });
+}
+
+async function openAlbumSongPdf(songId) {
+   try {
+      const full = await loadAlbumSong(currentAlbum.albumId, songId);
+      bridge.applyProject(full);
+      bridge.setCloudContext({ scope: "album", albumId: currentAlbum.albumId, albumName: currentAlbum.name, songId, versionId: full.versionId || null, versionLabel: full.label || "", role: currentAlbum?.role || "member" });
+      navigate(albumEditorUrl(currentAlbum.albumId, songId, full.versionId || null));
+      setTimeout(() => bridge.openPdfOptions(), 340);
+   } catch (error) {
+      toast("Could not open that song");
+   }
+}
+
+async function copyAlbumSong(songId) {
+   try {
+      await copyAlbumSongToMySongs(currentAlbum.albumId, songId);
+      toast("Saved a copy to My Songs");
+   } catch (error) {
+      toast("Could not copy that song");
+   }
+}
+
+async function confirmRemoveAlbumSong(songId) {
+   const song = cachedAlbumSongs.find((s) => s.songId === songId);
+   const title = song?.title || "this song";
+   const confirmed = await openConfirmDialog({
+      title: "Remove song?",
+      message: `Remove "${title}" from this album? This does not affect your own library.`,
+      confirmLabel: "Remove",
+      cancelLabel: "Cancel",
+      icon: "🗑",
+      danger: true,
+   });
+   if (!confirmed) return;
+   try {
+      await deleteAlbumSong(currentAlbum.albumId, songId);
+      toast("Song removed from the album");
+      await refreshAlbumSongs();
+      renderAlbumHeader();
+   } catch (error) {
+      toast("Could not remove that song");
+   }
+}
+
+
 export function initCloudUI(editorBridge) {
    bridge = { ...bridge, ...editorBridge };
    initLogin();
@@ -2105,6 +3640,7 @@ export function initCloudUI(editorBridge) {
    initNewSongDialog();
    initVersionCrud();
    initAccountButton();
+   initAlbums();
    // Test hook: the per-card Export .file path can't reach Firebase in headless
    // CI, so expose the pure download helper for the regression suite to exercise.
    if (TEST_MODE) window.__cloudDownloadSong = downloadSongFile;
@@ -2183,9 +3719,9 @@ export function initCloudUI(editorBridge) {
          return;
       }
       if (bridge.hasUnsavedChanges() && cloudSaveAvailable()) {
-         guardUnsavedThen(() => navigate(HOME_ROUTE));
+         guardUnsavedThen(() => navigate(homeTarget()));
       } else {
-         navigate(HOME_ROUTE);
+         navigate(homeTarget());
       }
    }
    // Reload / tab close protection. Custom dialogs can't run here — the browser
