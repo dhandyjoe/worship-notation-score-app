@@ -18,9 +18,12 @@
    warns the user when they differ — which is exactly what happens when a service
    worker (or the HTTP cache) serves a stale copy of this file. Without it, a stale
    stylesheet is invisible: the page simply renders with the old rules.
-   NOTE: bump this together with ASSET_VERSION in sw.js. */
+   NOTE: the value is the shared `__BUILD__` placeholder — the deploy workflow
+   (.github/workflows/deploy.yml) replaces it with the build id (r<run>-<sha7>) in
+   every file at once, so this marker, ASSET_VERSION in sw.js and
+   window.__WNS_BUILD__ in index.html can never drift apart. */
 :root {
-   --chordpro-css-version: 20260925-chordpro6;
+   --chordpro-css-version: __BUILD__;
 }
 
 /* ---- Workspace gating -------------------------------------------------------

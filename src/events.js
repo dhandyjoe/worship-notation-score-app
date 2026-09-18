@@ -30,14 +30,14 @@ import {
    syllabifyLyrics,
    MAX_SECTIONS,
    normalizeEditorMode,
-} from "./notation.js?v=20260925-chordpro6";
+} from "./notation.js?v=__BUILD__";
 import {
    carryChordProSections,
    transposeChordProText,
-} from "./chordPro.js?v=20260925-chordpro6";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260925-chordpro6";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260925-chordpro6";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260925-chordpro6";
+} from "./chordPro.js?v=__BUILD__";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=__BUILD__";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=__BUILD__";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=__BUILD__";
 import {
    getState,
    setState,
@@ -45,21 +45,21 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260925-chordpro6";
+} from "./store.js?v=__BUILD__";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260925-chordpro6";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260925-chordpro6";
-import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260925-chordpro6";
-import { initCloudUI } from "./cloudUI.js?v=20260925-chordpro6";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260925-chordpro6";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260925-chordpro6";
-import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=20260925-chordpro6";
-import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260925-chordpro6";
+} from "./render.js?v=__BUILD__";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=__BUILD__";
+import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=__BUILD__";
+import { initCloudUI } from "./cloudUI.js?v=__BUILD__";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=__BUILD__";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=__BUILD__";
+import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=__BUILD__";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=__BUILD__";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Which cloud document is currently open in the editor:
@@ -1960,6 +1960,11 @@ function bindControlListeners() {
       getCard: () =>
          normalizeEditorMode(getState().editorMode) === "chordpro" ? $("#cpPreviewCard") : $("#previewCard"),
       onExport: () => {
+         // Multi-bar selection ("Copy bars") is transient EDITOR state: its green
+         // ring/tint/✓ badge must never reach the PDF. Clearing it here (and the
+         // print CSS neutralising it) is what keeps the exported score clean even
+         // when the user exports mid-selection.
+         cancelBarSelection();
          renderPreview();
          exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
       },
@@ -1985,6 +1990,10 @@ function bindControlListeners() {
 
    // Register beforeprint/afterprint so the `is-print-layout` geometry is the
    // single source of truth for printed output (see src/pdf.js).
+   // Registered BEFORE initPrintListeners() on purpose: beforeprint handlers run
+   // in registration order, so the transient bar selection is dropped (and the
+   // DOM re-rendered without its green ring) before pdf.js measures mid-row bars.
+   window.addEventListener("beforeprint", () => cancelBarSelection());
    initPrintListeners();
 
    document.addEventListener("keydown", (event) => {

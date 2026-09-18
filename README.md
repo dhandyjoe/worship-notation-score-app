@@ -41,14 +41,61 @@ python3 -m http.server 4173
 
 ## Deployment (GitHub Pages)
 
-This is a fully static site (no build step). It is deployed with **Settings → Pages → Deploy from a branch → `master` / `/root`**.
+This is a fully static site (no build step for development). It is deployed via
+**Settings → Pages → Source → "GitHub Actions"**, built by
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
 - All asset paths are **relative**, so the app works under the `/worship-notation-score-app/` subpath.
-- A `.nojekyll` file at the repo root disables Jekyll processing.
-- To publish changes: commit and `git push origin master` — Pages redeploys automatically.
+- A `.nojekyll` file at the repo root is kept for the branch-based fallback (Actions deployments do not run Jekyll).
+- **To publish changes: commit and `git push origin master`.** The workflow runs the unit
+  tests, stamps the build version automatically and deploys — there is nothing else to do.
+- One-time setup (done once): Settings → Pages → **Source → GitHub Actions**. To roll back,
+  switch the source back to *Deploy from a branch → `master` / `/root`*; the app keeps
+  working, only the automatic version stamping stops.
 - **Firebase login** requires the Pages host (`dhandyjoe.github.io`) to be listed under
   **Firebase Console → Authentication → Settings → Authorized domains**. See
   [`docs/FIREBASE-SETUP.md`](docs/FIREBASE-SETUP.md).
+
+### Cache & deploy hygiene (no stale CSS/JS after a deploy)
+
+The app is a PWA with a service worker, so a deploy must never be masked by a
+cached copy of the previous build. Three mechanisms work together:
+
+1. **Automatic build version — no manual bumping.** Every version string in the
+   repo is the single placeholder `__BUILD__`:
+   - `sw.js` → `CACHE_VERSION` (cache name: a new name makes `activate` delete the
+     previous cache) **and** `ASSET_VERSION` (the `?v=` cache-buster used by
+     `index.html` and every `src/*.js` import);
+   - `index.html` → `window.__WNS_BUILD__` (the page-side build stamp);
+   - `styles/chordpro.css` → `--chordpro-css-version` and `src/render.js` →
+     `CHORDPRO_CSS_VERSION` (stale-stylesheet detector).
+   The deploy workflow replaces that token with `r<run_number>-<short_sha>` in the
+   deployed copy only, so every push is a new version and the values can never
+   drift apart. `tests/unit.test.mjs` asserts they match and is run **twice** by
+   the workflow — on the repo and again on the staged artifact — so a broken
+   injection fails the deploy instead of shipping.
+2. **Automatic purge on refresh.** `index.html` compares its build stamp with the
+   stamp this browser last ran (`localStorage`). When they differ it purges every
+   service-worker cache, then the worker update (`skipWaiting` + `clients.claim`,
+   registered with `updateViaCache: "none"`) fires `controllerchange` and the page
+   reloads **exactly once** — so a returning visitor lands on the new build
+   instead of the previous one, with no manual cache clearing.
+3. **Network-first shell.** `sw.js` serves navigations and the un-versioned entry
+   points (`index.html`, `styles/styles.css`, `manifest.webmanifest`)
+   network-first, revalidated with `cache: "no-cache"`, so GitHub Pages'
+   `Cache-Control: max-age=600` can never hand back a pre-deploy copy. Versioned
+   assets stay cache-first (instant + offline-capable); `ignoreSearch` is used
+   **only** when the network fails, so a new `?v=` can never resolve to the
+   previous deploy's file.
+
+**Check which version is live:** open the app, view-source, and search for
+`__WNS_BUILD__` (or check DevTools → Application → Service Workers) — the value
+should look like `r12-a1b2c3d`, not the un-stamped placeholder value.
+
+**Browser stuck on a stale/broken worker?** Open `<app-url>/?reset=1` (or
+`?fresh=1`): it purges every cache, unregisters the service worker and reloads on
+the clean URL. Last resort: DevTools → Application → Service Workers →
+*Unregister*, then *Clear site data*.
 
 ## Architecture
 
@@ -177,6 +224,12 @@ Firestore rules, data model, and setup checklist.
 | `styles/ui.css`      | Application shell, ribbon, dark theme, responsive rules              |
 | `styles/preview.css` | Score canvas + print/PDF layout (`@media print` / `is-print-layout`) |
 | `styles/chordpro.css`| ChordPro workspace + its print layout — fully self-contained (`cp-`-prefixed selectors or `body[data-editor-mode="chordpro"]` gated, so the two original modes are untouched) |
+
+> Print parity note: interactive-only chrome (the multi-bar selection ring/tint
+> and its ✓ badge) is neutralised in **both** `@media print` and
+> `html.is-print-layout` in `styles/ui.css`, and the export flow clears the
+> selection before printing — so a green selection box can never appear in the
+> exported PDF even if the user exports mid-selection.
 
 ## Testing
 

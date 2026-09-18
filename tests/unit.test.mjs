@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1366,6 +1366,113 @@ test("the stylesheet version marker matches render.js and sw.js ASSET_VERSION", 
    assert.ok(jsVersion, "CHORDPRO_CSS_VERSION is missing from render.js");
    assert.equal(cssVersion, jsVersion, "chordpro.css and render.js version markers must match");
    assert.equal(cssVersion, swVersion, "chordpro.css and sw.js ASSET_VERSION must match");
+});
+
+// ---- Deploy hygiene: a new deploy must never be masked by a cache ----
+
+test("the build stamp matches the service worker's ASSET_VERSION", () => {
+   // index.html uses the stamp to decide "this deploy is newer than what I
+   // cached". If the two ever drift, returning visitors keep the previous
+   // deploy's CSS/JS — exactly the "weird PDF after deploy" class of bug.
+   const stamp = readProjectFile("index.html").match(/window\.__WNS_BUILD__ = "([^"]+)"/)?.[1];
+   const version = readProjectFile("sw.js").match(/const ASSET_VERSION = "([^"]+)"/)?.[1];
+   assert.ok(stamp, "window.__WNS_BUILD__ is missing from index.html");
+   assert.equal(stamp, version, "index.html build stamp and sw.js ASSET_VERSION must match");
+   // One token drives BOTH version strings in sw.js: CACHE_VERSION embeds
+   // ASSET_VERSION, so the workflow's single replacement renames the cache
+   // (activate then deletes the previous deploy's cache) AND busts every ?v= URL.
+   const cache = readProjectFile("sw.js").match(/const CACHE_VERSION = "([^"]+)"/)?.[1];
+   assert.ok(cache, "CACHE_VERSION is missing from sw.js");
+   assert.ok(cache.includes(version), `CACHE_VERSION (${cache}) must embed ASSET_VERSION (${version})`);
+});
+
+test(
+   "the deploy workflow injects ONE build version into the staged site",
+   // Skipped when this suite runs against the staged artifact, which has no CI
+   // metadata (the workflow itself runs the suite there to verify the injection).
+   { skip: !existsSync(join(projectRoot, ".github/workflows/deploy.yml")) },
+   () => {
+      const workflow = readProjectFile(".github/workflows/deploy.yml");
+      assert.match(workflow, /branches: \[master\]/, "deploys on push to master");
+      assert.match(workflow, /run: node --test tests\/unit\.test\.mjs/, "unit tests are a deploy gate");
+      assert.match(
+         workflow,
+         /VERSION="r\$\{GITHUB_RUN_NUMBER\}-\$\{GITHUB_SHA:0:7\}"/,
+         "the build id is r<run_number>-<short sha>",
+      );
+      assert.match(workflow, /sed -i "s\|__BUILD__\|\$\{VERSION\}\|g"/, "the placeholder is replaced in one pass");
+      assert.match(workflow, /grep -rq '__BUILD__' _site/, "a leftover placeholder fails the deploy");
+      assert.match(workflow, /path: _site/, "only the stamped copy is deployed");
+   },
+);
+
+test("a new deploy purges every cache and reloads the page once", () => {
+   const html = readProjectFile("index.html");
+   // Purge + worker-update wiring.
+   assert.match(html, /const keys = await caches\.keys\(\);/);
+   assert.match(html, /caches\.delete\(key\)/);
+   assert.match(html, /getRegistrations\(\)/);
+   assert.match(html, /register\("sw\.js", \{ updateViaCache: "none" \}\)/);
+   assert.match(html, /addEventListener\("controllerchange"/);
+   // The stamp comparison is what triggers the purge on a returning visit.
+   assert.match(html, /const lastBuild = read\(localStorage, STAMP_KEY\);/);
+   assert.match(html, /if \(lastBuild !== BUILD\) \{/);
+   // Manual escape hatch + the harness opt-out that keeps ?test= cache-free.
+   assert.match(html, /params\.has\("reset"\) \|\| params\.has\("fresh"\)/);
+   assert.match(html, /if \(params\.has\("test"\)\) return;/);
+   // Cache Storage is origin-wide (all GitHub Pages projects share one origin),
+   // so the page purge AND the worker's activate purge must be prefix-scoped.
+   assert.match(html, /const CACHE_PREFIX = "wns-shell-";/);
+   assert.match(readProjectFile("sw.js"), /const CACHE_PREFIX = "wns-shell-";/);
+   assert.match(readProjectFile("sw.js"), /k\.startsWith\(CACHE_PREFIX\) && k !== CACHE_VERSION/);
+});
+
+test("the service worker revalidates the shell instead of serving a stale copy", () => {
+   const sw = readProjectFile("sw.js");
+   // Un-versioned entry points (no ?v=) are network-first, by pathname so the
+   // GitHub Pages subpath and a local server behave the same.
+   assert.match(
+      sw,
+      /const NETWORK_FIRST_PATHS = \["\/", "\/index\.html", "\/styles\/styles\.css", "\/manifest\.webmanifest"\];/,
+   );
+   assert.match(
+      sw,
+      /const networkFirst =[\s\S]{0,30}?request\.mode === "navigate" \|\| NETWORK_FIRST_PATHS\.some\(\(path\) => url\.pathname\.endsWith\(path\)\);/,
+   );
+   // Every network read revalidates the browser's HTTP cache (GitHub Pages sends
+   // max-age=600, so a plain fetch() could return a pre-deploy file).
+   assert.match(sw, /new Request\(request, \{ cache: "no-cache" \}\)/);
+   // Online reads of a versioned asset must be EXACT matches: the old
+   // `cache.match(request) || cache.match(request, { ignoreSearch: true })` made
+   // a new ?v= resolve to the previous deploy's file for one extra load.
+   assert.match(sw, /const cached = await cache\.match\(request\);/);
+   assert.ok(
+      !/const cached = \(await cache\.match\(request\)\) \|\|/.test(sw),
+      "the online asset lookup must not fall back to ignoreSearch",
+   );
+   const ignoreUses = sw.match(/ignoreSearch: true/g) || [];
+   assert.equal(ignoreUses.length, 2, "ignoreSearch must survive ONLY as the two offline fallbacks");
+   assert.match(sw, /if \(fresh\) return fresh;[\s\S]{0,200}?ignoreSearch: true/);
+});
+
+test("bar-selection chrome can never print as a green box in the PDF", () => {
+   const css = readProjectFile("styles/ui.css");
+   // The multi-bar selection ring/tint (#1f9d55) and its ✓ badge are editor-only
+   // affordances; both the real print job and the on-screen PDF-layout preview
+   // must neutralise them.
+   assert.match(css, /\.bar\.is-selected,[\s\S]{0,300}?outline: 0 !important/);
+   assert.match(css, /html\.is-print-layout \.bar\.is-selected,[\s\S]{0,400}?outline: 0 !important/);
+   assert.match(
+      css,
+      /\.preview-section\.is-selecting \.bar\.is-selected::after \{[\s\S]{0,60}?content: none !important/,
+   );
+   // ...and the export flow clears the selection as well (belt and braces).
+   const events = readProjectFile("src/events.js");
+   assert.match(events, /beforeprint[\s\S]{0,200}?cancelBarSelection\(\)/);
+   assert.match(
+      events,
+      /onExport: \(\) => \{[\s\S]{0,500}?cancelBarSelection\(\);[\s\S]{0,200}?exportToPdf\(/,
+   );
 });
 
 // ---- ChordPro polish (defaults, footer, print parity with Chord Chart) ----

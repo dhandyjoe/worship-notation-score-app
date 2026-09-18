@@ -680,6 +680,20 @@ html.is-print-layout .ribbon-workspace .preview-card {
 html.is-print-layout .scroll-affordance {
    display: none;
 }
+/* The manual "PDF layout" preview must look exactly like the paper, so the
+   interactive bar-selection chrome (translucent green fill, the #1f9d55 ring and
+   the ✓ badge — see .bar.is-selected above) is hidden here for the same reason
+   the @media print block below neutralises it. */
+html.is-print-layout .bar.is-selected,
+html.is-print-layout .preview-section.is-selecting .bar.is-selected,
+html.is-print-layout .preview-section.is-selecting .bar.is-selectable {
+   background: transparent !important;
+   outline: 0 !important;
+   box-shadow: none !important;
+}
+html.is-print-layout .preview-section.is-selecting .bar.is-selected::after {
+   content: none !important;
+}
 .preview-viewport {
    position: relative;
    overflow: auto;
@@ -2416,6 +2430,24 @@ html[data-theme="dark"] .confirm-dialog-icon {
       rule in styles.css only hides .topbar/.intro/.editor-card/.preview-footer. */
    .album-banner {
       display: none !important;
+   }
+   /* Multi-bar selection ("Copy bars") is EDITOR-ONLY chrome: the translucent
+      green fill, the #1f9d55 ring and the ✓ badge are pointer affordances, never
+      score content. Users routinely hit Export while a range is still selected,
+      and before this rule those rings printed as green boxes around the chords
+      in the PDF. (.bar-selection-bar is already hidden with the app chrome.)
+      pdf.js/events.js also clear the selection before printing — this rule is
+      the guarantee that no print path can ever leak it. */
+   .bar.is-selected,
+   .preview-section.is-selecting .bar.is-selected,
+   .preview-section.is-selecting .bar.is-selectable {
+      background: transparent !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0;
+   }
+   .preview-section.is-selecting .bar.is-selected::after {
+      content: none !important;
    }
    .preview-stage {
       display: contents;

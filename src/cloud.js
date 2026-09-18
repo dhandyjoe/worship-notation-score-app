@@ -17,8 +17,8 @@
 //
 // Public API is promise-based and always returns plain data (never SDK objects)
 // so callers in events.js stay decoupled from Firebase internals.
-import { firebaseConfig } from "./firebase-config.js?v=20260925-chordpro6";
-import { normalizeEditorMode } from "./notation.js?v=20260925-chordpro6";
+import { firebaseConfig } from "./firebase-config.js?v=__BUILD__";
+import { normalizeEditorMode } from "./notation.js?v=__BUILD__";
 
 const SDK_VERSION = "11.6.1";
 const CDN = (name) => `https://www.gstatic.com/firebasejs/${SDK_VERSION}/${name}`;

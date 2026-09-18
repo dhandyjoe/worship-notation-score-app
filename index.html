@@ -34,9 +34,9 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260925-chordpro6" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260925-chordpro6" />
-      <link rel="stylesheet" href="styles/chordpro.css?v=20260925-chordpro6" />
+      <link rel="stylesheet" href="styles/preview.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/ui.css?v=__BUILD__" />
+      <link rel="stylesheet" href="styles/chordpro.css?v=__BUILD__" />
       <!-- ======================================================================
            STRUCTURAL fallback for the ChordPro mode (deliberately INLINE).
            These four rules decide which workspace exists on screen (beat grid vs
@@ -1546,17 +1546,120 @@
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260925-chordpro6"></script>
+      <script type="module" src="src/app.js?v=__BUILD__"></script>
+      <!-- ======================================================================
+           BUILD STAMP + CACHE SELF-HEALING (deploy hygiene).
+           ----------------------------------------------------------------------
+           window.__WNS_BUILD__ is the shared `__BUILD__` placeholder; the deploy
+           workflow (.github/workflows/deploy.yml) replaces it with this deploy's
+           build id (r<run>-<sha7>) in every file at once, so it always equals
+           ASSET_VERSION in sw.js (tests/unit.test.mjs asserts that).
+           This document is served NETWORK-FIRST by the service worker, so the
+           stamp of a freshly loaded page is always the value that was just
+           deployed. When a returning visitor's stored stamp differs, we know
+           their browser is still holding the PREVIOUS deploy's CSS/JS, so every
+           cache is purged before the reload that the worker update below
+           triggers. A new deploy can therefore never leave stale assets in play
+           (e.g. old print rules drawing a green selection ring around the chords
+           in the exported PDF).
+           ====================================================================== -->
       <script>
-         // Register the PWA service worker for offline support. Skipped in the
-         // automated test harness (?test=...) so caching never interferes with
-         // the regression suite. Registered relative to this page so the scope
-         // covers the GitHub Pages /worship-notation-score-app/ subpath.
-         if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("test")) {
-            addEventListener("load", () => {
-               navigator.serviceWorker.register("sw.js").catch(() => {});
+         window.__WNS_BUILD__ = "__BUILD__";
+      </script>
+      <script>
+         (() => {
+            const BUILD = window.__WNS_BUILD__;
+            const STAMP_KEY = "chordSheetBuildStamp";
+            const RELOAD_KEY = "chordSheetSwReloadedFor";
+            const params = new URLSearchParams(location.search);
+            // The automated test harness (?test=...) must never touch caches.
+            if (params.has("test")) return;
+
+            const read = (bag, key) => {
+               try {
+                  return bag.getItem(key);
+               } catch {
+                  return null;
+               }
+            };
+            const write = (bag, key, value) => {
+               try {
+                  bag.setItem(key, value);
+               } catch {
+                  /* private mode / storage disabled — cache hygiene still works */
+               }
+            };
+            // Cache Storage is shared by the whole ORIGIN (on GitHub Pages every
+            // project of the account lives under one origin), so the purge is
+            // scoped to THIS app's caches and can never wipe another app's
+            // offline cache. Must match CACHE_PREFIX in sw.js.
+            const CACHE_PREFIX = "wns-shell-";
+            const purgeCaches = async () => {
+               if (!("caches" in window)) return;
+               const keys = await caches.keys();
+               await Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX)).map((key) => caches.delete(key)));
+            };
+            const unregisterWorkers = async () => {
+               if (!("serviceWorker" in navigator)) return;
+               const regs = await navigator.serviceWorker.getRegistrations();
+               await Promise.all(regs.map((reg) => reg.unregister()));
+            };
+
+            // Escape hatch: ?reset=1 (or ?fresh=1) is the "clear everything" URL
+            // for a browser stuck on a stale/broken worker: purge every cache AND
+            // unregister the worker. The flag is stripped from the URL before the
+            // reload, so the reset can never loop.
+            if (params.has("reset") || params.has("fresh")) {
+               (async () => {
+                  await purgeCaches();
+                  await unregisterWorkers();
+                  const cleaned = new URL(location.href);
+                  cleaned.searchParams.delete("reset");
+                  cleaned.searchParams.delete("fresh");
+                  location.replace(cleaned.pathname + cleaned.search + cleaned.hash);
+               })();
+               return;
+            }
+
+            // Deploy detection: the stamp changed → purge NOW, so the reload the
+            // service-worker update triggers below already lands on fresh assets.
+            const lastBuild = read(localStorage, STAMP_KEY);
+            if (lastBuild !== BUILD) {
+               write(localStorage, STAMP_KEY, BUILD);
+               if (lastBuild) purgeCaches();
+            }
+
+            if (!("serviceWorker" in navigator)) return;
+            // Registered relative to this page so the scope covers the GitHub
+            // Pages /worship-notation-score-app/ subpath.
+            // updateViaCache:"none" → the worker SCRIPT itself is always read
+            // from the network, so a deploy is detected without a hard refresh.
+            const hadController = Boolean(navigator.serviceWorker.controller);
+            navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {});
+
+            // The new worker (skipWaiting + clients.claim in sw.js) takes control
+            // as soon as it activates: reload ONCE per build so the page that is
+            // running is the page that was deployed. The guard makes a reload
+            // loop impossible even if a worker keeps changing underneath us.
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+               if (!hadController || read(sessionStorage, RELOAD_KEY) === BUILD) return;
+               write(sessionStorage, RELOAD_KEY, BUILD);
+               location.reload();
             });
-         }
+
+            // Cheap network-only update checks: after load (never competing with
+            // first paint) and every time the tab becomes visible again.
+            const checkForUpdate = () => {
+               navigator.serviceWorker
+                  .getRegistration()
+                  .then((reg) => reg?.update?.())
+                  .catch(() => {});
+            };
+            addEventListener("load", checkForUpdate);
+            document.addEventListener("visibilitychange", () => {
+               if (document.visibilityState === "visible") checkForUpdate();
+            });
+         })();
       </script>
    </body>
 </html>

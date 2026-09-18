@@ -1,0 +1,101 @@
+# deploy.yml — GitHub Pages deployment with an AUTOMATIC build version.
+#
+# Why this exists: the app is a PWA with a service worker, so every release must
+# carry a NEW version string — otherwise a browser can keep serving the previous
+# release out of its caches. Instead of bumping those strings by hand, every
+# version in the repo is the placeholder `__BUILD__`, and this workflow replaces
+# it with a unique build id in the DEPLOYED copy only:
+#
+#   ?v=__BUILD__            -> ?v=r12-a1b2c3d        (index.html + src/*.js)
+#   wns-shell-v__BUILD__    -> wns-shell-vr12-a1b2c3d (SW cache name; activate
+#                                                      deletes the old cache)
+#   __WNS_BUILD__           -> r12-a1b2c3d           (page-side build stamp that
+#                                                      triggers the cache purge)
+#   --chordpro-css-version  -> r12-a1b2c3d           (stale-stylesheet detector)
+#
+# The version is `r<run_number>-<short sha>`, so every push — and even a re-run —
+# produces a distinct build that every browser treats as new.
+#
+# One-time setup: Settings → Pages → Source → "GitHub Actions".
+# Then deploying is just: git push origin master
+name: Deploy to GitHub Pages
+
+on:
+   push:
+      branches: [master]
+   workflow_dispatch:
+
+permissions:
+   contents: read
+   pages: write
+   id-token: write
+
+# Never let two deployments race; a queued run still deploys afterwards.
+concurrency:
+   group: pages
+   cancel-in-progress: false
+
+jobs:
+   build:
+      runs-on: ubuntu-latest
+      steps:
+         - name: Checkout
+           uses: actions/checkout@v4
+
+         - name: Set up Node
+           uses: actions/setup-node@v4
+           with:
+              node-version: 20
+
+         - name: Unit tests (deploy gate — never ship a red build)
+           run: node --test tests/unit.test.mjs
+
+         - name: Stage the site and inject the build version
+           id: stage
+           run: |
+              set -euo pipefail
+              VERSION="r${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+              echo "Build version: $VERSION"
+              rm -rf _site
+              mkdir _site
+              # Faithful copy of the repo, minus VCS/CI metadata, OS cruft and the
+              # staging directory itself (rsync would otherwise copy it into itself).
+              rsync -a --exclude='.git' --exclude='.github' --exclude='.DS_Store' --exclude='.playwright-mcp' --exclude='_site' ./ _site/
+              # One token, one pass: every __BUILD__ becomes this build's id.
+              FILES="$(grep -rl '__BUILD__' _site || true)"
+              if [ -z "$FILES" ]; then
+                 echo "::error::No __BUILD__ placeholder found in the staged site"
+                 exit 1
+              fi
+              printf '%s\n' "$FILES" | xargs sed -i "s|__BUILD__|${VERSION}|g"
+              # Safety net: a NEW file added without the placeholder must never
+              # ship as an unversioned asset.
+              if grep -rq '__BUILD__' _site; then
+                 echo "::error::Unreplaced __BUILD__ placeholder left in the artifact"
+                 exit 1
+              fi
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+         - name: Verify the versioned artifact (same suite, staged copy)
+           # Runs against _site, so it also proves the injection produced ONE
+           # consistent version across sw.js / index.html / chordpro.css / modules.
+           run: cd _site && node --test tests/unit.test.mjs
+
+         - name: Configure Pages
+           uses: actions/configure-pages@v5
+
+         - name: Upload the site artifact
+           uses: actions/upload-pages-artifact@v3
+           with:
+              path: _site
+
+   deploy:
+      needs: build
+      runs-on: ubuntu-latest
+      environment:
+         name: github-pages
+         url: ${{ steps.deployment.outputs.page_url }}
+      steps:
+         - name: Deploy to GitHub Pages
+           id: deployment
+           uses: actions/deploy-pages@v4

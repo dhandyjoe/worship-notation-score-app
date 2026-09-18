@@ -17,9 +17,9 @@
 //  • The panel is rebuilt ONLY when the section structure changes (add/remove/rename/
 //    reorder or a freshly loaded project); otherwise it just re-syncs values. That is
 //    what keeps the caret and focus alive while typing.
-import { $ } from "./dom.js?v=20260925-chordpro6";
-import { getState } from "./store.js?v=20260925-chordpro6";
-import { keys, escapeHTML, newSection, MAX_SECTIONS, normalizeEditorMode } from "./notation.js?v=20260925-chordpro6";
+import { $ } from "./dom.js?v=__BUILD__";
+import { getState } from "./store.js?v=__BUILD__";
+import { keys, escapeHTML, newSection, MAX_SECTIONS, normalizeEditorMode } from "./notation.js?v=__BUILD__";
 
 // Injected app hooks (set once at bootstrap by events.js).
 const deps = {

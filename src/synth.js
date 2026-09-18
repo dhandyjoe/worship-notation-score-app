@@ -278,7 +278,7 @@ export async function downloadSoundFont(onProgress, onError) {
 
       // Persist raw bytes in IndexedDB (best-effort) for future sessions.
       try {
-         const { saveSamples } = await import("./sampleCache.js?v=20260925-chordpro6");
+         const { saveSamples } = await import("./sampleCache.js?v=__BUILD__");
          await saveSamples(SAMPLE_CACHE_KEY, downloaded.map(({ name, raw }) => ({ name, raw })));
       } catch (err) {
          console.warn("Sample cache save skipped:", err);
@@ -300,7 +300,7 @@ export async function downloadSoundFont(onProgress, onError) {
 export async function loadSamplesFromCache() {
    if (samplesReady) return true;
    try {
-      const { loadSamples } = await import("./sampleCache.js?v=20260925-chordpro6");
+      const { loadSamples } = await import("./sampleCache.js?v=__BUILD__");
       const cached = await loadSamples(SAMPLE_CACHE_KEY);
       if (!cached || !cached.length) return false;
 

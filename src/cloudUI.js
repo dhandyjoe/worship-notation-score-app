@@ -4,9 +4,9 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudContext / setCloudContext). This
 // keeps the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260925-chordpro6";
-import { friendlyName } from "./identity.js?v=20260925-chordpro6";
-import { editorModeMeta, normalizeEditorMode } from "./notation.js?v=20260925-chordpro6";
+import { $, toast } from "./dom.js?v=__BUILD__";
+import { friendlyName } from "./identity.js?v=__BUILD__";
+import { editorModeMeta, normalizeEditorMode } from "./notation.js?v=__BUILD__";
 import {
    isConfigured,
    onAuth,
@@ -56,11 +56,11 @@ import {
    removeMember,
    leaveAlbum,
    normalizeInviteCode,
-} from "./cloud.js?v=20260925-chordpro6";
+} from "./cloud.js?v=__BUILD__";
 
 // Injected editor bridge (set in init).
-import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260925-chordpro6";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=20260925-chordpro6";
+import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=__BUILD__";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=__BUILD__";
 
 let bridge = {
    getProject: () => ({}),

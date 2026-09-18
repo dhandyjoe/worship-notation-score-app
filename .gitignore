@@ -4,6 +4,9 @@
 # Test & tooling artifacts
 .playwright-mcp/
 
+# Deploy staging (produced by .github/workflows/deploy.yml)
+_site/
+
 # Screenshot / debug artifacts (never commit these)
 *.png
 !assets/**/*.png

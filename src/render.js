@@ -17,10 +17,10 @@ import {
    chordAboveValue,
    editorModeMeta,
    normalizeEditorMode,
-} from "./notation.js?v=20260925-chordpro6";
-import { parseChordPro } from "./chordPro.js?v=20260925-chordpro6";
-import { $, prefersTap, toast } from "./dom.js?v=20260925-chordpro6";
-import { getState } from "./store.js?v=20260925-chordpro6";
+} from "./notation.js?v=__BUILD__";
+import { parseChordPro } from "./chordPro.js?v=__BUILD__";
+import { $, prefersTap, toast } from "./dom.js?v=__BUILD__";
+import { getState } from "./store.js?v=__BUILD__";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
@@ -83,8 +83,9 @@ export function renderCustomChord() {
 //   1. the stylesheet never loaded (404 / bad deploy) → the panel is unstyled;
 //   2. a service worker or the HTTP cache served a STALE copy → old rules apply.
 // Case 2 is detected through the `--chordpro-css-version` marker declared at the top
-// of chordpro.css (bump it together with ASSET_VERSION in sw.js).
-const CHORDPRO_CSS_VERSION = "20260925-chordpro6";
+// of chordpro.css; that value is the shared `__BUILD__` placeholder which the
+// deploy workflow fills in, so it always matches ASSET_VERSION in sw.js.
+const CHORDPRO_CSS_VERSION = "__BUILD__";
 let chordProCssWarned = false;
 function warnIfChordProCssMissing() {
    if (chordProCssWarned) return;

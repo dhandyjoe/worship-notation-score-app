@@ -25,7 +25,7 @@ import {
    transposeChord,
    transposeChordRoot,
    transposeNote,
-} from "./notation.js?v=20260925-chordpro6";
+} from "./notation.js?v=__BUILD__";
 
 // Import hardening limit (mirrors MAX_BARS / MAX_SECTIONS in notation.js).
 export const MAX_CHORDPRO_CHARS = 20000;
