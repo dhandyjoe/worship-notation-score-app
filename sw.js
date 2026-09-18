@@ -15,13 +15,13 @@
 //     fall through to the network. Cloud features simply require connectivity.
 //
 // Bump CACHE_VERSION whenever shell assets change so old caches are purged.
-const CACHE_VERSION = "wns-shell-v20260923-album11";
+const CACHE_VERSION = "wns-shell-v20260925-chordpro6";
 
 // Relative to the SW scope (the app root). The "?v=..." query strings must match
 // exactly what index.html / the ES modules request, or those fetches would miss
 // the precache and hit the network. We ALSO match with ignoreSearch as a
 // fallback, so a version bump degrades gracefully to a network refresh.
-const ASSET_VERSION = "20260923-album11";
+const ASSET_VERSION = "20260925-chordpro6";
 const CORE_ASSETS = [
    "./",
    "./index.html",
@@ -29,9 +29,12 @@ const CORE_ASSETS = [
    `./styles/styles.css`,
    `./styles/preview.css?v=${ASSET_VERSION}`,
    `./styles/ui.css?v=${ASSET_VERSION}`,
+   `./styles/chordpro.css?v=${ASSET_VERSION}`,
    `./src/app.js?v=${ASSET_VERSION}`,
    `./src/events.js?v=${ASSET_VERSION}`,
    `./src/notation.js?v=${ASSET_VERSION}`,
+   `./src/chordPro.js?v=${ASSET_VERSION}`,
+   `./src/chordProEditor.js?v=${ASSET_VERSION}`,
    `./src/dom.js?v=${ASSET_VERSION}`,
    `./src/store.js?v=${ASSET_VERSION}`,
    `./src/render.js?v=${ASSET_VERSION}`,

@@ -4,8 +4,9 @@
 // to Firebase only through cloud.js, and to the editor only through injected
 // callbacks (getProject / applyProject / getCloudContext / setCloudContext). This
 // keeps the module graph acyclic: cloudUI → { cloud, dom }, and events.js → cloudUI.
-import { $, toast } from "./dom.js?v=20260923-album11";
-import { friendlyName } from "./identity.js?v=20260923-album11";
+import { $, toast } from "./dom.js?v=20260925-chordpro6";
+import { friendlyName } from "./identity.js?v=20260925-chordpro6";
+import { editorModeMeta, normalizeEditorMode } from "./notation.js?v=20260925-chordpro6";
 import {
    isConfigured,
    onAuth,
@@ -55,11 +56,11 @@ import {
    removeMember,
    leaveAlbum,
    normalizeInviteCode,
-} from "./cloud.js?v=20260923-album11";
+} from "./cloud.js?v=20260925-chordpro6";
 
 // Injected editor bridge (set in init).
-import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260923-album11";
-import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=20260923-album11";
+import { buildShareLink, decodeShare, extractPayloadFromLink, IMPORT_ROUTE } from "./share.js?v=20260925-chordpro6";
+import { parseYoutubeUrl, canonicalUrl, thumbnailUrl } from "./youtube.js?v=20260925-chordpro6";
 
 let bridge = {
    getProject: () => ({}),
@@ -816,10 +817,11 @@ function cardMarkup(song) {
    const detail = versioned
       ? (updated ? `updated ${escapeHtml(updated)}` : "")
       : `${sectionCount} section${sectionCount === 1 ? "" : "s"}${updated ? ` · updated ${escapeHtml(updated)}` : ""}`;
-   const mode = (song.latestEditorMode || song.editorMode) === "numbers" ? "numbers" : "chords";
-   // Match the edit page's editor-mode glyphs: ♪ for Chord Chart, # for Numbers.
-   const modeGlyph = mode === "numbers" ? "#" : "\u266A";
-   const modeTitle = mode === "numbers" ? "Nashville Number" : "Chord Chart";
+   // Glyph + label come from notation.js so the library card can never drift from
+   // the editor's mode badge (♪ Chord Chart, # Nashville Numbers, ♬ ChordPro).
+   const mode = normalizeEditorMode(song.latestEditorMode || song.editorMode);
+   const modeGlyph = editorModeMeta[mode].cardMark;
+   const modeTitle = editorModeMeta[mode].badge;
    const keyChip = key ? `<span class="song-card-chip"><small>Key</small> ${key}</span>` : "";
    const meterChip = meter ? `<span class="song-card-chip"><small>Time</small> ${meter}</span>` : "";
    // Show the number of arrangements (number-first), with the count emphasised.
@@ -1112,7 +1114,7 @@ function initNewSongDialog() {
    dialog.querySelectorAll(".mode-card").forEach((card) => {
       card.addEventListener("click", () => {
          const mode = card.dataset.mode;
-         if (!["chords", "numbers"].includes(mode)) return;
+         if (!["chords", "numbers", "chordpro"].includes(mode)) return;
          const label = (nameInput?.value || "").trim();
          if (!label) {
             if (nameError) nameError.hidden = false;
@@ -1132,7 +1134,14 @@ function initNewSongDialog() {
 }
 
 /** Fresh blank project for a chosen writing mode (extra meta overridable). */
+// ChordPro starts with TWO sections so the format is obvious at a glance: an Intro
+// holding a chord progression, and a Verse showing chords over lyrics (same
+// deletable-sample convention as the "Song Title" / "Artist / Composer" placeholders).
+const CHORDPRO_INTRO_STARTER = "[C] [Am7] [Dm7] [G7] [Cmaj7]";
+const CHORDPRO_VERSE_STARTER = "[C]Type your lyric here and wrap each [G]chord in square [Am]brackets [F]";
+
 function blankProject(mode, { title = "New Song", artist = "Artist / Composer" } = {}) {
+   const chordpro = normalizeEditorMode(mode) === "chordpro";
    return {
       format: "chord-sheet",
       version: 2,
@@ -1140,10 +1149,15 @@ function blankProject(mode, { title = "New Song", artist = "Artist / Composer" }
       artist,
       key: "C",
       meter: "4/4",
-      sections: [{ name: "Intro", bars: [] }],
+      sections: chordpro
+         ? [
+              { name: "Intro", chordPro: CHORDPRO_INTRO_STARTER },
+              { name: "Verse", chordPro: CHORDPRO_VERSE_STARTER },
+           ]
+         : [{ name: "Intro", bars: [] }],
       slashChords: [],
       editorMode: mode,
-      lyricsEnabled: false, // lyrics start OFF in both modes; users opt in via the toggle
+      lyricsEnabled: false, // lyrics start OFF in every mode; users opt in via the toggle
    };
 }
 
@@ -1567,7 +1581,7 @@ async function onNewVersion() {
    closeVersionPopover();
    if (!ctx?.songId) return;
    const current = bridge.getProject();
-   const mode = current?.editorMode === "numbers" ? "numbers" : "chords";
+   const mode = normalizeEditorMode(current?.editorMode);
    const blank = blankProject(mode, {
       title: current?.title || "Song Title",
       artist: current?.artist || "Artist / Composer",
@@ -2267,7 +2281,7 @@ async function saveToCloud() {
          await updateSongMeta(songId, {
             title,
             artist,
-            latestEditorMode: project.editorMode === "numbers" ? "numbers" : "chords",
+            latestEditorMode: normalizeEditorMode(project.editorMode),
             latestKey: project.key || "",
             latestMeter: project.meter || "",
          });
@@ -2614,9 +2628,11 @@ function albumSongCardMarkup(song, role) {
          <button class="song-card-action is-pdf" type="button" data-act="pdf" data-label="Export .pdf" title="Export .pdf" aria-label="Export ${escapeHtml(song.title)} as PDF">↗</button>
          <button class="song-card-action is-duplicate" type="button" data-act="copy" data-label="Save a copy" title="Save a copy to My Songs" aria-label="Save a copy of ${escapeHtml(song.title)}">⧉</button>`;
    return `
-      <article class="song-card is-${(song.latestEditorMode || song.editorMode) === "numbers" ? "numbers" : "chords"}" role="listitem" tabindex="0"
+      <article class="song-card is-${normalizeEditorMode(song.latestEditorMode || song.editorMode)}" role="listitem" tabindex="0"
          data-id="${escapeHtml(song.cloudId)}" aria-label="${escapeHtml(song.title)}">
-         <span class="song-card-mode-mark" aria-hidden="true">${(song.latestEditorMode || song.editorMode) === "numbers" ? "#" : "♪"}</span>
+         <span class="song-card-mode-mark" aria-hidden="true">${
+            editorModeMeta[normalizeEditorMode(song.latestEditorMode || song.editorMode)].cardMark
+         }</span>
          <h3 class="song-card-title">${escapeHtml(song.title)}</h3>
          <div class="song-card-creator">${escapeHtml(song.artist || "Unknown")}</div>
          <div class="song-card-detail">${escapeHtml(counts)}</div>

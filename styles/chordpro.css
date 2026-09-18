@@ -1,0 +1,810 @@
+/* ============================================================================
+   chordpro.css — the ChordPro writing mode (lyrics + chords, no rhythm grid).
+   ----------------------------------------------------------------------------
+   SELF-CONTAINED BY DESIGN. Nothing in this file targets a class or id that the
+   two original modes use, and every rule is either `cp-`-prefixed or gated behind
+   body[data-editor-mode="chordpro"]. That is what guarantees Chord Chart and
+   Nashville Numbers keep their exact editor + PDF behaviour:
+     • ui.css / preview.css / styles.css are NOT modified at all.
+     • The grid workspace is hidden (never removed) so #previewCard and
+       #previewViewport stay in the DOM for pdf.js / pdfOptions.js.
+     • The print rules in preview.css are NOT id-scoped, so this mode must avoid
+       names like .preview-section / .section-tools — hence the `cp-` prefix.
+   Loaded AFTER ui.css (see index.html) so the design tokens below resolve.
+   ============================================================================ */
+
+/* Version marker for the ChordPro stylesheet.
+   render.js compares this value against its own CHORDPRO_CSS_VERSION constant and
+   warns the user when they differ — which is exactly what happens when a service
+   worker (or the HTTP cache) serves a stale copy of this file. Without it, a stale
+   stylesheet is invisible: the page simply renders with the old rules.
+   NOTE: bump this together with ASSET_VERSION in sw.js. */
+:root {
+   --chordpro-css-version: 20260925-chordpro6;
+}
+
+/* ---- Workspace gating -------------------------------------------------------
+   NOTE: the four rules that decide WHICH workspace is on screen (grid vs
+   ChordPro) and the side-by-side split live INLINE in index.html, and render.js
+   applies the same swap with inline styles on top. They are deliberately NOT here:
+   this file is the VISUAL layer, and the mode swap must keep working even when this
+   stylesheet is missing or served stale by a service worker.
+   Everything below styles the ChordPro workspace once it is on screen. */
+
+/* ---- Left: editor panel ---------------------------------------------------- */
+.cp-editor {
+   position: sticky;
+   top: 12px;
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+   min-width: 0;
+   max-height: calc(100vh - 104px);
+   overflow-y: auto;
+   padding: 14px;
+   border: 1px solid var(--line);
+   border-radius: 16px;
+   background: var(--surface);
+   box-shadow: var(--shadow-sm);
+}
+.cp-editor-head {
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+}
+.cp-editor-meta {
+   display: grid;
+   grid-template-columns: 1fr 1fr;
+   gap: 8px;
+}
+.cp-field {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+   min-width: 0;
+}
+.cp-field-label {
+   font-size: 10px;
+   font-weight: 800;
+   letter-spacing: 0.08em;
+   text-transform: uppercase;
+   color: var(--muted);
+}
+.cp-input {
+   width: 100%;
+   min-height: 36px;
+   padding: 7px 10px;
+   border: 1px solid var(--line);
+   border-radius: 9px;
+   background: var(--cream);
+   color: var(--ink);
+   font: 700 13.5px inherit;
+   outline: none;
+   transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+}
+.cp-input:focus-visible {
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 16%, transparent);
+}
+.cp-input-compact {
+   width: auto;
+   min-width: 74px;
+   min-height: 32px;
+   padding: 4px 8px;
+   font-size: 13px;
+}
+.cp-editor-tools {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: center;
+   gap: 8px 14px;
+   padding-top: 2px;
+}
+.cp-tool-group {
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+}
+.cp-tool-group-history {
+   margin-left: auto;
+}
+.cp-tool-label {
+   font-size: 10px;
+   font-weight: 800;
+   letter-spacing: 0.08em;
+   text-transform: uppercase;
+   color: var(--muted);
+}
+.cp-icon-btn {
+   width: 32px;
+   height: 32px;
+   display: inline-grid;
+   place-items: center;
+   border: 1px solid var(--line);
+   border-radius: 9px;
+   background: var(--surface);
+   color: var(--dark-green);
+   font: 800 16px/1 inherit;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+}
+.cp-icon-btn:hover {
+   background: var(--soft);
+   border-color: var(--green);
+}
+.cp-text-btn {
+   padding: 6px 11px;
+   border: 1px solid var(--line);
+   border-radius: 9px;
+   background: var(--surface);
+   color: var(--ink);
+   font: 700 12px inherit;
+   cursor: pointer;
+   transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+}
+.cp-text-btn:hover {
+   background: var(--soft);
+   border-color: var(--green);
+}
+.cp-text-btn:disabled {
+   opacity: 0.45;
+   cursor: not-allowed;
+}
+.cp-text-btn.is-strong {
+   border-color: color-mix(in srgb, var(--green) 34%, transparent);
+   background: color-mix(in srgb, var(--green) 10%, var(--surface));
+   color: var(--dark-green);
+}
+
+/* ---- Section list (one textarea per section) ------------------------------- */
+.cp-sections {
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+}
+.cp-section-row {
+   display: flex;
+   flex-direction: column;
+   gap: 6px;
+   padding: 10px;
+   border: 1px solid var(--line);
+   border-radius: 12px;
+   background: var(--cream);
+   transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+}
+.cp-section-row:focus-within {
+   border-color: var(--green);
+   box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 14%, transparent);
+}
+.cp-section-row-head {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+}
+.cp-section-name-input {
+   flex: 1 1 auto;
+   min-width: 0;
+   padding: 3px 6px;
+   border: 1px solid transparent;
+   border-radius: 7px;
+   background: transparent;
+   color: var(--dark-green);
+   font: 800 12px inherit;
+   letter-spacing: 0.06em;
+   text-transform: uppercase;
+   outline: none;
+}
+.cp-section-name-input:hover {
+   border-color: var(--line);
+}
+.cp-section-name-input:focus-visible {
+   border-color: var(--green);
+   background: var(--surface);
+}
+.cp-section-row-tools {
+   display: inline-flex;
+   gap: 3px;
+   flex: none;
+}
+.cp-row-btn {
+   width: 26px;
+   height: 26px;
+   display: inline-grid;
+   place-items: center;
+   border: 1px solid transparent;
+   border-radius: 7px;
+   background: transparent;
+   color: var(--muted);
+   font: 700 12px/1 inherit;
+   cursor: pointer;
+}
+.cp-row-btn:hover {
+   border-color: var(--line);
+   background: var(--surface);
+   color: var(--ink);
+}
+.cp-row-btn.is-danger:hover {
+   color: #c9403a;
+   border-color: color-mix(in srgb, #c9403a 30%, transparent);
+   background: color-mix(in srgb, #c9403a 8%, var(--surface));
+}
+.cp-textarea {
+   width: 100%;
+   min-height: 124px;
+   resize: vertical;
+   padding: 9px 11px;
+   border: 1px solid var(--line);
+   border-radius: 10px;
+   background: var(--surface);
+   color: var(--ink);
+   font: 600 13.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+   tab-size: 3;
+   outline: none;
+}
+.cp-textarea:focus-visible {
+   border-color: var(--green);
+}
+.cp-textarea::placeholder {
+   color: var(--muted);
+   opacity: 0.75;
+}
+.cp-textarea[readonly] {
+   background: var(--soft);
+   cursor: not-allowed;
+}
+.cp-editor-foot {
+   display: flex;
+   flex-direction: row;
+   align-items: center;
+   flex-wrap: wrap;
+   gap: 8px 10px;
+   padding-top: 2px;
+}
+/* Compact like the grid modes' `.preview-footer` (36px button row) instead of a
+   full-width button stacked above a two-line hint. */
+.cp-editor-foot .cp-text-btn.is-strong {
+   flex: none;
+}
+.cp-editor-hint {
+   flex: 1 1 180px;
+   min-width: 0;
+   margin: 0;
+   font-size: 11px;
+   line-height: 1.4;
+   color: var(--muted);
+}
+.cp-editor-hint code {
+   padding: 1px 4px;
+   border-radius: 4px;
+   background: var(--soft);
+   font-size: 10.5px;
+}
+
+/* ---- Right: preview stage --------------------------------------------------- */
+.cp-stage {
+   /* On-screen card padding, shared by the preview card AND the "LIVE PREVIEW" bar
+      above it, so the label lines up with the card's content instead of floating
+      outside the card. */
+   --cp-card-pad-x: 10mm;
+   --cp-card-pad-y: 12mm;
+   display: flex;
+   flex-direction: column;
+   gap: 10px;
+   min-width: 0;
+}
+.cp-stage-bar {
+   display: flex;
+   align-items: baseline;
+   gap: 10px;
+   /* The bar lives in the SAME column as the preview card (centred, same max width)
+      and starts at the card's content edge, so the label reads as the card's header
+      at every screen width. */
+   width: 100%;
+   max-width: 210mm;
+   margin: 0 auto;
+   padding: 0 2px 0 var(--cp-card-pad-x, 10mm);
+}
+.cp-stage-title {
+   font-size: 13px;
+   font-weight: 800;
+   letter-spacing: 0.1em;
+   color: var(--muted);
+}
+.cp-stage-hint {
+   font-size: 12.5px;
+   font-weight: 700;
+   color: var(--muted);
+   opacity: 0.95;
+}
+.cp-scroll {
+   overflow: auto;
+   max-width: 100%;
+   outline: none;
+   scrollbar-color: #a8beb0 transparent;
+   scrollbar-width: thin;
+}
+.cp-card {
+   /* ChordPro print sizes derive from the same PDF-options tokens as the grid modes
+      (so the dialog sliders keep working) but scaled UP: in this mode the lyrics are
+      the score, not a small caption under a beat, so the grid defaults printed too
+      small. 4.3mm × 1.25 ≈ 5.4mm chords · 3.2mm × 1.35 ≈ 4.3mm lyrics. */
+   --cp-chord-size: calc(var(--print-chord-size, 4.3mm) * 1.25);
+   --cp-lyric-size: calc(var(--print-lyric-size, 3.2mm) * 1.35);
+   width: 100%;
+   max-width: 210mm;
+   margin: 0 auto;
+   padding: var(--cp-card-pad-y, 12mm) var(--cp-card-pad-x, 10mm);
+   border: 1px solid #e5e5df;
+   border-radius: 5px;
+   background: var(--cream);
+   box-shadow: var(--shadow-md);
+   color: var(--ink);
+}
+.cp-card-head {
+   display: flex;
+   align-items: flex-start;
+   justify-content: space-between;
+   gap: 18px;
+}
+.cp-card-title {
+   margin: 0;
+   font-size: 26px;
+   line-height: 1.08;
+   letter-spacing: -0.7px;
+   color: var(--ink);
+}
+.cp-card-artist {
+   margin: 6px 0 0;
+   font-size: 12.5px;
+   color: var(--muted);
+}
+.cp-card-artist-label {
+   font-weight: 650;
+}
+.cp-card-artist em {
+   font-style: italic;
+   font-weight: 650;
+   color: var(--ink);
+}
+.cp-card-meta {
+   display: flex;
+   flex-direction: column;
+   gap: 5px;
+   flex: none;
+   font-size: 8.5px;
+   font-weight: 800;
+   letter-spacing: 0.08em;
+   color: var(--muted);
+   text-align: right;
+}
+.cp-card-meta b {
+   display: block;
+   margin-top: 2px;
+   font-size: 16px;
+   letter-spacing: 0;
+   color: var(--ink);
+}
+.cp-card-rule {
+   height: 1px;
+   margin: 10px 0 16px;
+   background: linear-gradient(90deg, var(--lime), transparent);
+}
+.cp-signature {
+   display: none;
+}
+
+/* ---- The score itself: chords above the syllable they precede ---------------
+   One inline-block per WORD. The chord is a block inside the word box, so it sits
+   exactly above its syllable, and because the boxes are inline-level the line wraps
+   naturally between words — no grid, no fixed columns, nothing to keep in sync. */
+.cp-score {
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+}
+.cp-section {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+}
+.cp-section-head {
+   display: flex;
+   align-items: center;
+   gap: 7px;
+   margin: 0;
+}
+.cp-section-chip {
+   width: 4px;
+   height: 13px;
+   border-radius: 2px;
+   background: var(--lime);
+   flex: none;
+}
+.cp-section-name {
+   font-size: 11px;
+   font-weight: 800;
+   letter-spacing: 0.1em;
+   color: var(--muted);
+}
+.cp-line {
+   margin: 0;
+   line-height: 1.05;
+}
+.cp-word {
+   display: inline-block;
+   vertical-align: bottom;
+   /* pre-wrap keeps the trailing space inside the box (so words stay separated)
+      while still allowing a very long word to break instead of overflowing. */
+   white-space: pre-wrap;
+   overflow-wrap: anywhere;
+   max-width: 100%;
+}
+/* Chord with no lyric under it — an intro / progression line such as
+   "[C] [Am7] [Dm7] [G7] [Cmaj7]". The typed gap is preserved by the parser and the
+   padding adds breathing room, so the progression reads as "C  Am7  Dm7" instead of
+   collapsing into "CAm7Dm7G7Cmaj7" on screen and in the exported PDF. */
+.cp-word.is-chord-only {
+   padding-right: 0.5em;
+   /* Never break a chord across lines. */
+   white-space: pre;
+   overflow-wrap: normal;
+}
+.cp-chord {
+   display: block;
+   font-size: var(--cp-chord-size, 5.375mm);
+   font-weight: 800;
+   line-height: 1.2;
+   letter-spacing: -0.01em;
+   color: #155c3c;
+}
+.cp-lyric {
+   display: block;
+   font-size: var(--cp-lyric-size, 4.32mm);
+   font-weight: 600;
+   line-height: 1.45;
+   color: var(--ink);
+}
+.cp-word:not(.has-chord) .cp-lyric {
+   /* Words without a chord start on the lyric line, aligned with the rest. */
+   padding-top: calc(var(--cp-chord-size, 5.375mm) * 1.2);
+}
+.cp-label {
+   margin: 2px 0 0;
+   font-size: 10.5px;
+   font-weight: 800;
+   letter-spacing: 0.1em;
+   color: var(--muted);
+}
+.cp-comment {
+   margin: 0;
+   font-size: calc(var(--cp-lyric-size, 4.32mm) * 0.95);
+   font-style: italic;
+   color: var(--muted);
+}
+.cp-blank {
+   height: 0.7em;
+}
+.cp-empty {
+   margin: 0;
+   font-size: 12.5px;
+   font-style: italic;
+   color: var(--muted);
+}
+.cp-empty code {
+   padding: 1px 5px;
+   border-radius: 5px;
+   background: var(--soft);
+   font-size: 11.5px;
+   font-style: normal;
+}
+
+/* ---- Mode badge (topbar pill) ----------------------------------------------
+   Gold, matching the ChordPro library cards (#8a6a10 family). */
+body[data-editor-mode="chordpro"] .editor-mode-badge-icon::before {
+   content: "♬";
+}
+body[data-editor-mode="chordpro"] .editor-mode-badge {
+   border-color: color-mix(in srgb, #8a6a10 30%, transparent);
+   color: #8a6a10;
+   background: color-mix(in srgb, #d4a72c 12%, #fff);
+}
+body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
+   background: color-mix(in srgb, #d4a72c 22%, #fff);
+   color: #8a6a10;
+}
+
+/* ---- Library card (My Songs / Albums) --------------------------------------
+   Mirrors the pattern of `.song-card.is-chords` / `.is-numbers` in ui.css (tinted
+   background + soft corner glow + faint watermark glyph), in a DARK GOLD accent.
+   cloudUI.js already emits `is-chordpro` via normalizeEditorMode(). */
+.song-card.is-chordpro {
+   background: #fbf3df;
+}
+.song-card.is-chordpro::before {
+   background: radial-gradient(circle, color-mix(in srgb, #8a6a10 26%, transparent), transparent 70%);
+}
+.song-card.is-chordpro .song-card-mode-mark {
+   color: #8a6a10;
+}
+html[data-theme="dark"] .song-card.is-chordpro {
+   background: #2a2415;
+}
+
+/* ---- Mode picker card (New Song dialog) ------------------------------------
+   Same card as the other two modes, sitting to the RIGHT of Nashville: the grid
+   goes 3-across on wide screens (the dialog widens so each card keeps its
+   proportions). Layout only — the two original cards are untouched. */
+@media (min-width: 900px) {
+   .mode-picker-card {
+      width: min(94vw, 880px);
+   }
+   .mode-picker-grid {
+      grid-template-columns: repeat(3, 1fr);
+   }
+}
+.cp-mode-anim {
+   display: grid;
+   grid-template-columns: auto auto;
+   grid-template-rows: auto auto;
+   align-items: end;
+   gap: 0 12px;
+}
+.cp-mca-chord {
+   grid-row: 1;
+   font-size: 22px;
+   font-weight: 800;
+   line-height: 1.15;
+   color: #8a6a10;
+   animation: cp-mca-pulse 2.6s ease-in-out infinite;
+}
+.cp-mca-word {
+   grid-row: 2;
+   font-size: 16px;
+   font-weight: 600;
+   line-height: 1.2;
+   color: var(--muted);
+}
+.cp-mca-1,
+.cp-mca-2 {
+   grid-column: 1;
+}
+.cp-mca-3,
+.cp-mca-4 {
+   grid-column: 2;
+}
+.cp-mca-3 {
+   animation-delay: 0.35s;
+}
+@keyframes cp-mca-pulse {
+   0%,
+   100% {
+      transform: translateY(0);
+      opacity: 0.8;
+   }
+   50% {
+      transform: translateY(-2px);
+      opacity: 1;
+   }
+}
+@media (prefers-reduced-motion: reduce) {
+   .cp-mca-chord {
+      animation: none;
+   }
+}
+
+/* ---- Dark theme ------------------------------------------------------------ */
+html[data-theme="dark"] body[data-editor-mode="chordpro"] .editor-mode-badge {
+   color: #fcd34d;
+   border-color: rgba(252, 211, 77, 0.4);
+   background: rgba(252, 211, 77, 0.12);
+}
+html[data-theme="dark"] body[data-editor-mode="chordpro"] .editor-mode-badge-icon {
+   background: rgba(252, 211, 77, 0.2);
+   color: #fcd34d;
+}
+html[data-theme="dark"] .cp-mca-chord {
+   /* The mode-picker accent stays gold in dark mode (matches the gold library card). */
+   color: #d4a72c;
+}
+html[data-theme="dark"] .cp-chord {
+   color: #7ee0b3;
+}
+html[data-theme="dark"] .cp-card {
+   border-color: var(--line);
+   background: #14170f;
+}
+
+/* ---- Responsive ------------------------------------------------------------ */
+@media (max-width: 980px) {
+   .cp-editor {
+      position: static;
+      max-height: none;
+   }
+}
+@media (max-width: 560px) {
+   .cp-editor-meta {
+      grid-template-columns: minmax(0, 1fr);
+   }
+   .cp-stage {
+      --cp-card-pad-x: 6mm;
+      --cp-card-pad-y: 8mm;
+   }
+}
+
+/* ---- Print / PDF -----------------------------------------------------------
+   Geometry lives under `html.is-print-layout` (the class the export flow adds
+   before window.print()), mirroring how preview.css handles the grid modes. There
+   is nothing to re-tag here: the flow above is already paper-shaped, so no barline
+   pass, no page-width override and no per-bar geometry. */
+@media print {
+   .cp-editor,
+   .cp-stage-bar,
+   .cp-editor-foot {
+      display: none !important;
+   }
+   /* The print swap for the workspace itself lives in index.html's inline
+      structural block; here we only lay the stage out as a block on paper. */
+   body[data-editor-mode="chordpro"] .cp-stage {
+      display: block !important;
+   }
+   .cp-scroll {
+      overflow: visible !important;
+      padding: 0 !important;
+   }
+}
+html.is-print-layout .cp-editor,
+html.is-print-layout .cp-stage-bar {
+   display: none !important;
+}
+/* Same mode gate for the on-screen PDF-layout preview (the PDF options dialog). */
+html.is-print-layout body[data-editor-mode="chordpro"] .cp-workspace {
+   display: block !important;
+}
+html.is-print-layout .cp-stage {
+   display: block;
+}
+html.is-print-layout .cp-scroll {
+   overflow: visible;
+   padding: 0;
+   background: transparent;
+}
+/* Print/PDF geometry — matched to the Chord Chart export by measurement
+   (A4 @96dpi, print media + is-print-layout):
+     grid                          →  chordpro
+     content left 38px / w 718px   →  same (the grid inherits this from
+                                       .preview-viewport's print padding, so this
+                                       card carries the equivalent padding itself)
+     content top 48px              →  same
+     title 30px, margin 5px 0 4px  →  same
+     KEY + TIME SIGNATURE in a ROW at the top-right, 8px labels, 17px values,
+     gap 16px, 10mm from the right edge  →  same
+     rule margin 5px 0 22px        →  same
+     section name 14.5px italic in a 1px black rounded box  →  same */
+html.is-print-layout .cp-card {
+   max-width: none;
+   margin: 0;
+   padding: 18px 16px 28px;
+   border: 0;
+   border-radius: 0;
+   background: #fff !important;
+   box-shadow: none;
+}
+html.is-print-layout .cp-card-title {
+   margin: 5px 0 4px;
+   font-size: 30px;
+   letter-spacing: -0.8px;
+   color: #173a28 !important;
+}
+html.is-print-layout .cp-card-artist {
+   margin-top: 7px;
+   font-size: 12.5px;
+   color: #5f7367;
+}
+html.is-print-layout .cp-card-artist em {
+   color: #173a28;
+}
+html.is-print-layout .cp-card-meta,
+html.is-print-layout #cpPreviewCard .cp-card-meta {
+   flex-direction: row;
+   align-items: flex-start;
+   gap: 16px;
+   margin-right: 10mm;
+   font-size: 8px;
+   font-weight: 400;
+   color: #5f7367;
+   text-align: right;
+}
+html.is-print-layout .cp-card-meta b,
+html.is-print-layout #cpPreviewCard .cp-card-meta b {
+   margin-top: 4px;
+   font-size: 17px;
+   font-weight: 700;
+   color: #173a28;
+}
+html.is-print-layout .cp-card-rule {
+   margin: 5px 0 22px;
+}
+html.is-print-layout .cp-score {
+   gap: 14px;
+}
+html.is-print-layout .cp-section-head {
+   /* Never orphan a section title at the bottom of a page. */
+   min-height: 13px;
+   margin-bottom: 0;
+   break-after: avoid;
+   page-break-after: avoid;
+}
+html.is-print-layout .cp-section-name {
+   display: inline-block;
+   padding: 1.5px 7px;
+   border: 1px solid #000;
+   border-radius: 6px;
+   background: transparent;
+   color: #000;
+   font-size: 14.5px;
+   font-style: italic;
+   font-weight: 800;
+   letter-spacing: 0.03em;
+}
+html.is-print-layout .cp-chord {
+   color: #155c3c !important;
+}
+html.is-print-layout .cp-lyric {
+   color: #173a28 !important;
+}
+html.is-print-layout .cp-comment {
+   color: #5f7367;
+}
+html.is-print-layout .cp-line {
+   orphans: 2;
+   widows: 2;
+}
+html.is-print-layout .cp-signature {
+   position: fixed;
+   right: 0;
+   bottom: 0;
+   left: 0;
+   display: block;
+   color: #7b8b81;
+   font:
+      600 10.5px/1 Inter,
+      ui-sans-serif,
+      sans-serif;
+   letter-spacing: 0.04em;
+   text-align: center;
+}
+
+/* ---- Inside the PDF-options live preview -----------------------------------
+   The real #cpPreviewCard node is moved into the dialog's simulated page, so its
+   editor chrome is neutralised and interaction blocked (a faithful mock-up, not an
+   editing surface) — the same contract as `.pdf-preview-page > #previewCard`. */
+.pdf-preview-page > #cpPreviewCard {
+   width: 100% !important;
+   min-width: 0 !important;
+   max-width: none !important;
+   margin: 0 !important;
+   padding: 0 !important;
+   border: 0 !important;
+   border-radius: 0 !important;
+   background: #fff !important;
+   box-shadow: none !important;
+   zoom: 1 !important;
+   pointer-events: none !important;
+   -webkit-user-select: none !important;
+   user-select: none !important;
+   cursor: default !important;
+}
+.pdf-preview-page > #cpPreviewCard * {
+   pointer-events: none !important;
+}
+.pdf-preview-page > #cpPreviewCard .cp-signature {
+   display: none !important;
+}

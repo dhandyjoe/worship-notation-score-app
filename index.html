@@ -34,8 +34,53 @@
          })();
       </script>
       <link rel="stylesheet" href="styles/styles.css" />
-      <link rel="stylesheet" href="styles/preview.css?v=20260923-album11" />
-      <link rel="stylesheet" href="styles/ui.css?v=20260923-album11" />
+      <link rel="stylesheet" href="styles/preview.css?v=20260925-chordpro6" />
+      <link rel="stylesheet" href="styles/ui.css?v=20260925-chordpro6" />
+      <link rel="stylesheet" href="styles/chordpro.css?v=20260925-chordpro6" />
+      <!-- ======================================================================
+           STRUCTURAL fallback for the ChordPro mode (deliberately INLINE).
+           These four rules decide which workspace exists on screen (beat grid vs
+           ChordPro) and the side-by-side split. They live in the document itself
+           so the swap can never depend on a second stylesheet arriving: if
+           styles/chordpro.css 404s or is served stale (service-worker / HTTP
+           cache), ChordPro still replaces the grid instead of showing both.
+           Everything VISUAL (panels, cards, print geometry, gold accents) stays in
+           styles/chordpro.css. render.js additionally sets the same swap with
+           inline styles, so the behaviour holds even if this block is stale too.
+           ====================================================================== -->
+      <style>
+         .cp-workspace {
+            display: none;
+            min-width: 0;
+            max-width: 100%;
+         }
+         body[data-editor-mode="chordpro"] .cp-workspace {
+            display: grid;
+            grid-template-columns: minmax(330px, 40%) minmax(0, 1fr);
+            gap: 18px;
+            align-items: start;
+         }
+         /* The beat-grid editor is TWO siblings inside <main>: .ribbon-workspace holds
+            the (already hidden) tool aside, and .preview-stage paints the chord-chart
+            LIVE PREVIEW itself. Both have to be gated, otherwise the grid score keeps
+            showing up in ChordPro mode. */
+         body[data-editor-mode="chordpro"] .ribbon-workspace,
+         body[data-editor-mode="chordpro"] main > .workspace,
+         body[data-editor-mode="chordpro"] .preview-stage,
+         body[data-editor-mode="chordpro"] main > .preview-stage {
+            display: none !important;
+         }
+         @media (max-width: 980px) {
+            body[data-editor-mode="chordpro"] .cp-workspace {
+               grid-template-columns: minmax(0, 1fr);
+            }
+         }
+         @media print {
+            body[data-editor-mode="chordpro"] .cp-workspace {
+               display: block !important;
+            }
+         }
+      </style>
    </head>
    <body>
       <!-- Editor header. The editor is a SUB-page of My Songs (the home screen),
@@ -455,6 +500,86 @@
                </div>
             </div>
          </div>
+
+         <!-- ============== CHORDPRO WORKSPACE (third writing mode) ==============
+              Side-by-side editor (left) + live preview (right), shown only while
+              body[data-editor-mode="chordpro"] (see styles/chordpro.css). It lives
+              NEXT TO the beat-grid workspace instead of replacing it, so the two
+              original modes keep their markup, styles and print rules untouched.
+              Every class here is `cp-`-prefixed on purpose: the print rules in
+              preview.css/ui.css are not id-scoped, so reusing names like
+              `.preview-section` or `.section-tools` would leak grid geometry in. -->
+         <div class="cp-workspace" id="cpWorkspace">
+            <aside class="cp-editor" aria-label="ChordPro editor">
+               <header class="cp-editor-head">
+                  <div class="cp-editor-meta">
+                     <label class="cp-field">
+                        <span class="cp-field-label">Title</span>
+                        <input id="cpTitleInput" class="cp-input" type="text" value="Song Title" autocomplete="off" spellcheck="false" />
+                     </label>
+                     <label class="cp-field">
+                        <span class="cp-field-label">Created by</span>
+                        <input id="cpArtistInput" class="cp-input" type="text" value="Artist / Composer" autocomplete="off" spellcheck="false" />
+                     </label>
+                  </div>
+                  <div class="cp-editor-tools">
+                     <span class="cp-tool-group">
+                        <span class="cp-tool-label">Transpose</span>
+                        <button id="cpTransposeDown" class="cp-icon-btn" type="button" title="Transpose down one semitone" aria-label="Transpose down one semitone">−</button>
+                        <button id="cpTransposeUp" class="cp-icon-btn" type="button" title="Transpose up one semitone" aria-label="Transpose up one semitone">+</button>
+                     </span>
+                     <span class="cp-tool-group">
+                        <span class="cp-tool-label">Key</span>
+                        <select id="cpKeySelect" class="cp-input cp-input-compact" aria-label="Song key"></select>
+                     </span>
+                     <span class="cp-tool-group">
+                        <span class="cp-tool-label">Time</span>
+                        <select id="cpMeterSelect" class="cp-input cp-input-compact" aria-label="Time signature">
+                           <option value="2/4">2/4</option>
+                           <option value="3/4">3/4</option>
+                           <option value="4/4">4/4</option>
+                           <option value="6/8">6/8</option>
+                        </select>
+                     </span>
+                     <span class="cp-tool-group cp-tool-group-history">
+                        <button id="cpUndoBtn" class="cp-text-btn" type="button" title="Undo (⌘Z / Ctrl+Z)">Undo</button>
+                        <button id="cpRedoBtn" class="cp-text-btn" type="button" title="Redo (⌘⇧Z / Ctrl+Shift+Z)">Redo</button>
+                     </span>
+                  </div>
+               </header>
+
+               <div class="cp-sections" id="cpSections"></div>
+
+               <footer class="cp-editor-foot">
+                  <button class="cp-text-btn is-strong" id="cpAddSection" type="button">＋ Add section</button>
+                  <p class="cp-editor-hint">Chords in <code>[brackets]</code> · sections <code>{sov}</code> <code>{soc}</code> <code>{eoc}</code></p>
+               </footer>
+            </aside>
+
+            <div class="cp-stage">
+               <div class="cp-stage-bar">
+                  <span class="cp-stage-title">LIVE PREVIEW</span>
+                  <span class="cp-stage-hint">Exported to PDF exactly like this</span>
+               </div>
+               <div class="cp-scroll" id="cpPreviewScroll" tabindex="0" aria-label="ChordPro score preview">
+                  <section class="cp-card" id="cpPreviewCard">
+                     <header class="cp-card-head">
+                        <div>
+                           <h2 class="cp-card-title" id="cpPreviewTitle">Song Title</h2>
+                           <p class="cp-card-artist"><span class="cp-card-artist-label">Created by:</span> <em id="cpPreviewArtist">Artist / Composer</em></p>
+                        </div>
+                        <div class="cp-card-meta">
+                           <span>KEY <b id="cpPreviewKey">C</b></span>
+                           <span>TIME SIGNATURE <b id="cpPreviewMeter">4/4</b></span>
+                        </div>
+                     </header>
+                     <div class="cp-card-rule" aria-hidden="true"></div>
+                     <div class="cp-score" id="cpSectionsPreview"></div>
+                     <div class="cp-signature" aria-hidden="true">Generated with WorshipNotationScore</div>
+                  </section>
+               </div>
+            </div>
+         </div>
       </main>
       <footer class="site-footer">
          <div class="site-footer-inner">
@@ -695,7 +820,11 @@
                <li class="howto-group">🎼 Writing the score</li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">🎛️</span>
-                  <span class="howto-item-text"><strong>Two writing modes</strong> — a new song starts in <strong>🎸 Chords</strong> (<code>C</code>, <code>Am7</code>, <code>G/B</code> with live suggestions) or <strong>🔢 Numbers</strong> (Nashville <code>1</code>–<code>7</code> with high/low octaves, and a lyrics field under every beat). The mode badge sits next to the title; in Chord Chart mode you can also show letter chords above the numbers.</span>
+                  <span class="howto-item-text"><strong>Three writing modes</strong> — <em>+ New Song</em> asks for the first arrangement's name, then shows three cards (each with a small live preview): <strong>🎸 Chords</strong> (<code>C</code>, <code>Am7</code>, <code>G/B</code> with live suggestions), <strong>🔢 Numbers</strong> (Nashville <code>1</code>–<code>7</code> with high/low octaves, and a lyrics field under every beat) or <strong>♬ ChordPro</strong> (just lyrics with chords in <code>[brackets]</code> — the easiest one, no rhythm notation). The mode badge sits next to the title; in Chord Chart mode you can also show letter chords above the numbers.</span>
+               </li>
+               <li class="howto-item">
+                  <span class="howto-item-icon" aria-hidden="true">♬</span>
+                  <span class="howto-item-text"><strong>ChordPro, step by step</strong> — choose <strong>♬ ChordPro</strong> in the New Song dialog and the editor opens with two ready sections: <em>Intro</em> (<code>[C] [Am7] [Dm7] [G7] [Cmaj7]</code>) and <em>Verse</em> (<code>[C]Type your lyric here…</code>). Type chords inside <code>[brackets]</code> straight in the lyrics — <code>[C]Ama[G]zing grace</code> — and the preview on the right updates as you type. Use <code>{sov}</code>/<code>{eoc}</code> (or <code>{soc}</code>) for a section header, <code>{c: play softly}</code> for a comment, and a bracket-only line like <code>[Chorus]</code> becomes a section label. There is no chord palette and no rhythm notation here — typing brackets is the whole point — and everything else still works: rename or reorder sections (↑ ↓), add more with <em>+ Add section</em>, transpose the whole song (chords and key), and <em>Export .pdf</em> prints exactly what the preview shows.</span>
                </li>
                <li class="howto-item">
                   <span class="howto-item-icon" aria-hidden="true">＋</span>
@@ -746,9 +875,15 @@
          <div class="confirm-dialog-backdrop" data-mode-dismiss></div>
          <div class="confirm-dialog-card mode-picker-card" role="document">
             <button class="mode-picker-close" id="newSongClose" type="button" aria-label="Close" data-mode-dismiss>&times;</button>
-            <div class="confirm-dialog-icon" aria-hidden="true">♪</div>
-            <h2 class="confirm-dialog-title" id="newSongTitle">New Song</h2>
-            <p class="confirm-dialog-desc" id="newSongDesc">Name the first arrangement, then pick a writing mode to start.</p>
+            <!-- Icon on the LEFT, title + description on the RIGHT — the same head
+                 layout as the version dialogs (.vd-dialog-head in ui.css). -->
+            <div class="vd-dialog-head">
+               <div class="confirm-dialog-icon" aria-hidden="true">♪</div>
+               <div class="vd-dialog-head-text">
+                  <h2 class="confirm-dialog-title" id="newSongTitle">New Song</h2>
+                  <p class="confirm-dialog-desc" id="newSongDesc">Name the first arrangement, then pick a writing mode to start.</p>
+               </div>
+            </div>
 
             <div class="new-song-name">
                <label class="new-song-name-label" for="newSongVersionName">Version name <em>(required)</em></label>
@@ -826,6 +961,36 @@
                         <li class="is-pro"><span aria-hidden="true">✓</span> Number-only input</li>
                         <li class="is-pro"><span aria-hidden="true">✓</span> Optional lyrics</li>
                         <li class="is-con"><span aria-hidden="true">✗</span> No chord suggestions</li>
+                     </ul>
+                  </div>
+               </button>
+
+               <!-- Mode 3: ChordPro (lyrics + chords, no rhythm notation) -->
+               <button class="mode-card mode-card-chordpro" id="modeCardChordPro" type="button" data-mode="chordpro">
+                  <div class="mode-card-visual" aria-hidden="true">
+                     <div class="mode-card-anim cp-mode-anim">
+                        <span class="cp-mca-chord cp-mca-1">C</span>
+                        <span class="cp-mca-word cp-mca-2">Ama-</span>
+                        <span class="cp-mca-chord cp-mca-3">G</span>
+                        <span class="cp-mca-word cp-mca-4">zing</span>
+                     </div>
+                  </div>
+                  <div class="mode-card-body">
+                     <div class="mode-card-header">
+                        <span class="mode-card-icon">
+                           <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M4 6h16" />
+                              <path d="M4 12h16" />
+                              <path d="M4 18h10" />
+                           </svg>
+                        </span>
+                        <h3 class="mode-card-title">ChordPro</h3>
+                     </div>
+                     <p class="mode-card-sub">Type lyrics and put chords in <code>[brackets]</code> — no rhythm notation.</p>
+                     <ul class="mode-card-points">
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Easiest for beginners</li>
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Paste lyrics, add chords</li>
+                        <li class="is-pro"><span aria-hidden="true">✓</span> Transpose any key</li>
                      </ul>
                   </div>
                </button>
@@ -1381,7 +1546,7 @@
          </div>
       </div>
 
-      <script type="module" src="src/app.js?v=20260923-album11"></script>
+      <script type="module" src="src/app.js?v=20260925-chordpro6"></script>
       <script>
          // Register the PWA service worker for offline support. Skipped in the
          // automated test harness (?test=...) so caching never interferes with

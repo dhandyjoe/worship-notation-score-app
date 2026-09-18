@@ -73,6 +73,27 @@ export const nashvilleAccidentals = ["", "♭", "#"];
 export const MAX_BARS = 96;
 export const MAX_SECTIONS = 40;
 
+// ---- Editor modes ----
+// Single source of truth for the three writing modes. `dataset` drives the
+// `body[data-editor-mode]` attribute (mode-specific CSS), `badge` is the label in
+// the topbar pill and `cardMark` is the glyph used on library cards. Keeping this
+// in the pure module means the mode mapping is unit-tested and render.js /
+// cloudUI.js can never drift apart.
+export const editorModeMeta = {
+   chords: { id: "chords", badge: "Chord Chart", cardMark: "♪" },
+   numbers: { id: "numbers", badge: "Nashville Numbers", cardMark: "#" },
+   chordpro: { id: "chordpro", badge: "ChordPro", cardMark: "♬" },
+};
+
+/**
+ * Normalise a stored/imported mode id. Anything unknown (including legacy files
+ * with no `editorMode` at all) falls back to "chords", which is exactly what the
+ * app did before the third mode existed.
+ */
+export function normalizeEditorMode(value) {
+   return value === "numbers" || value === "chordpro" ? value : "chords";
+}
+
 export const escapeHTML = (value) =>
    String(value ?? "").replace(
       /[&<>"]/g,

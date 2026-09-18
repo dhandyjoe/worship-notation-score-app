@@ -17,8 +17,8 @@
 //    "Save as PDF" dialog proposes a meaningful default filename, then restore
 //    the original title afterward.
 
-import { $ } from "./dom.js?v=20260923-album11";
-import { safeFileName } from "./notation.js?v=20260923-album11";
+import { $ } from "./dom.js?v=20260925-chordpro6";
+import { safeFileName } from "./notation.js?v=20260925-chordpro6";
 
 // Whether WE added the is-print-layout class for the current print job. We only
 // strip it in afterprint if we added it — this preserves a manual "PDF layout"
@@ -214,7 +214,9 @@ export function exportToPdf({ printLayoutPreview = false, onAfterFrame } = {}) {
 
    // Save everything we are about to mutate so we can restore it afterward.
    const pagePosition = { x: window.scrollX, y: window.scrollY };
-   const canvasPosition = { x: viewport.scrollLeft, y: viewport.scrollTop };
+   // Null-safe: the beat-grid viewport only exists in the two grid modes (ChordPro
+   // hides it), so every access below is guarded instead of assuming it is present.
+   const canvasPosition = viewport ? { x: viewport.scrollLeft, y: viewport.scrollTop } : { x: 0, y: 0 };
    const scrollBehavior = root.style.scrollBehavior;
    const previousZoom = card?.style.zoom;
    const previousDocTitle = document.title;
@@ -226,7 +228,7 @@ export function exportToPdf({ printLayoutPreview = false, onAfterFrame } = {}) {
    // top-left origin so nothing is clipped.
    root.style.scrollBehavior = "auto";
    window.scrollTo(0, 0);
-   viewport.scrollTo(0, 0);
+   viewport?.scrollTo(0, 0);
    if (card) card.style.zoom = 1;
 
    requestAnimationFrame(() => {
@@ -234,7 +236,7 @@ export function exportToPdf({ printLayoutPreview = false, onAfterFrame } = {}) {
       // Restore the editor exactly as the user left it.
       if (card) card.style.zoom = printLayoutPreview ? 1 : previousZoom || "";
       window.scrollTo(pagePosition.x, pagePosition.y);
-      viewport.scrollTo(canvasPosition.x, canvasPosition.y);
+      viewport?.scrollTo(canvasPosition.x, canvasPosition.y);
       root.style.scrollBehavior = scrollBehavior;
       document.title = previousDocTitle;
       if (typeof onAfterFrame === "function") {

@@ -7,12 +7,17 @@ Chord & Number Score Builder — arrange chords and number (Nashville) notation,
 ## Features
 
 - 🎸 Chord palette, slash-chord builder, and full Nashville Number System (with upper/lower octave dots)
+- 📝 **Three writing modes** — chosen in the **New Song** dialog, where each mode gets its
+  own animated preview card: **Chord Chart** (beat grid + chords), **Nashville Numbers**
+  (degrees 1–7, optional lyrics under each beat) and **ChordPro** (lyrics with chords in
+  `[brackets]` — the simplest one, no rhythm notation at all). A new ChordPro song opens
+  with two ready-to-type sections, **Intro** and **Verse**.
 - 🎹 **Instrumental playback** — chords & Nashville numbers are resolved to real piano audio
   (multi-sample **Salamander Grand Piano** V3 — Yamaha C5, recorded by Alexander Holm). Letter
   chords play as a chord, Nashville numbers as a single note; empty beats can click as a metronome.
 - 🥁 Rhythm subdivisions ½ / ⅓ / ¼ per beat (nested up to two levels)
 - 📝 Per-beat lyrics — paste a sentence to auto-distribute words across bars
-- ♻️ Transpose all chords by semitone (chords + key)
+- ♻️ Transpose all chords by semitone (chords + key) — works in every mode, including ChordPro
 - 🌗 Light/dark theme, zoom, and a dedicated PDF-layout preview
 - 📄 Export to PDF (print) and save/load projects as `.chordsheet.json`
 - 📁 **Albums (Fase 3/4)** — shared albums (e.g. a church praise team) where an
@@ -59,6 +64,8 @@ chord-sheet/
 │   ├── render.js       #   view layer — builds score HTML
 │   ├── store.js        #   single source of truth for state
 │   ├── notation.js     #   pure music/notation logic (unit-tested)
+│   ├── chordPro.js     #   pure ChordPro parser/transposer/normalizer (unit-tested)
+│   ├── chordProEditor.js  # ChordPro workspace UI (editor panel + palette)
 │   ├── pdf.js          #   PDF export pipeline
 │   ├── pdfOptions.js   #   PDF layout options modal
 │   ├── dom.js          #   thin browser helpers
@@ -68,7 +75,8 @@ chord-sheet/
 ├── styles/             # Stylesheets
 │   ├── styles.css      #   design tokens (:root variables)
 │   ├── ui.css          #   app shell, ribbon, responsive, dark theme
-│   └── preview.css     #   score canvas + print/PDF layout
+│   ├── preview.css     #   score canvas + print/PDF layout
+│   └── chordpro.css    #   ChordPro workspace + its print layout (self-contained)
 ├── assets/             # Static assets (favicon)
 ├── docs/               # Project docs (Firebase / Firestore setup)
 └── tests/              # Unit + regression tests
@@ -81,18 +89,76 @@ The JavaScript is split into small, focused ES modules with an acyclic dependenc
 | Module            | Responsibility                                            | Depends on                   |
 | ----------------- | --------------------------------------------------------- | ---------------------------- |
 | `src/notation.js` | Pure music/notation + section-data logic (no DOM)         | —                            |
+| `src/chordPro.js` | Pure ChordPro parse/transpose/normalize (no DOM)           | notation                     |
 | `src/dom.js`      | Thin browser helpers (`$`, `toast`, `prefersTap`)         | —                            |
 | `src/store.js`    | Single source of truth for state + palette selection      | notation                     |
-| `src/render.js`   | View layer: builds score HTML and writes it to the DOM    | notation, dom, store         |
-| `src/events.js`   | All user interaction, listeners, import/export, bootstrap | notation, dom, store, render |
+| `src/render.js`   | View layer: builds score HTML and writes it to the DOM    | notation, dom, store, chordPro |
+| `src/chordProEditor.js` | ChordPro workspace UI (editor panel, palette, sections) | chordPro, notation, dom, store |
+| `src/events.js`   | All user interaction, listeners, import/export, bootstrap | notation, chordPro, dom, store, render, chordProEditor |
 | `src/app.js`      | Entry point (`initEvents()`)                              | events                       |
-| `src/cloud.js`    | Firebase wrapper — lazy-loads auth + Firestore from CDN   | firebase-config              |
-| `src/cloudUI.js`  | Login modal + "My Songs"/"Albums" home + album UI      | cloud, dom                   |
+| `src/cloud.js`    | Firebase wrapper — lazy-loads auth + Firestore from CDN   | firebase-config, notation    |
+| `src/cloudUI.js`  | Login modal + "My Songs"/"Albums" home + album UI      | cloud, dom, notation         |
 
 `render.js` never imports `events.js`; instead `events.js` injects its DOM-binding
 hooks via `initRender(...)`, which keeps the module graph free of cycles. The cloud
 feature is self-contained: `cloudUI` talks to Firebase only through `cloud.js`, and
 to the editor only through injected callbacks — so it never imports `events.js`.
+`chordProEditor.js` follows the same rule (`initChordProEditor(...)`), so the
+ChordPro workspace never imports `events.js` either.
+
+### ChordPro mode
+
+A third writing mode for musicians who just want lyrics with chords above them —
+no beat grid, no rhythm notation. Each section keeps its source text verbatim in
+`section.chordPro`, and rendering/transposing are pure transforms over that text.
+
+Supported syntax (a deliberate, minimal subset of the ChordPro spec):
+
+```
+[C]Amazing [G]grace        inline chords — letter, slash (G/B), Nashville (1, ♭7) and N.C.
+{soc} / {eoc}              section header (also {sov}, {sob}, {sopc}, long {start_of_*})
+{c: play softly}           comment line
+{title:} {artist:} {key:}  metadata (read on .cho/.pro import)
+[Verse 1]                  a bracket-only line that is NOT a chord = section label
+```
+
+Why not the `chordsheetjs` npm package: this app is a no-build-step static site with
+a service-worker offline shell, so a runtime dependency would break both the
+"serve over HTTP" workflow and offline use. The hand-written parser is ~400 lines of
+pure code, unit-tested, and **unknown directives are parsed then ignored**, so text
+pasted from another ChordPro app can never break a score.
+
+Editor behaviour: the left panel holds the song metadata (title, creator, key, time
+signature, transpose) plus one plain text field per section — chords are typed inline
+as `[C]`, and the right panel updates live as you type. There is intentionally **no
+chord palette and no drag & drop** in this mode: typing brackets is the whole point
+for beginners. Typing commits through a debounced save, so one typing burst is one
+undo step.
+
+**Starting a ChordPro song.** **+ New Song** first asks for the first arrangement's name,
+then shows the three mode cards — pick **♬ ChordPro** and the editor opens with two
+sections already in place, so the format is obvious at a glance:
+
+```
+Intro    [C] [Am7] [Dm7] [G7] [Cmaj7]                          ← chord-only progression
+Verse    [C]Type your lyric here and wrap each [G]chord in square [Am]brackets [F]
+```
+
+Both are ordinary sections — rename, reorder (↑ ↓), delete (×) or add more with
+**+ Add section** (up to `MAX_SECTIONS`). Only ChordPro gets this two-section start; the
+other two modes still begin with a single empty *Intro*.
+
+**Adjacent chords stay readable.** The parser keeps the whitespace *between* bracketed
+chords instead of throwing it away, and a run of chords with no lyrics after it is flagged
+`is-chord-only`, which gets a little trailing padding. So `[C] [Am7] [Dm7] [G7] [Cmaj7]`
+renders as `C Am7 Dm7 G7 Cmaj7` with breathing room — not the collided `CAm7Dm7G7Cmaj7`.
+
+**Print parity.** The right-hand pane is labelled *LIVE PREVIEW · Exported to PDF exactly
+like this*, and that is literally true: the ChordPro page reuses the Chord Chart print
+geometry (same page padding, title margin, `KEY`/`TIME` row and section-label box), only
+the lyrics are printed at score size (chord ≈ 5.4 mm, lyric ≈ 4.3 mm, both derived from the
+PDF-options sliders). Chord size, lyric size, paper and margins are stored **per song**, and
+the label above the preview lines up with the preview's own content column.
 
 ### Cloud sync (optional)
 
@@ -110,6 +176,7 @@ Firestore rules, data model, and setup checklist.
 | `styles/styles.css`  | Design tokens (`:root` variables)                                    |
 | `styles/ui.css`      | Application shell, ribbon, dark theme, responsive rules              |
 | `styles/preview.css` | Score canvas + print/PDF layout (`@media print` / `is-print-layout`) |
+| `styles/chordpro.css`| ChordPro workspace + its print layout — fully self-contained (`cp-`-prefixed selectors or `body[data-editor-mode="chordpro"]` gated, so the two original modes are untouched) |
 
 ## Testing
 

@@ -17,7 +17,8 @@
 //
 // Public API is promise-based and always returns plain data (never SDK objects)
 // so callers in events.js stay decoupled from Firebase internals.
-import { firebaseConfig } from "./firebase-config.js?v=20260923-album11";
+import { firebaseConfig } from "./firebase-config.js?v=20260925-chordpro6";
+import { normalizeEditorMode } from "./notation.js?v=20260925-chordpro6";
 
 const SDK_VERSION = "11.6.1";
 const CDN = (name) => `https://www.gstatic.com/firebasejs/${SDK_VERSION}/${name}`;
@@ -325,7 +326,7 @@ export async function listVersions(songId) {
          number: data.number,
          updatedAt: data.updatedAt,
          youtubeId: data.youtubeId || "",
-         editorMode: data.editorMode === "numbers" ? "numbers" : "chords",
+         editorMode: normalizeEditorMode(data.editorMode),
          key: data.key || "",
          meter: data.meter || "",
       };
@@ -405,7 +406,7 @@ async function writeLatestMeta(
          latestVersionId,
          latestVersionLabel,
          versionCount,
-         latestEditorMode: latestEditorMode || "chords",
+         latestEditorMode: normalizeEditorMode(latestEditorMode),
          ...(latestYoutubeId ? { latestYoutubeId } : { latestYoutubeId: dbFns.deleteField() }),
          latestKey: latestKey || "",
          latestMeter: latestMeter || "",
@@ -453,7 +454,7 @@ async function migrateLegacySong(songId, legacyData) {
       versionCount: 1,
       latestVersionId: VERSION_ONE_ID,
       latestVersionLabel: "Version 1",
-      latestEditorMode: legacyData.editorMode === "numbers" ? "numbers" : "chords",
+      latestEditorMode: normalizeEditorMode(legacyData.editorMode),
       latestKey: legacyData.key || "",
       latestMeter: legacyData.meter || "",
    });
@@ -805,7 +806,7 @@ export async function listAlbumVersions(albumId, songId) {
          number: data.number,
          updatedAt: data.updatedAt,
          youtubeId: data.youtubeId || "",
-         editorMode: data.editorMode === "numbers" ? "numbers" : "chords",
+         editorMode: normalizeEditorMode(data.editorMode),
          key: data.key || "",
          meter: data.meter || "",
       };
@@ -832,7 +833,7 @@ async function writeAlbumLatestMeta(
          latestVersionId,
          latestVersionLabel,
          versionCount,
-         latestEditorMode: latestEditorMode || "chords",
+         latestEditorMode: normalizeEditorMode(latestEditorMode),
          ...(latestYoutubeId ? { latestYoutubeId } : { latestYoutubeId: dbFns.deleteField() }),
          latestKey: latestKey || "",
          latestMeter: latestMeter || "",
@@ -1189,7 +1190,7 @@ export async function saveToAlbum(albumId, project = {}, ctx = {}) {
       await updateAlbumSongMeta(albumId, songId, {
          title,
          artist,
-         latestEditorMode: data.editorMode === "numbers" ? "numbers" : "chords",
+         latestEditorMode: normalizeEditorMode(data.editorMode),
          latestKey: data.key || "",
          latestMeter: data.meter || "",
       });
@@ -1348,7 +1349,7 @@ export async function copyAlbumSongToMySongs(albumId, songId, { preferVersionId 
       latestId = createdVersion.versionId;
       latestLabel = createdVersion.label;
       count += 1;
-      latestEditorMode = version.editorMode || latestEditorMode;
+      latestEditorMode = normalizeEditorMode(version.editorMode || latestEditorMode);
       latestYoutubeId = version.youtubeId || latestYoutubeId;
       latestKey = version.key || latestKey;
       latestMeter = version.meter || latestMeter;

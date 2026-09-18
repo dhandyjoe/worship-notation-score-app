@@ -29,10 +29,15 @@ import {
    barHasContent,
    syllabifyLyrics,
    MAX_SECTIONS,
-} from "./notation.js?v=20260923-album11";
-import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260923-album11";
-import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260923-album11";
-import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260923-album11";
+   normalizeEditorMode,
+} from "./notation.js?v=20260925-chordpro6";
+import {
+   carryChordProSections,
+   transposeChordProText,
+} from "./chordPro.js?v=20260925-chordpro6";
+import { $, prefersTap, isPhone, toast } from "./dom.js?v=20260925-chordpro6";
+import { clearHistory, saveState, undo, redo, canUndo, canRedo } from "./history.js?v=20260925-chordpro6";
+import { setClipboard, getClipboard, hasClipboard } from "./clipboard.js?v=20260925-chordpro6";
 import {
    getState,
    setState,
@@ -40,20 +45,21 @@ import {
    findSection,
    getSelectedPaletteItem,
    setSelectedPaletteItem,
-} from "./store.js?v=20260923-album11";
+} from "./store.js?v=20260925-chordpro6";
 import {
    initRender,
    renderControls,
    renderPreview,
    renderCustomChord,
    chordLabel,
-} from "./render.js?v=20260923-album11";
-import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260923-album11";
-import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260923-album11";
-import { initCloudUI } from "./cloudUI.js?v=20260923-album11";
-import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260923-album11";
-import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260923-album11";
-import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260923-album11";
+} from "./render.js?v=20260925-chordpro6";
+import { initPrintListeners, exportToPdf } from "./pdf.js?v=20260925-chordpro6";
+import { initPdfOptions, getPdfOptions, setPdfOptions } from "./pdfOptions.js?v=20260925-chordpro6";
+import { initCloudUI } from "./cloudUI.js?v=20260925-chordpro6";
+import { openChordEditor, closeChordEditor, isChordEditorOpen } from "./chordEditor.js?v=20260925-chordpro6";
+import { openBeatMenu, closeBeatMenu } from "./beatMenu.js?v=20260925-chordpro6";
+import { initChordProEditor, syncChordProWorkspace } from "./chordProEditor.js?v=20260925-chordpro6";
+import { startPlayback, stopPlayback, getIsPlaying, highlightBeat } from "./playback.js?v=20260925-chordpro6";
 
 // ---- UI-only state (not part of the serializable document) ----
 // Which cloud document is currently open in the editor:
@@ -1170,6 +1176,30 @@ function setPrintLayoutPreview(enabled, { announce = true } = {}) {
 // ---- Transpose ----
 function transposeSheet(semitones) {
    const state = getState();
+   // ChordPro mode keeps its chords inside the lyric text, so transposing rewrites
+   // that text (lyrics, comments and unknown directives are left untouched). The
+   // beat-grid path below is untouched for the two original modes.
+   if (normalizeEditorMode(state.editorMode) === "chordpro") {
+      let changed = 0;
+      state.sections.forEach((section) => {
+         const current = section.chordPro || "";
+         const next = transposeChordProText(current, semitones);
+         if (next === current) return;
+         section.chordPro = next;
+         changed += 1;
+      });
+      state.key = transposeNote(state.key, semitones);
+      $("#keySelect").value = state.key;
+      renderControls();
+      renderPreview();
+      save();
+      toast(
+         changed
+            ? `${changed} section${changed === 1 ? "" : "s"} transposed ${semitones > 0 ? "up" : "down"} one semitone`
+            : "No absolute chords to transpose",
+      );
+      return;
+   }
    let changed = 0;
    state.sections.forEach((section) =>
       Object.entries(section.beats).forEach(([slot, value]) => {
@@ -1442,10 +1472,15 @@ function applyProject(project) {
    if (!project || project.format !== "chord-sheet" || !Array.isArray(project.sections))
       throw new Error("Unrecognized file format");
    const meter = meters.includes(project.meter) ? project.meter : "4/4";
-   const sections = project.sections
+   const editorMode = normalizeEditorMode(project.editorMode);
+   const sourceSections = project.sections
       .filter((section) => section && typeof section === "object")
-      .slice(0, MAX_SECTIONS) // bug fix: cap section count from untrusted files
-      .map((section) => normalizeSection(section, meter));
+      .slice(0, MAX_SECTIONS); // bug fix: cap section count from untrusted files
+   const normalizedSections = sourceSections.map((section) => normalizeSection(section, meter));
+   // ChordPro lyrics live in `section.chordPro`, which normalizeSection() does not
+   // know about — carryChordProSections() re-attaches and sanitizes them by index.
+   const sections =
+      editorMode === "chordpro" ? carryChordProSections(sourceSections, normalizedSections) : normalizedSections;
    if (!sections.length) throw new Error("The file does not contain any sections");
    const lyricsEnabled =
       typeof project.lyricsEnabled === "boolean"
@@ -1473,7 +1508,7 @@ function applyProject(project) {
          : "",
       activeId: sections[0].id,
       editingId: null,
-      editorMode: project.editorMode === "numbers" ? "numbers" : "chords",
+      editorMode,
    });
    // Restore this song's own PDF options (font sizes, spacing, paper, margins),
    // so opening it again keeps the exact export appearance chosen for it.
@@ -1920,6 +1955,10 @@ function bindControlListeners() {
    pdfOptionsControl = initPdfOptions({
       setPreview: (on, opts) => setPrintLayoutPreview(on, opts),
       isPreviewOn: () => printLayoutPreview,
+      // ChordPro mode prints its own card; every other mode keeps using the original
+      // #previewCard (the default), so existing behaviour is untouched.
+      getCard: () =>
+         normalizeEditorMode(getState().editorMode) === "chordpro" ? $("#cpPreviewCard") : $("#previewCard"),
       onExport: () => {
          renderPreview();
          exportToPdf({ printLayoutPreview, onAfterFrame: updateViewportOverflow });
@@ -2102,7 +2141,16 @@ function initDeviceHint() {
 
 export function initEvents() {
    // Inject rendering hooks so render.js never needs to import this module (keeps graph acyclic).
-   initRender({ bindDraggableChords, bindPaletteItem, bindPreview, updateViewportOverflow, getBarSelection });
+   initRender({
+      bindDraggableChords,
+      bindPaletteItem,
+      bindPreview,
+      updateViewportOverflow,
+      getBarSelection,
+      // ChordPro mode: the renderer owns the preview, this module owns the editor
+      // panel. The hook runs after every ChordPro preview render.
+      bindChordPro: () => syncChordProWorkspace(),
+   });
    bindControlListeners();
    localStorage.removeItem("chordSheetPreview");
    applyTheme(activeTheme, { persist: false });
@@ -2124,6 +2172,20 @@ export function initEvents() {
    if (document.fonts && document.fonts.ready) document.fonts.ready.then(updateViewportOverflow);
    window.addEventListener("load", updateViewportOverflow, { once: true });
    initDeviceHint();
+   // ChordPro workspace (editor panel + palette + section list). Bridged the same
+   // way as the other UI modules so it never imports this file. Bound BEFORE the
+   // cloud UI so its listeners exist even if a cloud song loads immediately.
+   initChordProEditor({
+      save,
+      renderPreview,
+      onTranspose: (semitones) => transposeSheet(semitones),
+      onUndo: () => undoSheet(),
+      onRedo: () => redoSheet(),
+      canUndo,
+      canRedo,
+      isReadOnly: () => memberReadOnly(),
+      toast,
+   });
    // Cloud sync (login + My Songs). Bridged via callbacks so cloudUI never
    // imports this module — keeps the dependency graph acyclic.
    initCloudUI({

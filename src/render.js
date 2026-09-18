@@ -15,15 +15,21 @@ import {
    beatValue,
    lyricValue,
    chordAboveValue,
-} from "./notation.js?v=20260923-album11";
-import { $, prefersTap } from "./dom.js?v=20260923-album11";
-import { getState } from "./store.js?v=20260923-album11";
+   editorModeMeta,
+   normalizeEditorMode,
+} from "./notation.js?v=20260925-chordpro6";
+import { parseChordPro } from "./chordPro.js?v=20260925-chordpro6";
+import { $, prefersTap, toast } from "./dom.js?v=20260925-chordpro6";
+import { getState } from "./store.js?v=20260925-chordpro6";
 
 // Injected app hooks (set once at bootstrap by events.js/app.js).
 const hooks = {
    bindDraggableChords() {},
    bindPaletteItem() {},
    bindPreview() {},
+   // ChordPro workspace bindings (textareas, palette, section list). Injected by
+   // events.js/chordProEditor.js and called after every ChordPro render.
+   bindChordPro() {},
    updateViewportOverflow() {},
    // Returns the current transient bar-selection state (never persisted / undone):
    // { active, sectionId, anchor, focus } or a falsy value when not selecting.
@@ -71,6 +77,34 @@ export function renderCustomChord() {
       : '<span class="custom-chord-hint">Custom chord preview</span>';
    hooks.bindDraggableChords();
 }
+// One-shot diagnostic for the ChordPro layout: its CSS lives in styles/chordpro.css.
+// Two failure modes are worth telling the user about, because both look like "the
+// app is broken" while the page still works:
+//   1. the stylesheet never loaded (404 / bad deploy) → the panel is unstyled;
+//   2. a service worker or the HTTP cache served a STALE copy → old rules apply.
+// Case 2 is detected through the `--chordpro-css-version` marker declared at the top
+// of chordpro.css (bump it together with ASSET_VERSION in sw.js).
+const CHORDPRO_CSS_VERSION = "20260925-chordpro6";
+let chordProCssWarned = false;
+function warnIfChordProCssMissing() {
+   if (chordProCssWarned) return;
+   const probe = document.querySelector(".cp-editor-head");
+   if (!probe) return;
+   // `.cp-editor-head { display: flex; flex-direction: column }` → "row" by default
+   // when the stylesheet is absent.
+   const loaded = getComputedStyle(probe).flexDirection === "column";
+   const declared = getComputedStyle(document.documentElement)
+      .getPropertyValue("--chordpro-css-version")
+      .trim();
+   if (loaded && declared === CHORDPRO_CSS_VERSION) return;
+   chordProCssWarned = true;
+   toast(
+      loaded
+         ? "ChordPro styles are out of date — hard-reload (Shift+Cmd+R / Ctrl+F5) to refresh them"
+         : "ChordPro styles didn’t load — check the browser console, then hard-reload (Shift+Cmd+R)",
+   );
+}
+
 export function renderControls() {
    const state = getState();
    $("#keySelect").innerHTML = keys
@@ -153,10 +187,36 @@ export function renderControls() {
       if (topLabel) topLabel.textContent = state.chordAboveEnabled ? "On" : "Off";
    }
    // Reflect the current editing mode on <body> so mode-specific UI (lyrics
-   // toggle placement, suggestion hints, mode badge) can be driven purely by CSS.
-   document.body.dataset.editorMode = state.editorMode === "numbers" ? "numbers" : "chords";
+   // toggle placement, suggestion hints, mode badge, the ChordPro workspace) can be
+   // driven purely by CSS. The label + glyph mapping lives in notation.js (pure and
+   // unit-tested) so the topbar pill and the library cards can never drift apart.
+   const mode = normalizeEditorMode(state.editorMode);
+   document.body.dataset.editorMode = mode;
+   // ---- Mode swap: ChordPro shows ONLY the ChordPro workspace ----
+   // Driven from JS with inline styles on TOP of the CSS gate in
+   // styles/chordpro.css. This is deliberate belt-and-braces: an inline `display`
+   // outranks every non-important author rule (`.ribbon-workspace { display: block }`
+   // in preview.css, `.workspace { display: block }` in styles.css), so the beat-grid
+   // editor cannot stay on screen even if that stylesheet is missing, stale or still
+   // held by the service worker. `aria-hidden` keeps it out of the a11y tree too.
+   const chordproMode = mode === "chordpro";
+   // The beat-grid editor is TWO siblings inside <main>: `.ribbon-workspace` (the tool
+   // aside) and `.preview-stage` (the chord-chart LIVE PREVIEW). Gating only the first
+   // one left the grid score painted on screen in ChordPro mode — which is exactly the
+   // bug this fixes. Both are hidden in ChordPro mode and restored for the other modes.
+   const gridParts = [document.querySelector("main > .ribbon-workspace"), document.querySelector("main > .preview-stage")];
+   gridParts.forEach((part) => {
+      if (!part) return;
+      part.style.display = chordproMode ? "none" : "";
+      part.hidden = chordproMode;
+      if (chordproMode) part.setAttribute("aria-hidden", "true");
+      else part.removeAttribute("aria-hidden");
+   });
+   const cpWorkspace = document.getElementById("cpWorkspace");
+   if (cpWorkspace) cpWorkspace.style.display = chordproMode ? "grid" : "none";
+   if (chordproMode) warnIfChordProCssMissing();
    const modeBadgeText = $("#editorModeBadge .editor-mode-badge-text");
-   if (modeBadgeText) modeBadgeText.textContent = state.editorMode === "numbers" ? "Nashville Numbers" : "Chord Chart";
+   if (modeBadgeText) modeBadgeText.textContent = editorModeMeta[mode].badge;
    // Tempo lives per-song, so mirror the state back into the BPM input whenever
    // controls re-render (e.g. on load/import) — keeps it from sticking at 120.
    const bpmInput = $("#bpmInput");
@@ -314,6 +374,43 @@ function sectionHTML(section) {
       : "";
    return `<section class="preview-section ${typeClass} ${section.id === state.activeId ? "is-active" : ""} ${hasLyricContent ? "has-lyric-content" : ""}${selecting ? " is-selecting" : ""}" data-section="${section.id}"><div class="section-preview-heading"><div>${chip}${title}</div><div class="section-tools">${chordAboveToggle}${lyricsToggle}<span class="bar-caption">${section.bars} ${section.bars === 1 ? "bar" : "bars"} · ${beats} beats per bar</span><button class="text-button add-bar" data-section="${section.id}">+ Add 1 bar</button>${sectionMenu}</div></div>${selectionBar}<div class="bar-grid">${batches}</div></section>`;
 }
+// ---- ChordPro rendering ----
+// Lyrics with a chord printed directly above the syllable it precedes. The layout
+// is a plain text flow — one inline-block per WORD — which is what lets both the
+// live preview and the exported PDF wrap naturally, with no bar grid, no beat
+// columns and none of the print barline geometry the other two modes need.
+function chordProBlockHTML(block) {
+   if (block.type === "section") return `<p class="cp-label">${escapeHTML(block.label)}</p>`;
+   if (block.type === "comment") return `<p class="cp-comment">${escapeHTML(block.text)}</p>`;
+   if (block.type === "blank") return `<div class="cp-blank" aria-hidden="true"></div>`;
+   // meta / directive / end blocks are intentionally never printed.
+   if (block.type !== "line") return "";
+   const words = block.chunks
+      .map((chunk) => {
+         // An empty text keeps the slot (chord with no lyric, e.g. a lead-in bar).
+         const lyric = escapeHTML(chunk.text) || "&nbsp;";
+         const chord = chunk.chord ? `<span class="cp-chord">${chordLabel(chunk.chord)}</span>` : "";
+         // A chord standing on its own (intro/progression like "[C] [Am7] [Dm7]") is
+         // flagged so CSS can keep a readable gap between the chords.
+         const chordOnly = chunk.chord && !String(chunk.text).trim() ? " is-chord-only" : "";
+         return `<span class="cp-word${chunk.chord ? " has-chord" : ""}${chordOnly}">${chord}<span class="cp-lyric">${lyric}</span></span>`;
+      })
+      .join("");
+   return `<p class="cp-line">${words}</p>`;
+}
+
+/** One ChordPro section: its name plus the rendered lyric/chord flow. */
+export function chordProSectionHTML(section) {
+   const blocks = parseChordPro(section?.chordPro || "");
+   const body = blocks.map(chordProBlockHTML).join("");
+   return `<section class="cp-section" data-section="${section?.id ?? ""}">
+   <p class="cp-section-head"><span class="cp-section-chip" aria-hidden="true"></span><span class="cp-section-name">${escapeHTML(
+      String(section?.name || "Section").toUpperCase(),
+   )}</span></p>
+   ${body || '<p class="cp-empty">Type your first line in the editor, e.g. <code>[C]Amazing grace</code>.</p>'}
+</section>`;
+}
+
 export function renderPreview() {
    const state = getState();
    renderPreview._cumulativeBarCount = 0;
@@ -336,6 +433,17 @@ export function renderPreview() {
          lyricsFeatureAvailable && state.lyricsEnabled
             ? `${prefersTap() ? "Select and tap" : "Drag"} chords onto beats, then enter lyrics in the row below.`
             : `${prefersTap() ? "Select an item above, then tap" : "Drag a chord from the toolbar onto"} a beat.`;
+   }
+   // ---- ChordPro mode ----
+   // That mode's score is a text flow (lyrics with a chord above the syllable), not
+   // a beat grid, so it renders into its own host and skips the grid scroll/width
+   // passes below. Everything above still ran, which keeps the topbar breadcrumb and
+   // the hidden print card in sync for every mode.
+   if (normalizeEditorMode(state.editorMode) === "chordpro") {
+      const cpHost = $("#cpSectionsPreview");
+      if (cpHost) cpHost.innerHTML = state.sections.map(chordProSectionHTML).join("");
+      hooks.bindChordPro();
+      return;
    }
    // Re-rendering replaces innerHTML, which resets scroll offsets to 0 on every
    // rebuilt element. We re-render on every edit (e.g. committing a chord), so

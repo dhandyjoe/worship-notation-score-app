@@ -16,8 +16,8 @@
 // This module is UI-agnostic at its core: apply/read/reset are pure state, and
 // initPdfOptions() wires the modal. Import order: leaf-ish (only dom.js).
 
-import { $, toast } from "./dom.js?v=20260923-album11";
-import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260923-album11";
+import { $, toast } from "./dom.js?v=20260925-chordpro6";
+import { markMidRowBars, clearMidRowBars } from "./pdf.js?v=20260925-chordpro6";
 
 const STORAGE_KEY = "chordSheetPdfOptions";
 
@@ -174,7 +174,11 @@ function matchingPreset(settings) {
  * @param {()=>boolean} deps.isPreviewOn                       current preview state
  * @param {()=>void} deps.onExport                             triggers the existing Export-PDF flow
  */
-export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
+export function initPdfOptions({ setPreview, isPreviewOn, onExport, getCard } = {}) {
+   // Which score card the live preview adopts. Defaults to the beat-grid card, so
+   // the two original modes behave exactly as before; ChordPro mode injects its own
+   // card so the dialog previews (and prints) that mode's own layout.
+   const resolveCard = typeof getCard === "function" ? getCard : () => document.getElementById("previewCard");
    // The "Export .pdf" button is the sole entry point now — the old dedicated
    // "PDF options" button was removed, so opening the options dialog and the
    // export flow live behind one primary action.
@@ -207,7 +211,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
     * here is exactly what prints.
     */
    function adoptPreview() {
-      const card = document.getElementById("previewCard");
+      const card = resolveCard();
       if (!card || !previewHost) return;
       cardHome = card.parentNode;
       cardNextSibling = card.nextSibling;
@@ -226,7 +230,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
    }
 
    function releasePreview() {
-      const card = document.getElementById("previewCard");
+      const card = resolveCard();
       if (!card || !cardHome) return;
       card.style.zoom = cardInlineZoom;
       // Drop the print-only barline tags so the live editor is untouched.
@@ -258,7 +262,7 @@ export function initPdfOptions({ setPreview, isPreviewOn, onExport } = {}) {
       // 2+ are visible instead of clipped, mirroring the real multi-page PDF.
       previewHost.style.setProperty("--pdf-page-count", "1");
       const onePageH = page.offsetHeight;
-      const card = document.getElementById("previewCard");
+      const card = resolveCard();
       const styles = getComputedStyle(page);
       const usableH = page.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
       const pageCount = usableH > 0 ? Math.max(1, Math.ceil((card?.offsetHeight || 0) / usableH)) : 1;
